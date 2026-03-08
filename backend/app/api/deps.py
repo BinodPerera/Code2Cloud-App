@@ -3,6 +3,7 @@ from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from jose import jwt, JWTError
 from app.core.config import settings
 from app.schemas.token import UserBase
+from app.db.mongodb import get_database
 
 reusable_oauth2 = HTTPBearer()
 
@@ -25,5 +26,12 @@ async def get_current_user(
             detail="Could not validate credentials",
         )
     
-    # In a real app, you would fetch the user from the database here
-    return UserBase(login=username, id=0) # Mocked user data
+    # Fetch user from MongoDB
+    if settings.MONGODB_URL:
+        db = await get_database()
+        user_data = await db.users.find_one({"login": username})
+        if user_data:
+            return UserBase(**user_data)
+    
+    # Fallback if DB not configured or user not found
+    return UserBase(login=username, id=0)

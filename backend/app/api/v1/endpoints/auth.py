@@ -5,6 +5,7 @@ from typing import Any
 from app.core.config import settings
 from app.core.security import create_access_token
 from app.schemas.token import Token
+from app.db.mongodb import get_database
 
 router = APIRouter()
 
@@ -56,8 +57,16 @@ async def github_callback(code: str):
         )
         user_data = user_response.json()
         
-    # In a real app, you'd save/update the user in the database here.
-    # For now, we'll just create a JWT for the user.
+    # Persist user in MongoDB
+    if settings.MONGODB_URL:
+        db = await get_database()
+        await db.users.update_one(
+            {"login": user_data.get("login")},
+            {"$set": user_data},
+            upsert=True
+        )
+    
+    # Create JWT for the user
     jwt_token = create_access_token(subject=user_data.get("login"))
     
     return {

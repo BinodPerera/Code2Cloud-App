@@ -33,24 +33,34 @@ jobs:
 
       - name: Deploy to GCP Instance
         uses: appleboy/ssh-action@v1.0.3
+        # 1. Map the secrets to the job's environment first
+        env:
+          GITHUB_CLIENT_ID: ${{ secrets.GITHUB_CLIENT_ID }}
+          GITHUB_CLIENT_SECRET: ${{ secrets.GITHUB_CLIENT_SECRET }}
+          GITHUB_REDIRECT_URI: ${{ secrets.GITHUB_REDIRECT_URI }}
+          SECRET_KEY: ${{ secrets.SECRET_KEY }}
+          MONGODB_URL: ${{ secrets.MONGODB_URL }}
+          DATABASE_NAME: ${{ secrets.DATABASE_NAME }}
         with:
           host: ${{ secrets.BACKEND_GCP_INSTANCE_IP }}
           username: ubuntu
           key: ${{ secrets.BACKEND_SSH_PRIVATE_KEY }}
+          # 2. Tell the action which variables to pass through the SSH tunnel
+          envs: GITHUB_CLIENT_ID,GITHUB_CLIENT_SECRET,GITHUB_REDIRECT_URI,SECRET_KEY,MONGODB_URL,DATABASE_NAME
           script: |
-            # Pull the updated backend image
+            # Now these variables will actually have values in this script
             docker pull ${{ secrets.DOCKERHUB_USERNAME }}/code2cloud-backend:latest
             
-            # Stop and remove the old container
             docker stop code2cloud-backend || true
             docker rm code2cloud-backend || true
             
-            # Run the new container with secrets
             docker run -d \
               --name code2cloud-backend \
               -p 8000:8000 \
-              -e GITHUB_CLIENT_ID=${{ secrets.GITHUB_CLIENT_ID }} \
-              -e GITHUB_CLIENT_SECRET=${{ secrets.GITHUB_CLIENT_SECRET }} \
-              -e GITHUB_REDIRECT_URI=${{ secrets.GITHUB_REDIRECT_URI }} \
-              -e SECRET_KEY=${{ secrets.SECRET_KEY }} \
+              -e GITHUB_CLIENT_ID="$GITHUB_CLIENT_ID" \
+              -e GITHUB_CLIENT_SECRET="$GITHUB_CLIENT_SECRET" \
+              -e GITHUB_REDIRECT_URI="$GITHUB_REDIRECT_URI" \
+              -e SECRET_KEY="$SECRET_KEY" \
+              -e MONGODB_URL="$MONGODB_URL" \
+              -e DATABASE_NAME="$DATABASE_NAME" \
               ${{ secrets.DOCKERHUB_USERNAME }}/code2cloud-backend:latest

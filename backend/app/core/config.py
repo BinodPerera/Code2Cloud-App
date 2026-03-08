@@ -16,6 +16,10 @@ class Settings(BaseSettings):
     # This should be your public URL + /api/v1/auth/github/callback
     GITHUB_REDIRECT_URI: str = "http://localhost:8000/api/v1/auth/github/callback"
 
+    # MongoDB
+    MONGODB_URL: Optional[str] = None
+    DATABASE_NAME: str = "code2cloud"
+
     model_config = SettingsConfigDict(
         env_file=".env",
         case_sensitive=True,
