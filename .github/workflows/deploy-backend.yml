@@ -34,9 +34,9 @@ jobs:
       - name: Deploy to GCP Instance
         uses: appleboy/ssh-action@v1.0.3
         with:
-          host: ${{ secrets.GCP_INSTANCE_IP }}
+          host: ${{ secrets.BACKEND_GCP_INSTANCE_IP }}
           username: ubuntu
-          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          key: ${{ secrets.BACKEND_SSH_PRIVATE_KEY }}
           script: |
             # Pull the updated backend image
             docker pull ${{ secrets.DOCKERHUB_USERNAME }}/code2cloud-backend:latest
