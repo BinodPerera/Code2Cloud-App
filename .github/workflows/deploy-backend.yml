@@ -45,8 +45,12 @@ jobs:
             docker stop code2cloud-backend || true
             docker rm code2cloud-backend || true
             
-            # Run the new container
+            # Run the new container with secrets
             docker run -d \
               --name code2cloud-backend \
               -p 8000:8000 \
+              -e GITHUB_CLIENT_ID=${{ secrets.GITHUB_CLIENT_ID }} \
+              -e GITHUB_CLIENT_SECRET=${{ secrets.GITHUB_CLIENT_SECRET }} \
+              -e GITHUB_REDIRECT_URI=${{ secrets.GITHUB_REDIRECT_URI }} \
+              -e SECRET_KEY=${{ secrets.SECRET_KEY }} \
               ${{ secrets.DOCKERHUB_USERNAME }}/code2cloud-backend:latest
