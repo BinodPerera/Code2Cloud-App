@@ -26,14 +26,13 @@ jobs:
       - name: Build and push Docker image
         uses: docker/build-push-action@v5
         with:
-          # CHANGE: Point context to the backend folder
           context: ./backend 
           push: true
           tags: ${{ secrets.DOCKERHUB_USERNAME }}/code2cloud-backend:latest
 
-      - name: Deploy to GCP Instance
+      - name: Deploy to GCP Instance via SSH
         uses: appleboy/ssh-action@v1.0.3
-        # 1. Map the secrets to the job's environment first
+        # 1. Map GitHub Secrets to the Runner's environment variables
         env:
           GITHUB_CLIENT_ID: ${{ secrets.GITHUB_CLIENT_ID }}
           GITHUB_CLIENT_SECRET: ${{ secrets.GITHUB_CLIENT_SECRET }}
@@ -41,19 +40,22 @@ jobs:
           SECRET_KEY: ${{ secrets.SECRET_KEY }}
           MONGODB_URL: ${{ secrets.MONGODB_URL }}
           DATABASE_NAME: ${{ secrets.DATABASE_NAME }}
+          DOCKERHUB_USER: ${{ secrets.DOCKERHUB_USERNAME }}
         with:
           host: ${{ secrets.BACKEND_GCP_INSTANCE_IP }}
           username: ubuntu
           key: ${{ secrets.BACKEND_SSH_PRIVATE_KEY }}
-          # 2. Tell the action which variables to pass through the SSH tunnel
-          envs: GITHUB_CLIENT_ID,GITHUB_CLIENT_SECRET,GITHUB_REDIRECT_URI,SECRET_KEY,MONGODB_URL,DATABASE_NAME
+          # 2. THE BRIDGE: Export these variables into the remote SSH session
+          envs: GITHUB_CLIENT_ID,GITHUB_CLIENT_SECRET,GITHUB_REDIRECT_URI,SECRET_KEY,MONGODB_URL,DATABASE_NAME,DOCKERHUB_USER
           script: |
-            # Now these variables will actually have values in this script
-            docker pull ${{ secrets.DOCKERHUB_USERNAME }}/code2cloud-backend:latest
+            # Pull the updated backend image
+            docker pull $DOCKERHUB_USER/code2cloud-backend:latest
             
+            # Stop and remove the old container if it exists
             docker stop code2cloud-backend || true
             docker rm code2cloud-backend || true
             
+            # Run the new container, injecting the variables exported by 'envs'
             docker run -d \
               --name code2cloud-backend \
               -p 8000:8000 \
@@ -63,4 +65,5 @@ jobs:
               -e SECRET_KEY="$SECRET_KEY" \
               -e MONGODB_URL="$MONGODB_URL" \
               -e DATABASE_NAME="$DATABASE_NAME" \
-              ${{ secrets.DOCKERHUB_USERNAME }}/code2cloud-backend:latest
+              --restart unless-stopped \
+              $DOCKERHUB_USER/code2cloud-backend:latest
