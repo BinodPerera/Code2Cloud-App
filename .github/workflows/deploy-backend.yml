@@ -29,7 +29,7 @@ jobs:
           # CHANGE: Point context to the backend folder
           context: ./backend 
           # If your Dockerfile is also inside the backend folder, add this:
-          file: ./backend/Dockerfile
+          file: Dockerfile
           push: true
           tags: ${{ secrets.DOCKERHUB_USERNAME }}/code2cloud-backend:latest
 
