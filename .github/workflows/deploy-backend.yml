@@ -1,4 +1,4 @@
-name: CI/CD Pipeline
+name: CI/CD Pipeline Backend
 
 on:
   push:
@@ -26,8 +26,10 @@ jobs:
       - name: Build and push Docker image
         uses: docker/build-push-action@v5
         with:
-          context: ./backend
-          file: Dockerfile
+          # CHANGE: Point context to the backend folder
+          context: ./backend 
+          # If your Dockerfile is also inside the backend folder, add this:
+          file: ./backend/Dockerfile
           push: true
           tags: ${{ secrets.DOCKERHUB_USERNAME }}/code2cloud-backend:latest
 
@@ -38,7 +40,15 @@ jobs:
           username: ubuntu
           key: ${{ secrets.SSH_PRIVATE_KEY }}
           script: |
+            # Pull the updated backend image
             docker pull ${{ secrets.DOCKERHUB_USERNAME }}/code2cloud-backend:latest
+            
+            # Stop and remove the old container
             docker stop code2cloud-backend || true
             docker rm code2cloud-backend || true
-            docker run -d --name code2cloud-backend -p 8000:8000 ${{ secrets.DOCKERHUB_USERNAME }}/code2cloud-backend:latest
+            
+            # Run the new container
+            docker run -d \
+              --name code2cloud-backend \
+              -p 8000:8000 \
+              ${{ secrets.DOCKERHUB_USERNAME }}/code2cloud-backend:latest
