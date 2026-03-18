@@ -15,6 +15,7 @@ class Settings(BaseSettings):
     GITHUB_CLIENT_SECRET: Optional[str] = None
     # This should be your public URL + /api/v1/auth/github/callback
     GITHUB_REDIRECT_URI: str = "http://localhost:8000/api/v1/auth/github/callback"
+    FRONTEND_URL: str = "http://localhost:5173"
 
     # MongoDB
     MONGODB_URL: Optional[str] = None
