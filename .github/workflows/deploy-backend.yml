@@ -34,9 +34,9 @@ jobs:
         uses: appleboy/ssh-action@v1.0.3
         # 1. Map GitHub Secrets to the Runner's environment variables
         env:
-          GITHUB_CLIENT_ID: ${{ secrets.GITHUB_CLIENT_ID }}
-          GITHUB_CLIENT_SECRET: ${{ secrets.GITHUB_CLIENT_SECRET }}
-          GITHUB_REDIRECT_URI: ${{ secrets.GITHUB_REDIRECT_URI }}
+          GITHUB_CLIENT_ID: ${{ secrets.GH_CLIENT_ID }}
+          GITHUB_CLIENT_SECRET: ${{ secrets.GH_CLIENT_SECRET }}
+          GITHUB_REDIRECT_URI: ${{ secrets.GH_REDIRECT_URI }}
           SECRET_KEY: ${{ secrets.SECRET_KEY }}
           MONGODB_URL: ${{ secrets.MONGODB_URL }}
           DATABASE_NAME: ${{ secrets.DATABASE_NAME }}
