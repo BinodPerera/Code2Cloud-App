@@ -41,12 +41,13 @@ jobs:
           MONGODB_URL: ${{ secrets.MONGODB_URL }}
           DATABASE_NAME: ${{ secrets.DATABASE_NAME }}
           DOCKERHUB_USER: ${{ secrets.DOCKERHUB_USERNAME }}
+          FRONTEND_URL: ${{ secrets.FRONTEND_URL }}
         with:
           host: ${{ secrets.BACKEND_GCP_INSTANCE_IP }}
           username: ubuntu
           key: ${{ secrets.BACKEND_SSH_PRIVATE_KEY }}
           # 2. THE BRIDGE: Export these variables into the remote SSH session
-          envs: GITHUB_CLIENT_ID,GITHUB_CLIENT_SECRET,GITHUB_REDIRECT_URI,SECRET_KEY,MONGODB_URL,DATABASE_NAME,DOCKERHUB_USER
+          envs: GITHUB_CLIENT_ID,GITHUB_CLIENT_SECRET,GITHUB_REDIRECT_URI,SECRET_KEY,MONGODB_URL,DATABASE_NAME,DOCKERHUB_USER,FRONTEND_URL
           script: |
             # Pull the updated backend image
             docker pull $DOCKERHUB_USER/code2cloud-backend:latest
@@ -65,5 +66,6 @@ jobs:
               -e SECRET_KEY="$SECRET_KEY" \
               -e MONGODB_URL="$MONGODB_URL" \
               -e DATABASE_NAME="$DATABASE_NAME" \
+              -e FRONTEND_URL="$FRONTEND_URL" \
               --restart unless-stopped \
               $DOCKERHUB_USER/code2cloud-backend:latest

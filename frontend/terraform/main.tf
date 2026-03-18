@@ -40,6 +40,6 @@ resource "google_cloud_run_service" "frontend" {
 resource "google_cloud_run_service_iam_member" "public_access" {
   service  = google_cloud_run_service.frontend.name
   location = google_cloud_run_service.frontend.location
-  role     = "roles/run.viewer"
+  role     = "roles/run.invoker"
   member   = "allUsers"
 }
