@@ -35,7 +35,7 @@ function Callback() {
   const exchangeCodeForToken = async (code) => {
     setIsProcessingCode(true);
     try {
-      const response = await fetch(`http://127.0.0.1:8000/api/v1/auth/github/callback?code=${code}`, {
+      const response = await fetch(`${import.meta.env.VITE_API_BASE_URL}/auth/github/callback?code=${code}`, {
         method: 'GET',
         headers: {
           'Accept': 'application/json'

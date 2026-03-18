@@ -52,7 +52,7 @@ function ServiceSetup() {
       if (!token) return;
       try {
         setLoadingRepos(true);
-        const response = await fetch('http://127.0.0.1:8000/api/v1/repos/', {
+        const response = await fetch(`${import.meta.env.VITE_API_BASE_URL}/repos/`, {
           headers: { 'Authorization': `Bearer ${token}`, 'Accept': 'application/json' }
         });
         if (!response.ok) throw new Error('Failed to fetch repositories');
@@ -80,7 +80,7 @@ function ServiceSetup() {
         setLoadingStack(true);
         const owner = selectedRepo.owner?.login || selectedRepo.user?.login; 
         const repoName = selectedRepo.name;
-        const res = await fetch(`http://127.0.0.1:8000/api/v1/repos/${owner}/${repoName}/tech-stack`, {
+        const res = await fetch(`${import.meta.env.VITE_API_BASE_URL}/repos/${owner}/${repoName}/tech-stack`, {
           headers: { 'Authorization': `Bearer ${token}` }
         });
         if (res.ok) {
