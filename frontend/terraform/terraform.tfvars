@@ -1,0 +1,5 @@
+project_id     = "final-year-research-488914"
+image_uri      = "binod07/code2cloud-frontend:latest"
+ssh_public_key = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIMR45f/1ynTBNWYkAgdngOZuBhB7ypQD1Vg3ZEy8yhxG mybperera.dev@gmail.com"
+region         = "us-central1"
+zone           = "us-central1-a"

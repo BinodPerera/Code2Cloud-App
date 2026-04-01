@@ -1,45 +1,90 @@
 provider "google" {
   project = var.project_id
   region  = var.region
+  zone    = var.zone
 }
 
-resource "google_project_service" "run_api" {
-  service            = "run.googleapis.com"
-  disable_on_destroy = false
+# Static External IP Address
+resource "google_compute_address" "static_ip" {
+  name = "${var.app_name}-static-ip"
 }
 
-resource "google_cloud_run_service" "frontend" {
-  name       = "${var.app_name}-frontend"
-  location   = var.region
-  depends_on = [google_project_service.run_api]
+# Firewall rule for NPM (80, 443) and Management UI (81)
+resource "google_compute_firewall" "allow_npm" {
+  name    = "${var.app_name}-allow-npm"
+  network = "default"
 
-  template {
-    spec {
-      containers {
-        image = var.image_uri
-        ports {
-          container_port = 80
-        }
-        resources {
-          limits = {
-            cpu    = "1000m"
-            memory = "512Mi"
-          }
-        }
-      }
+  allow {
+    protocol = "tcp"
+    ports    = ["80", "443", "81"]
+  }
+
+  source_ranges = ["0.0.0.0/0"]
+  target_tags   = ["npm-server"]
+}
+
+# Compute Instance (e2-micro)
+resource "google_compute_instance" "frontend_vm" {
+  name         = "${var.app_name}-frontend-vm"
+  machine_type = "e2-micro"
+  zone         = var.zone
+  tags         = ["npm-server"]
+
+  boot_disk {
+    initialize_params {
+      image = "ubuntu-os-cloud/ubuntu-2204-lts"
+      size  = 20
     }
   }
 
-  traffic {
-    percent         = 100
-    latest_revision = true
+  network_interface {
+    network = "default"
+    access_config {
+      nat_ip = google_compute_address.static_ip.address
+    }
   }
-}
 
-# Allow public access
-resource "google_cloud_run_service_iam_member" "public_access" {
-  service  = google_cloud_run_service.frontend.name
-  location = google_cloud_run_service.frontend.location
-  role     = "roles/run.invoker"
-  member   = "allUsers"
+  metadata = {
+    ssh-keys = "ubuntu:${var.ssh_public_key}"
+  }
+
+  metadata_startup_script = <<-EOT
+    #!/bin/bash
+    # 1. Create 2GB of Swap space (Essential for e2-micro)
+    sudo fallocate -l 2G /swapfile
+    sudo chmod 600 /swapfile
+    sudo mkswap /swapfile
+    sudo swapon /swapfile
+    echo '/swapfile none swap sw 0 0' | sudo tee -a /etc/fstab
+
+    # 2. Standard Docker install
+    sudo apt-get update
+    sudo apt-get install -y docker.io
+    sudo systemctl start docker
+    sudo systemctl enable docker
+    sudo usermod -aG docker ubuntu
+
+    # 3. Prepare NPM directories
+    mkdir -p /home/ubuntu/npm_data /home/ubuntu/letsencrypt
+
+    # 4. Run Nginx Proxy Manager
+    sudo docker run -d \
+      --name nginx-proxy-manager \
+      -p 80:80 -p 81:81 -p 443:443 \
+      -v /home/ubuntu/npm_data:/data \
+      -v /home/ubuntu/letsencrypt:/etc/letsencrypt \
+      --restart unless-stopped \
+      jc21/nginx-proxy-manager:latest
+
+    # 5. Run Frontend (Initial)
+    sudo docker run -d \
+      --name code2cloud-frontend \
+      -p 3000:80 \
+      --restart unless-stopped \
+      ${var.image_uri}
+  EOT
+
+  service_account {
+    scopes = ["cloud-platform"]
+  }
 }

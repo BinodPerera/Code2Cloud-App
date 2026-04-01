@@ -1,4 +1,4 @@
-name: CI Pipeline Frontend
+name: CI/CD Pipeline Frontend
 
 on:
   push:
@@ -8,7 +8,7 @@ on:
       - ".github/workflows/deploy-frontend.yml"
 
 jobs:
-  build-and-push:
+  build-and-deploy:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
@@ -28,8 +28,30 @@ jobs:
         with:
           context: ./frontend
           push: true
-          provenance: false
-          sbom: false
-          tags: ${{ secrets.DOCKERHUB_USERNAME }}/code2cloud-frontend:v1
+          tags: ${{ secrets.DOCKERHUB_USERNAME }}/code2cloud-frontend:latest
           build-args: |
             VITE_API_BASE_URL=${{ secrets.VITE_API_BASE_URL }}
+
+      - name: Deploy to GCP Instance via SSH
+        uses: appleboy/ssh-action@v1.0.3
+        env:
+          DOCKERHUB_USER: ${{ secrets.DOCKERHUB_USERNAME }}
+        with:
+          host: ${{ secrets.FRONTEND_GCP_INSTANCE_IP }}
+          username: ubuntu
+          key: ${{ secrets.FRONTEND_SSH_PRIVATE_KEY }}
+          envs: DOCKERHUB_USER
+          script: |
+            # Pull the updated frontend image
+            docker pull $DOCKERHUB_USER/code2cloud-frontend:latest
+            
+            # Stop and remove the old container
+            docker stop code2cloud-frontend || true
+            docker rm code2cloud-frontend || true
+            
+            # Run the new container
+            docker run -d \
+              --name code2cloud-frontend \
+              -p 3000:80 \
+              --restart unless-stopped \
+              $DOCKERHUB_USER/code2cloud-frontend:latest
