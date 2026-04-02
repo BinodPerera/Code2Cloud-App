@@ -47,10 +47,10 @@ jobs:
           key: ${{ secrets.BACKEND_SSH_PRIVATE_KEY }}
           envs: GITHUB_CLIENT_ID,GITHUB_CLIENT_SECRET,GITHUB_REDIRECT_URI,SECRET_KEY,MONGODB_URL,DATABASE_NAME,DOCKERHUB_USER,FRONTEND_URL
           script: |
-            # 1. go to home directory
+            # 1. Navigate to home directory
             cd ~ 
 
-            # 2. create .env using github secrets
+            # 2. Recreate the .env file
             cat <<EOF > .env
             GITHUB_CLIENT_ID=$GITHUB_CLIENT_ID
             GITHUB_CLIENT_SECRET=$GITHUB_CLIENT_SECRET
@@ -62,9 +62,8 @@ jobs:
             DOCKERHUB_USER=$DOCKERHUB_USER
             EOF
 
-            # 3. create docker-compose.yml
+            # 3. Recreate docker-compose.yml (removed obsolete version tag)
             cat <<EOF > docker-compose.yml
-            version: '3.8'
             services:
               backend:
                 image: $DOCKERHUB_USER/code2cloud-backend:latest
@@ -76,9 +75,11 @@ jobs:
                 restart: unless-stopped
             EOF
 
-            # 4. pull latest image
+            # 4. Stop and remove current containers to avoid name conflicts
+            docker compose down
+
+            # 5. Pull the latest image from Docker Hub
             docker compose pull backend
 
-            # 5. restart the container using docker compose
-            # --remove-orphans will remove the old container
+            # 6. Start the service in detached mode
             docker compose up -d --remove-orphans
