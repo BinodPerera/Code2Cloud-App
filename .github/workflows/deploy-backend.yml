@@ -76,6 +76,9 @@ jobs:
             EOF
 
             # 4. Stop and remove current containers to avoid name conflicts
+            # We explicitly remove 'code2cloud-backend' because the first time it was launched via 'docker run', so 'compose down' will ignore it.
+            docker stop code2cloud-backend || true
+            docker rm code2cloud-backend || true
             docker compose down
 
             # 5. Pull the latest image from Docker Hub
