@@ -62,9 +62,23 @@ jobs:
             DOCKERHUB_USER=$DOCKERHUB_USER
             EOF
 
-            # 3. pull latest image
+            # 3. create docker-compose.yml
+            cat <<EOF > docker-compose.yml
+            version: '3.8'
+            services:
+              backend:
+                image: $DOCKERHUB_USER/code2cloud-backend:latest
+                container_name: code2cloud-backend
+                ports:
+                  - "8000:8000"
+                env_file:
+                  - .env
+                restart: unless-stopped
+            EOF
+
+            # 4. pull latest image
             docker compose pull backend
 
-            # 4. restart the container using docker compose
+            # 5. restart the container using docker compose
             # --remove-orphans will remove the old container
             docker compose up -d --remove-orphans
