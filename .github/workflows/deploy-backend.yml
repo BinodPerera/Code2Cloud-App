@@ -43,7 +43,7 @@ jobs:
           FRONTEND_URL: ${{ secrets.FRONTEND_URL }}
         with:
           host: ${{ secrets.BACKEND_GCP_INSTANCE_IP }}
-          username: ubuntu 
+          username: binod 
           key: ${{ secrets.BACKEND_SSH_PRIVATE_KEY }}
           envs: GITHUB_CLIENT_ID,GITHUB_CLIENT_SECRET,GITHUB_REDIRECT_URI,SECRET_KEY,MONGODB_URL,DATABASE_NAME,DOCKERHUB_USER,FRONTEND_URL
           script: |
