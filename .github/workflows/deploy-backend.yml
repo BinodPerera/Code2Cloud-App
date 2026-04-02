@@ -32,7 +32,6 @@ jobs:
 
       - name: Deploy to GCP Instance via SSH
         uses: appleboy/ssh-action@v1.0.3
-        # 1. Map GitHub Secrets to the Runner's environment variables
         env:
           GITHUB_CLIENT_ID: ${{ secrets.GH_CLIENT_ID }}
           GITHUB_CLIENT_SECRET: ${{ secrets.GH_CLIENT_SECRET }}
@@ -44,28 +43,28 @@ jobs:
           FRONTEND_URL: ${{ secrets.FRONTEND_URL }}
         with:
           host: ${{ secrets.BACKEND_GCP_INSTANCE_IP }}
-          username: ubuntu
+          username: ubuntu 
           key: ${{ secrets.BACKEND_SSH_PRIVATE_KEY }}
-          # 2. THE BRIDGE: Export these variables into the remote SSH session
           envs: GITHUB_CLIENT_ID,GITHUB_CLIENT_SECRET,GITHUB_REDIRECT_URI,SECRET_KEY,MONGODB_URL,DATABASE_NAME,DOCKERHUB_USER,FRONTEND_URL
           script: |
-            # Pull the updated backend image
-            docker pull $DOCKERHUB_USER/code2cloud-backend:latest
-            
-            # Stop and remove the old container if it exists
-            docker stop code2cloud-backend || true
-            docker rm code2cloud-backend || true
-            
-            # Run the new container, injecting the variables exported by 'envs'
-            docker run -d \
-              --name code2cloud-backend \
-              -p 8000:8000 \
-              -e GITHUB_CLIENT_ID="$GITHUB_CLIENT_ID" \
-              -e GITHUB_CLIENT_SECRET="$GITHUB_CLIENT_SECRET" \
-              -e GITHUB_REDIRECT_URI="$GITHUB_REDIRECT_URI" \
-              -e SECRET_KEY="$SECRET_KEY" \
-              -e MONGODB_URL="$MONGODB_URL" \
-              -e DATABASE_NAME="$DATABASE_NAME" \
-              -e FRONTEND_URL="$FRONTEND_URL" \
-              --restart unless-stopped \
-              $DOCKERHUB_USER/code2cloud-backend:latest
+            # 1. go to home directory
+            cd ~ 
+
+            # 2. create .env using github secrets
+            cat <<EOF > .env
+            GITHUB_CLIENT_ID=$GITHUB_CLIENT_ID
+            GITHUB_CLIENT_SECRET=$GITHUB_CLIENT_SECRET
+            GITHUB_REDIRECT_URI=$GITHUB_REDIRECT_URI
+            SECRET_KEY=$SECRET_KEY
+            MONGODB_URL=$MONGODB_URL
+            DATABASE_NAME=$DATABASE_NAME
+            FRONTEND_URL=$FRONTEND_URL
+            DOCKERHUB_USER=$DOCKERHUB_USER
+            EOF
+
+            # 3. pull latest image
+            docker-compose pull backend
+
+            # 4. restart the container using docker compose
+            # --remove-orphans will remove the old container
+            docker-compose up -d --remove-orphans
