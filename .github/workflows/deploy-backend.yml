@@ -63,8 +63,8 @@ jobs:
             EOF
 
             # 3. pull latest image
-            docker-compose pull backend
+            docker compose pull backend
 
             # 4. restart the container using docker compose
             # --remove-orphans will remove the old container
-            docker-compose up -d --remove-orphans
+            docker compose up -d --remove-orphans
