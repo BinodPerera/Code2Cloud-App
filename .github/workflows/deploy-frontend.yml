@@ -36,22 +36,42 @@ jobs:
         uses: appleboy/ssh-action@v1.0.3
         env:
           DOCKERHUB_USER: ${{ secrets.DOCKERHUB_USERNAME }}
+          VITE_API_BASE_URL: ${{ secrets.VITE_API_BASE_URL }}
         with:
           host: ${{ secrets.FRONTEND_GCP_INSTANCE_IP }}
           username: ubuntu
           key: ${{ secrets.FRONTEND_SSH_PRIVATE_KEY }}
-          envs: DOCKERHUB_USER
+          envs: DOCKERHUB_USER, VITE_API_BASE_URL
           script: |
-            # Pull the updated frontend image
-            docker pull $DOCKERHUB_USER/code2cloud-frontend:latest
-            
-            # Stop and remove the old container
+            # 1. Navigate to home directory
+            cd ~ 
+
+            # 2. Recreate the .env file
+            cat <<EOF > .env
+            VITE_API_BASE_URL=$VITE_API_BASE_URL
+            EOF
+
+            # 3. Recreate docker-compose.yml (removed obsolete version tag)
+            cat <<EOF > docker-compose.yml
+            services:
+              frontend:
+                image: $DOCKERHUB_USER/code2cloud-frontend:latest
+                container_name: code2cloud-frontend
+                ports:
+                  - "3000:80"
+                env_file:
+                  - .env
+                restart: unless-stopped
+            EOF
+
+            # 4. Stop and remove current containers to avoid name conflicts
+            # We explicitly remove 'code2cloud-frontend' because the first time it was launched via 'docker run', so 'compose down' will ignore it.
             docker stop code2cloud-frontend || true
             docker rm code2cloud-frontend || true
-            
-            # Run the new container
-            docker run -d \
-              --name code2cloud-frontend \
-              -p 3000:80 \
-              --restart unless-stopped \
-              $DOCKERHUB_USER/code2cloud-frontend:latest
+            docker compose down
+
+            # 5. Pull the latest image from Docker Hub
+            docker compose pull frontend
+
+            # 6. Start the service in detached mode
+            docker compose up -d --remove-orphans

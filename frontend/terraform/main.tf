@@ -57,9 +57,9 @@ resource "google_compute_instance" "frontend_vm" {
     sudo swapon /swapfile
     echo '/swapfile none swap sw 0 0' | sudo tee -a /etc/fstab
 
-    # 2. Standard Docker install
+    # 2. Standard Docker and Docker Compose install
     sudo apt-get update
-    sudo apt-get install -y docker.io
+    sudo apt-get install -y docker.io docker-compose-v2
     sudo systemctl start docker
     sudo systemctl enable docker
     sudo usermod -aG docker ubuntu
