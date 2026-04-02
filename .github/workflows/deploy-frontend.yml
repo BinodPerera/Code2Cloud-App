@@ -46,9 +46,14 @@ jobs:
             # 1. Navigate to the project directory created by Terraform
             cd /home/ubuntu/app
 
-            # 2. Pull the latest image from Docker Hub
+            # 2. Recreate the .env file
+            cat <<EOF > .env
+            VITE_API_BASE_URL=$VITE_API_BASE_URL
+            EOF
+
+            # 3. Pull the latest image from Docker Hub
             # We use 'sudo' to avoid 'permission denied' errors connecting to the Docker socket
             sudo docker compose pull code2cloud-frontend
 
-            # 3. Start the service in detached mode
+            # 4. Start the service in detached mode
             sudo docker compose up -d --remove-orphans code2cloud-frontend
