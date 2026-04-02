@@ -43,35 +43,12 @@ jobs:
           key: ${{ secrets.FRONTEND_SSH_PRIVATE_KEY }}
           envs: DOCKERHUB_USER, VITE_API_BASE_URL
           script: |
-            # 1. Navigate to home directory
-            cd ~ 
+            # 1. Navigate to the project directory created by Terraform
+            cd /home/ubuntu/app
 
-            # 2. Recreate the .env file
-            cat <<EOF > .env
-            VITE_API_BASE_URL=$VITE_API_BASE_URL
-            EOF
+            # 2. Pull the latest image from Docker Hub
+            # We use 'sudo' to avoid 'permission denied' errors connecting to the Docker socket
+            sudo docker compose pull code2cloud-frontend
 
-            # 3. Recreate docker-compose.yml (removed obsolete version tag)
-            cat <<EOF > docker-compose.yml
-            services:
-              frontend:
-                image: $DOCKERHUB_USER/code2cloud-frontend:latest
-                container_name: code2cloud-frontend
-                ports:
-                  - "3000:80"
-                env_file:
-                  - .env
-                restart: unless-stopped
-            EOF
-
-            # 4. Stop and remove current containers to avoid name conflicts
-            # We explicitly remove 'code2cloud-frontend' because the first time it was launched via 'docker run', so 'compose down' will ignore it.
-            docker stop code2cloud-frontend || true
-            docker rm code2cloud-frontend || true
-            docker compose down
-
-            # 5. Pull the latest image from Docker Hub
-            docker compose pull frontend
-
-            # 6. Start the service in detached mode
-            docker compose up -d --remove-orphans
+            # 3. Start the service in detached mode
+            sudo docker compose up -d --remove-orphans code2cloud-frontend

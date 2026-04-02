@@ -4,12 +4,12 @@ provider "google" {
   zone    = var.zone
 }
 
-# Static External IP Address
+# 1. Static External IP Address
 resource "google_compute_address" "static_ip" {
   name = "${var.app_name}-static-ip"
 }
 
-# Firewall rule for NPM (80, 443) and Management UI (81)
+# 2. Firewall rule for NPM (80, 443) and Management UI (81)
 resource "google_compute_firewall" "allow_npm" {
   name    = "${var.app_name}-allow-npm"
   network = "default"
@@ -23,7 +23,7 @@ resource "google_compute_firewall" "allow_npm" {
   target_tags   = ["npm-server"]
 }
 
-# Compute Instance (e2-micro)
+# 3. Compute Instance (e2-micro)
 resource "google_compute_instance" "frontend_vm" {
   name         = "${var.app_name}-frontend-vm"
   machine_type = "e2-micro"
@@ -50,41 +50,69 @@ resource "google_compute_instance" "frontend_vm" {
 
   metadata_startup_script = <<-EOT
     #!/bin/bash
-    # 1. Create 2GB of Swap space (Essential for e2-micro)
-    sudo fallocate -l 2G /swapfile
-    sudo chmod 600 /swapfile
-    sudo mkswap /swapfile
-    sudo swapon /swapfile
-    echo '/swapfile none swap sw 0 0' | sudo tee -a /etc/fstab
+    # --- 1. Swap Setup (Essential for 1GB RAM instances) ---
+    if [ ! -f /swapfile ]; then
+      sudo fallocate -l 2G /swapfile
+      sudo chmod 600 /swapfile
+      sudo mkswap /swapfile
+      sudo swapon /swapfile
+      echo '/swapfile none swap sw 0 0' | sudo tee -a /etc/fstab
+    fi
 
-    # 2. Standard Docker and Docker Compose install
+    # --- 2. Install Docker and Docker Compose V2 ---
     sudo apt-get update
     sudo apt-get install -y docker.io docker-compose-v2
     sudo systemctl start docker
     sudo systemctl enable docker
     sudo usermod -aG docker ubuntu
 
-    # 3. Prepare NPM directories
-    mkdir -p /home/ubuntu/npm_data /home/ubuntu/letsencrypt
+    # --- 3. Setup Project Directory ---
+    mkdir -p /home/ubuntu/app
+    cd /home/ubuntu/app
+    mkdir -p npm_data letsencrypt
 
-    # 4. Run Nginx Proxy Manager
-    sudo docker run -d \
-      --name nginx-proxy-manager \
-      -p 80:80 -p 81:81 -p 443:443 \
-      -v /home/ubuntu/npm_data:/data \
-      -v /home/ubuntu/letsencrypt:/etc/letsencrypt \
-      --restart unless-stopped \
-      jc21/nginx-proxy-manager:latest
+    # --- 4. Create the Docker Compose file ---
+    cat <<EOF > docker-compose.yml
+services:
+  nginx-proxy-manager:
+    image: 'jc21/nginx-proxy-manager:latest'
+    container_name: nginx-proxy-manager
+    restart: unless-stopped
+    ports:
+      - '80:80'
+      - '81:81'
+      - '443:443'
+    volumes:
+      - ./npm_data:/data
+      - ./letsencrypt:/etc/letsencrypt
+    networks:
+      - app-network
 
-    # 5. Run Frontend (Initial)
-    sudo docker run -d \
-      --name code2cloud-frontend \
-      -p 3000:80 \
-      --restart unless-stopped \
-      ${var.image_uri}
+  code2cloud-frontend:
+    image: ${var.image_uri}
+    container_name: code2cloud-frontend
+    restart: unless-stopped
+    ports:
+      - '3000:80'
+    networks:
+      - app-network
+
+networks:
+  app-network:
+    driver: bridge
+EOF
+
+    # --- 5. Start the services ---
+    # We use 'docker compose' (V2 syntax)
+    sudo docker compose up -d
   EOT
 
   service_account {
     scopes = ["cloud-platform"]
   }
+}
+
+# Output the Static IP so you can find it easily
+output "frontend_static_ip" {
+  value = google_compute_address.static_ip.address
 }
