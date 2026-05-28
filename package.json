@@ -1,0 +1,13 @@
+{
+  "name": "code2cloud-root",
+  "version": "1.0.0",
+  "description": "Root configuration to run both frontend and backend locally",
+  "scripts": {
+    "dev": "concurrently \"npm run dev:frontend\" \"npm run dev:backend\"",
+    "dev:frontend": "cd frontend && npm run dev",
+    "dev:backend": "cd backend && ./venv/bin/uvicorn main:app --reload"
+  },
+  "devDependencies": {
+    "concurrently": "^8.2.2"
+  }
+}

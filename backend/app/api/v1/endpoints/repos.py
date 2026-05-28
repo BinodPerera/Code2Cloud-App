@@ -121,6 +121,7 @@ async def get_repository_tech_stack(
             
         import base64
         import json
+        import re
 
         # 3. Get Recursive Git Tree to detect monorepos
         try:
@@ -137,7 +138,7 @@ async def get_repository_tech_stack(
                     path = item.get("path", "")
                     if "node_modules" in path or "venv" in path or ".venv" in path:
                         continue
-                    if path.endswith("package.json") or path.endswith("requirements.txt"):
+                    if path.endswith("package.json") or path.endswith("requirements.txt") or path.endswith("pom.xml") or path.endswith("build.gradle") or path.endswith("build.gradle.kts"):
                         manifests.append(path)
                 
                 # Concurrent content fetch requests
@@ -165,6 +166,19 @@ async def get_repository_tech_stack(
                                         if name and not name.startswith("-r"):
                                             component_libraries.append(name)
                                 cmp_type = "Python"
+                            elif path.endswith("pom.xml"):
+                                deps = re.findall(r'<dependency>[\s\S]*?<artifactId>([^<]+)</artifactId>[\s\S]*?</dependency>', content)
+                                component_libraries.extend(deps)
+                                cmp_type = "Java / Maven"
+                            elif path.endswith("build.gradle") or path.endswith("build.gradle.kts"):
+                                deps = re.findall(r'(?:implementation|api|compileOnly|runtimeOnly|testImplementation|testCompile|compile)\s*\(*\s*[\'\"]([^\'\"]+)[\'\"]\)*', content)
+                                for dep in deps:
+                                    parts = dep.split(':')
+                                    if len(parts) >= 2:
+                                        component_libraries.append(f"{parts[0]}:{parts[1]}")
+                                    else:
+                                        component_libraries.append(dep)
+                                cmp_type = "Java / Gradle"
                                 
                             if component_libraries:
                                 components.append({

@@ -13,6 +13,7 @@ const PrivateRoute = () => {
     );
   }
 
+  // If token is null, it means the user is either not logged in or their session expired
   return token ? <Outlet /> : <Navigate to="/login" replace />;
 };
 

@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { BookMarked, Star, GitFork, ExternalLink, ArrowLeft } from 'lucide-react';
+import { apiClient } from '../utils/api';
 
 function Repos() {
   const { user, token } = useAuth();
@@ -18,30 +19,25 @@ function Repos() {
 
       try {
         setLoading(true);
-        // Fetching both public and private repos from backend proxy
-        const response = await fetch(`${import.meta.env.VITE_API_BASE_URL}/repos/`, {
-          headers: {
-            'Authorization': `Bearer ${token}`,
-            'Accept': 'application/json'
-          }
-        });
-        if (!response.ok) {
-          throw new Error('Failed to fetch repositories');
-        }
+        // Using centralized apiClient which handles auth headers and 401s
+        const response = await apiClient.get('/repos/');
         const data = await response.json();
+        
         // Sort by updated at, most recent first
         const sortedData = data.sort((a, b) => new Date(b.updated_at) - new Date(a.updated_at));
         setRepos(sortedData);
       } catch (err) {
-        setError('Error loading repositories. Please try again later.');
-        console.error(err);
+        if (err.message !== 'Unauthorized') {
+          setError('Error loading repositories. Please try again later.');
+          console.error(err);
+        }
       } finally {
         setLoading(false);
       }
     };
 
     fetchRepos();
-  }, [user]);
+  }, [user, token]);
 
   const serviceId = location.state?.service;
 

@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { BookMarked, ArrowLeft } from 'lucide-react';
+import { apiClient } from '../utils/api';
 
 function ServiceSetup() {
   const { token } = useAuth();
@@ -52,15 +53,14 @@ function ServiceSetup() {
       if (!token) return;
       try {
         setLoadingRepos(true);
-        const response = await fetch(`${import.meta.env.VITE_API_BASE_URL}/repos/`, {
-          headers: { 'Authorization': `Bearer ${token}`, 'Accept': 'application/json' }
-        });
-        if (!response.ok) throw new Error('Failed to fetch repositories');
+        const response = await apiClient.get('/repos/');
         const data = await response.json();
         setRepos(data);
       } catch (err) {
-        setError('Error loading repositories. Please try again.');
-        console.error(err);
+        if (err.message !== 'Unauthorized') {
+          setError('Error loading repositories. Please try again.');
+          console.error(err);
+        }
       } finally {
         setLoadingRepos(false);
       }
@@ -80,15 +80,15 @@ function ServiceSetup() {
         setLoadingStack(true);
         const owner = selectedRepo.owner?.login || selectedRepo.user?.login; 
         const repoName = selectedRepo.name;
-        const res = await fetch(`${import.meta.env.VITE_API_BASE_URL}/repos/${owner}/${repoName}/tech-stack`, {
-          headers: { 'Authorization': `Bearer ${token}` }
-        });
+        const res = await apiClient.get(`/repos/${owner}/${repoName}/tech-stack`);
         if (res.ok) {
           const stack = await res.json();
           setTechStack(stack);
         }
       } catch (err) {
-        console.error("Failed to fetch tech stack", err);
+        if (err.message !== 'Unauthorized') {
+          console.error("Failed to fetch tech stack", err);
+        }
       } finally {
         setLoadingStack(false);
       }

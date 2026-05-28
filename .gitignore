@@ -1,2 +1,4 @@
 backend/uvicorn.log
 .env
+
+node_modules

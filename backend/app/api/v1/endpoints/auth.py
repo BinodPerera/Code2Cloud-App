@@ -17,12 +17,14 @@ async def github_login():
     """
     Redirect to GitHub for OAuth authentication.
     """
-    github_url = (
-        f"https://github.com/login/oauth/authorize?"
-        f"client_id={settings.GITHUB_CLIENT_ID}&"
-        f"redirect_uri={settings.GITHUB_REDIRECT_URI}&"
-        f"scope=user:email%20repo"
-    )
+    params = {
+        "client_id": settings.GITHUB_CLIENT_ID,
+        "redirect_uri": settings.GITHUB_REDIRECT_URI,
+        "scope": "repo user:email",
+        "prompt": "consent" # Force GitHub to re-prompt for permissions if scopes changed
+    }
+    query_string = urllib.parse.urlencode(params)
+    github_url = f"https://github.com/login/oauth/authorize?{query_string}"
     return RedirectResponse(github_url)
 
 @router.get("/github/callback")
