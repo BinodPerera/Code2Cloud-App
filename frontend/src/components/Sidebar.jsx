@@ -1,15 +1,25 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
-import { LogOut, MessageSquare, LayoutDashboard } from 'lucide-react';
+import { LogOut, MessageSquare, LayoutDashboard, Copy, Key, Check } from 'lucide-react';
 
 function Sidebar() {
   const { user, logout } = useAuth();
+  const [copied, setCopied] = useState(false);
   const location = useLocation();
   const navigate = useNavigate();
 
   const handleNavClick = (path) => {
     navigate(path);
+  };
+
+  const copyToken = () => {
+    const token = localStorage.getItem('code2cloud_token');
+    if (token) {
+      navigator.clipboard.writeText(token);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    }
   };
 
   return (
@@ -101,6 +111,31 @@ function Sidebar() {
             <p style={{ fontSize: '0.85rem', color: '#a2a2b5', margin: 0, whiteSpace: 'nowrap', textOverflow: 'ellipsis', overflow: 'hidden' }}>@{user?.login}</p>
           </div>
         </div>
+        <button
+          onClick={copyToken}
+          style={{
+            width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem',
+            background: copied ? 'rgba(16, 185, 129, 0.1)' : 'rgba(255, 255, 255, 0.03)',
+            border: copied ? '1px solid rgba(16, 185, 129, 0.3)' : '1px solid rgba(255,255,255,0.1)',
+            color: copied ? '#10B981' : '#a2a2b5', padding: '0.85rem', borderRadius: '12px', cursor: 'pointer', transition: 'all 0.2s',
+            fontSize: '0.95rem', marginBottom: '0.75rem'
+          }}
+          onMouseOver={(e) => {
+            if (!copied) {
+              e.currentTarget.style.color = '#fff';
+              e.currentTarget.style.background = 'rgba(255, 255, 255, 0.08)';
+            }
+          }}
+          onMouseOut={(e) => {
+            if (!copied) {
+              e.currentTarget.style.color = '#a2a2b5';
+              e.currentTarget.style.background = 'rgba(255, 255, 255, 0.03)';
+            }
+          }}
+        >
+          {copied ? <Check size={16} /> : <Copy size={16} />}
+          {copied ? 'Token Copied!' : 'Copy JWT Token'}
+        </button>
         <button
           onClick={logout}
           style={{

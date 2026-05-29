@@ -1,0 +1,6 @@
+{% for comp in components %}
+output "{{ comp.name }}_ecr_repository_url" {
+  description = "Registry URL for {{ comp.name }} container builds"
+  value       = aws_ecr_repository.{{ comp.name }}.repository_url
+}
+{% endfor %}

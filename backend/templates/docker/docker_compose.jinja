@@ -1,0 +1,24 @@
+version: '3.8'
+
+services:
+{%- for comp in components %}
+  {{ comp.name }}:
+    build:
+      context: ./{{ comp.path }}
+      dockerfile: Dockerfile
+    ports:
+      - "{{ comp.port }}:{{ comp.port }}"
+    {%- if comp.depends_on %}
+    depends_on:
+      {%- for dep in comp.depends_on %}
+      - {{ dep }}
+      {%- endfor %}
+    {%- endif %}
+    environment:
+      - PORT={{ comp.port }}
+      {%- if comp.env %}
+      {%- for env_var in comp.env %}
+      - {{ env_var }}
+      {%- endfor %}
+      {%- endif %}
+{% endfor %}

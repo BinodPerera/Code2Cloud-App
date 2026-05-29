@@ -8,3 +8,5 @@ python-dotenv
 pydantic[email]
 pydantic-settings
 motor
+jinja2
+boto3

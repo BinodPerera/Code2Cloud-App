@@ -21,6 +21,12 @@ class Settings(BaseSettings):
     MONGODB_URL: Optional[str] = None
     DATABASE_NAME: str = "code2cloud"
 
+    # AWS
+    AWS_ACCESS_KEY_ID: Optional[str] = None
+    AWS_SECRET_ACCESS_KEY: Optional[str] = None
+    AWS_REGION: str = "us-east-1"
+    AWS_S3_BUCKET_NAME: Optional[str] = None
+
     model_config = SettingsConfigDict(
         env_file=".env",
         case_sensitive=True,

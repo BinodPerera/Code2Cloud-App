@@ -4,6 +4,7 @@ import Callback from './pages/Callback';
 import Services from './pages/Services';
 import Repos from './pages/Repos';
 import ServiceSetup from './pages/ServiceSetup';
+import GenerationViewer from './pages/GenerationViewer';
 import PrivateRoute from './components/PrivateRoute';
 import DashboardLayout from './components/DashboardLayout';
 import './App.css';
@@ -13,13 +14,14 @@ function App() {
     <Routes>
       <Route path="/login" element={<Login />} />
       <Route path="/callback" element={<Callback />} />
-      
+
       {/* Protected Routes */}
       <Route element={<PrivateRoute />}>
         <Route element={<DashboardLayout />}>
           <Route path="/" element={<Navigate to="/services" replace />} />
           <Route path="/services" element={<Services />} />
           <Route path="/services/:serviceId" element={<ServiceSetup />} />
+          <Route path="/generation/:generationId" element={<GenerationViewer />} />
           <Route path="/chat" element={
             <div style={{ textAlign: 'center', paddingTop: '10vh' }}>
               <h2 style={{ fontSize: '2.5rem', marginBottom: '1rem', fontWeight: '700', background: 'linear-gradient(90deg, #fff, #a2a2b5)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent' }}>

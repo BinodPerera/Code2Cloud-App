@@ -18,6 +18,8 @@ function ServiceSetup() {
   const [error, setError] = useState('');
   const [selectedCloud, setSelectedCloud] = useState('');
   const [isOpen, setIsOpen] = useState(false);
+  const [generating, setGenerating] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
 
   const serviceConfigs = {
     finops: {
@@ -105,6 +107,29 @@ function ServiceSetup() {
     }));
   };
 
+  const handleProceed = async () => {
+    if (!selectedRepo || (serviceId !== 'docker' && !selectedCloud) || !token) return;
+    try {
+      setGenerating(true);
+      const owner = selectedRepo.owner?.login || selectedRepo.user?.login;
+      const repoName = selectedRepo.name;
+      const res = await apiClient.post(`/repos/${owner}/${repoName}/generate`, {
+        serviceId,
+        cloud: serviceId === 'docker' ? 'None' : selectedCloud,
+        techStack
+      });
+      if (!res.ok) {
+        throw new Error("Failed to generate deployment scripts");
+      }
+      const data = await res.json();
+      navigate(`/generation/${data.generation_id}`);
+    } catch (err) {
+      alert(err.message || "An error occurred during code generation.");
+    } finally {
+      setGenerating(false);
+    }
+  };
+
   const sortedRepos = [...repos].sort((a, b) => a.name.localeCompare(b.name));
 
   return (
@@ -179,37 +204,75 @@ function ServiceSetup() {
                     background: '#0c0c12',
                     border: '1px solid rgba(255, 255, 255, 0.1)',
                     borderRadius: '16px',
-                    maxHeight: '260px',
-                    overflowY: 'auto',
+                    maxHeight: '320px',
                     zIndex: 999,
                     boxShadow: '0 10px 30px rgba(0,0,0,0.5)',
-                    padding: '0.5rem'
+                    padding: '0.75rem',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    gap: '0.5rem',
+                    boxSizing: 'border-box'
                   }}>
-                    {sortedRepos.map((repo) => (
-                      <div 
-                        key={repo.id}
-                        onClick={() => {
-                          setSelectedRepoId(repo.id.toString());
-                          setSelectedRepo(repo);
-                          setIsOpen(false);
-                          setTechStack(null);
-                        }}
-                        style={{
-                          padding: '1rem',
-                          borderRadius: '10px',
-                          cursor: 'pointer',
-                          display: 'flex',
-                          alignItems: 'center',
-                          justifyContent: 'space-between',
-                          color: '#fff',
-                          background: selectedRepoId === repo.id.toString() ? 'rgba(255,255,255,0.05)' : 'transparent',
-                          transition: 'background 0.2s'
-                        }}
-                      >
-                        <span style={{ fontSize: '0.95rem' }}>{repo.name}</span>
-                        {repo.private ? <span style={{ color: '#ff6b6b' }}>🔒</span> : <span style={{ color: '#10B981' }}>🌐</span>}
-                      </div>
-                    ))}
+                    <input 
+                      type="text"
+                      placeholder="Type to search repository..."
+                      value={searchQuery}
+                      onChange={(e) => setSearchQuery(e.target.value)}
+                      onClick={(e) => e.stopPropagation()}
+                      style={{
+                        width: '100%',
+                        padding: '0.8rem 1rem',
+                        background: 'rgba(255, 255, 255, 0.05)',
+                        border: '1px solid rgba(255, 255, 255, 0.1)',
+                        borderRadius: '12px',
+                        color: '#fff',
+                        fontSize: '0.95rem',
+                        outline: 'none',
+                        boxSizing: 'border-box',
+                        marginBottom: '0.25rem',
+                        transition: 'border-color 0.2s'
+                      }}
+                      onFocus={(e) => e.currentTarget.style.borderColor = currentConfig.color}
+                      onBlur={(e) => e.currentTarget.style.borderColor = 'rgba(255, 255, 255, 0.1)'}
+                    />
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.3rem', overflowY: 'auto', maxHeight: '180px' }}>
+                      {sortedRepos.filter(repo => repo.name.toLowerCase().includes(searchQuery.toLowerCase())).length === 0 ? (
+                        <div style={{ padding: '1rem', color: '#6e7191', fontSize: '0.95rem', textAlign: 'center' }}>
+                          No repositories found
+                        </div>
+                      ) : (
+                        sortedRepos
+                          .filter(repo => repo.name.toLowerCase().includes(searchQuery.toLowerCase()))
+                          .map((repo) => (
+                            <div 
+                              key={repo.id}
+                              onClick={() => {
+                                setSelectedRepoId(repo.id.toString());
+                                setSelectedRepo(repo);
+                                setIsOpen(false);
+                                setTechStack(null);
+                                setSearchQuery(''); // Reset query on select
+                              }}
+                              style={{
+                                padding: '1rem',
+                                borderRadius: '10px',
+                                cursor: 'pointer',
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'space-between',
+                                color: '#fff',
+                                background: selectedRepoId === repo.id.toString() ? 'rgba(255,255,255,0.05)' : 'transparent',
+                                transition: 'background 0.2s'
+                              }}
+                              onMouseOver={(e) => { if (selectedRepoId !== repo.id.toString()) e.currentTarget.style.background = 'rgba(255,255,255,0.03)'; }}
+                              onMouseOut={(e) => { if (selectedRepoId !== repo.id.toString()) e.currentTarget.style.background = 'transparent'; }}
+                            >
+                              <span style={{ fontSize: '0.95rem' }}>{repo.name}</span>
+                              {repo.private ? <span style={{ color: '#ff6b6b' }}>🔒</span> : <span style={{ color: '#10B981' }}>🌐</span>}
+                            </div>
+                          ))
+                      )}
+                    </div>
                   </div>
                 )}
               </div>
@@ -273,35 +336,45 @@ function ServiceSetup() {
                 </div>
 
                 {/* Cloud Platform Selection */}
-                <div style={{ borderTop: '1px solid rgba(255,255,255,0.05)', paddingTop: '1.5rem', display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-                  <label style={{ color: '#fff', fontSize: '1.1rem', fontWeight: '600' }}>Where are you deploying this application?</label>
-                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '1rem' }}>
-                    {[{ id: 'AWS', name: 'AWS' }, { id: 'Azure', name: 'Azure' }, { id: 'GCP', name: 'Google Cloud' }].map((cloud) => (
-                      <div 
-                        key={cloud.id}
-                        onClick={() => setSelectedCloud(cloud.id)}
-                        style={{
-                          background: selectedCloud === cloud.id ? 'rgba(0, 229, 255, 0.05)' : 'rgba(255, 255, 255, 0.02)',
-                          border: selectedCloud === cloud.id ? `2px solid ${currentConfig.color}` : '1px solid rgba(255, 255, 255, 0.08)',
-                          borderRadius: '16px', padding: '1.5rem 1rem', textAlign: 'center', cursor: 'pointer', transition: 'all 0.2s'
-                        }}
-                      >
-                        <div style={{ color: selectedCloud === cloud.id ? currentConfig.color : '#fff', fontWeight: '600' }}>{cloud.name}</div>
-                      </div>
-                    ))}
+                {serviceId !== 'docker' && (
+                  <div style={{ borderTop: '1px solid rgba(255,255,255,0.05)', paddingTop: '1.5rem', display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+                    <label style={{ color: '#fff', fontSize: '1.1rem', fontWeight: '600' }}>Where are you deploying this application?</label>
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '1rem' }}>
+                      {[{ id: 'AWS', name: 'AWS' }, { id: 'Azure', name: 'Azure' }, { id: 'GCP', name: 'Google Cloud' }].map((cloud) => (
+                        <div 
+                          key={cloud.id}
+                          onClick={() => setSelectedCloud(cloud.id)}
+                          style={{
+                            background: selectedCloud === cloud.id ? 'rgba(0, 229, 255, 0.05)' : 'rgba(255, 255, 255, 0.02)',
+                            border: selectedCloud === cloud.id ? `2px solid ${currentConfig.color}` : '1px solid rgba(255, 255, 255, 0.08)',
+                            borderRadius: '16px', padding: '1.5rem 1rem', textAlign: 'center', cursor: 'pointer', transition: 'all 0.2s'
+                          }}
+                        >
+                          <div style={{ color: selectedCloud === cloud.id ? currentConfig.color : '#fff', fontWeight: '600' }}>{cloud.name}</div>
+                        </div>
+                      ))}
+                    </div>
                   </div>
-                </div>
+                )}
 
                 <button 
-                  onClick={() => alert(`Starting ${currentConfig.title} on ${selectedCloud}`)}
-                  disabled={!selectedCloud}
+                  onClick={handleProceed}
+                  disabled={serviceId === 'docker' ? (generating || loadingStack) : (!selectedCloud || generating || loadingStack)}
                   style={{
-                    background: selectedCloud ? `linear-gradient(135deg, ${currentConfig.color}, #000)` : 'rgba(255,255,255,0.05)',
-                    color: selectedCloud ? '#0a0a0f' : '#6e7191',
-                    padding: '1.1rem', borderRadius: '16px', fontWeight: '700', cursor: selectedCloud ? 'pointer' : 'not-allowed'
+                    background: (serviceId === 'docker' ? (!generating && !loadingStack) : (selectedCloud && !generating && !loadingStack))
+                      ? `linear-gradient(135deg, ${currentConfig.color}, #000)` 
+                      : 'rgba(255,255,255,0.05)',
+                    color: (serviceId === 'docker' ? (!generating && !loadingStack) : (selectedCloud && !generating && !loadingStack))
+                      ? '#0a0a0f' 
+                      : '#6e7191',
+                    padding: '1.1rem', borderRadius: '16px', fontWeight: '700', 
+                    cursor: (serviceId === 'docker' ? (!generating && !loadingStack) : (selectedCloud && !generating && !loadingStack))
+                      ? 'pointer' 
+                      : 'not-allowed',
+                    display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '0.5rem', width: '100%', border: 'none'
                   }}
                 >
-                  {currentConfig.buttonText} →
+                  {loadingStack ? 'Analyzing your tech stack...' : generating ? 'Generating your scripts...' : `${currentConfig.buttonText} →`}
                 </button>
 
               </div>

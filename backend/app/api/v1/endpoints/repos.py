@@ -3,7 +3,10 @@ from app.schemas.token import UserBase
 from app.api.deps import get_current_user
 from app.db.mongodb import get_database
 from app.core.config import settings
+from app.services import TechStackAnalyzer, CodeGenerator
 import httpx
+from pydantic import BaseModel
+from typing import Optional, Dict, Any
 
 router = APIRouter()
 
@@ -56,11 +59,6 @@ async def get_user_repositories(
                     detail=f"GitHub API Error: {response.text}"
                 )
             repos = response.json()
-            print(f"DEBUG GITHUB SCOPES: {response.headers.get('X-OAuth-Scopes')}")
-            print(f"DEBUG REPOS: found {len(repos)} repos")
-            private_count = sum(1 for r in repos if r.get("private"))
-            print(f"DEBUG REPOS: private count = {private_count}")
-            # Return list of repositories
             return repos
         except httpx.RequestError as exc:
             raise HTTPException(
@@ -75,7 +73,7 @@ async def get_repository_tech_stack(
     current_user: UserBase = Depends(get_current_user)
 ):
     """
-    Fetch languages and parse dependency files (package.json, requirements.txt) to identify libraries.
+    Fetch languages and parse manifest files to identify components using the TechStackAnalyzer service.
     """
     if not settings.MONGODB_URL:
         raise HTTPException(
@@ -92,107 +90,85 @@ async def get_repository_tech_stack(
     if not github_access_token:
         raise HTTPException(status_code=400, detail="GitHub access token missing")
 
-    headers = {
-        "Authorization": f"token {github_access_token}",
-        "Accept": "application/vnd.github.v3+json"
-    }
+    # Delegate to the standalone TechStackAnalyzer service
+    return await TechStackAnalyzer.analyze(owner, repo, github_access_token)
+
+class GenerateRequest(BaseModel):
+    serviceId: str
+    cloud: str
+    techStack: Optional[Dict[str, Any]] = None
+
+@router.post("/{owner}/{repo}/generate")
+async def generate_deployment_code(
+    owner: str,
+    repo: str,
+    request: GenerateRequest,
+    current_user: UserBase = Depends(get_current_user)
+):
+    """
+    Generate deployment configurations using the modular CodeGenerator service.
+    """
+    if not settings.MONGODB_URL:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Database not configured"
+        )
+    db = await get_database()
     
-    languages = {}
-    components = [] # [{ "name": "frontend", "type": "Node/JS", "libraries": [] }]
+    # Self-healing: Resolve github access token and dynamically fetch stack if null
+    user_data = await db.users.find_one({"login": current_user.login})
+    github_access_token = user_data.get("github_access_token") if user_data else None
     
-    async with httpx.AsyncClient() as client:
-        # 1. Get Repo metadata for default branch
-        default_branch = "main"
-        try:
-            repo_res = await client.get(f"https://api.github.com/repos/{owner}/{repo}", headers=headers)
-            if repo_res.status_code == 200:
-                default_branch = repo_res.json().get("default_branch", "main")
-        except Exception:
-            pass
+    tech_stack = request.techStack
+    if not tech_stack or "components" not in tech_stack or not tech_stack["components"]:
+        if github_access_token:
+            try:
+                tech_stack = await TechStackAnalyzer.analyze(owner, repo, github_access_token)
+            except Exception:
+                pass
+    
+    # Delegate to the standalone CodeGenerator service
+    return await CodeGenerator.generate(
+        owner=owner,
+        repo=repo,
+        service_id=request.serviceId,
+        cloud=request.cloud,
+        tech_stack=tech_stack,
+        current_user_login=current_user.login,
+        db=db
+    )
 
-        # 2. Get Languages
-        try:
-            lang_url = f"https://api.github.com/repos/{owner}/{repo}/languages"
-            lang_res = await client.get(lang_url, headers=headers)
-            if lang_res.status_code == 200:
-                languages = lang_res.json()
-        except Exception:
-            pass
-            
-        import base64
-        import json
-        import re
+@router.get("/generations/{generation_id}")
+async def get_generation_by_id(
+    generation_id: str,
+    current_user: UserBase = Depends(get_current_user)
+):
+    """
+    Get raw generated configurations from MongoDB Hot Tier.
+    """
+    db = await get_database()
+    gen = await db.generations.find_one({"generation_id": generation_id})
+    if not gen:
+        raise HTTPException(status_code=404, detail="Generation not found")
+        
+    gen["_id"] = str(gen["_id"])
+    return gen
 
-        # 3. Get Recursive Git Tree to detect monorepos
-        try:
-            tree_url = f"https://api.github.com/repos/{owner}/{repo}/git/trees/{default_branch}?recursive=1"
-            tree_res = await client.get(tree_url, headers=headers)
-            
-            if tree_res.status_code == 200:
-                tree_data = tree_res.json()
-                tree_items = tree_data.get("tree", [])
-                
-                # Filter paths containing manifest signatures (and ignore node_modules/venv content)
-                manifests = []
-                for item in tree_items:
-                    path = item.get("path", "")
-                    if "node_modules" in path or "venv" in path or ".venv" in path:
-                        continue
-                    if path.endswith("package.json") or path.endswith("requirements.txt") or path.endswith("pom.xml") or path.endswith("build.gradle") or path.endswith("build.gradle.kts"):
-                        manifests.append(path)
-                
-                # Concurrent content fetch requests
-                for path in manifests:
-                    try:
-                        file_res = await client.get(f"https://api.github.com/repos/{owner}/{repo}/contents/{path}", headers=headers)
-                        if file_res.status_code == 200:
-                            content_data = file_res.json()
-                            content = base64.b64decode(content_data["content"]).decode("utf-8")
-                            
-                            component_name = path.split("/")[0] if "/" in path else "Root"
-                            component_libraries = []
-                            
-                            if path.endswith("package.json"):
-                                pkg = json.loads(content)
-                                deps = pkg.get("dependencies", {})
-                                dev_deps = pkg.get("devDependencies", {})
-                                component_libraries.extend(list(deps.keys()))
-                                component_libraries.extend(list(dev_deps.keys()))
-                                cmp_type = "NodeJS / Javascript"
-                            elif path.endswith("requirements.txt"):
-                                for line in content.splitlines():
-                                    if line and not line.startswith("#"):
-                                        name = line.split("==")[0].split(">=")[0].split("<=")[0].strip()
-                                        if name and not name.startswith("-r"):
-                                            component_libraries.append(name)
-                                cmp_type = "Python"
-                            elif path.endswith("pom.xml"):
-                                deps = re.findall(r'<dependency>[\s\S]*?<artifactId>([^<]+)</artifactId>[\s\S]*?</dependency>', content)
-                                component_libraries.extend(deps)
-                                cmp_type = "Java / Maven"
-                            elif path.endswith("build.gradle") or path.endswith("build.gradle.kts"):
-                                deps = re.findall(r'(?:implementation|api|compileOnly|runtimeOnly|testImplementation|testCompile|compile)\s*\(*\s*[\'\"]([^\'\"]+)[\'\"]\)*', content)
-                                for dep in deps:
-                                    parts = dep.split(':')
-                                    if len(parts) >= 2:
-                                        component_libraries.append(f"{parts[0]}:{parts[1]}")
-                                    else:
-                                        component_libraries.append(dep)
-                                cmp_type = "Java / Gradle"
-                                
-                            if component_libraries:
-                                components.append({
-                                    "name": component_name,
-                                    "path": path,
-                                    "type": cmp_type,
-                                    "libraries": list(set(component_libraries))
-                                })
-                    except Exception:
-                        continue # Skip that file if erroring
-        except Exception:
-            pass
+class UpdateCodeRequest(BaseModel):
+    generated_code: Dict[str, str]
 
-    return {
-        "languages": languages,
-        "components": components
-    }
+@router.put("/generations/{generation_id}/update")
+async def update_generation_code(
+    generation_id: str,
+    request: UpdateCodeRequest,
+    current_user: UserBase = Depends(get_current_user)
+):
+    """
+    Update Hot Tier code and re-upload Cold Tier S3 package.
+    """
+    db = await get_database()
+    return await CodeGenerator.update_code(
+        generation_id=generation_id,
+        new_code=request.generated_code,
+        db=db
+    )
