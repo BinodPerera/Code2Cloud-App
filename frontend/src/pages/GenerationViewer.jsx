@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { FileCode, Folder, Download, Save, ArrowLeft, Check, AlertCircle, RefreshCw, Layers } from 'lucide-react';
+import { FileCode, Folder, Download, Save, ArrowLeft, Check, AlertCircle, RefreshCw, Layers, GitCommit, GitBranch } from 'lucide-react';
 import { apiClient } from '../utils/api';
 
 function GenerationViewer() {
@@ -21,6 +21,40 @@ function GenerationViewer() {
   
   // Track changes locally to show "unsaved" status per file
   const [initialCodeMap, setInitialCodeMap] = useState({});
+
+  // Direct SCM commit states
+  const [commitModalOpen, setCommitModalOpen] = useState(false);
+  const [commitBranch, setCommitBranch] = useState('code2cloud-setup');
+  const [commitMessage, setCommitMessage] = useState('ci: add generated deployment configurations via Code2Cloud');
+  const [committing, setCommitting] = useState(false);
+  const [commitResult, setCommitResult] = useState(null);
+  const [commitError, setCommitError] = useState('');
+
+  const handleCommit = async (e) => {
+    e.preventDefault();
+    try {
+      setCommitting(true);
+      setCommitError('');
+      setCommitResult(null);
+      
+      const res = await apiClient.post(`/repos/generations/${generationId}/commit`, {
+        branch: commitBranch,
+        commit_message: commitMessage
+      });
+      
+      if (!res.ok) {
+        const errorData = await res.json();
+        throw new Error(errorData.detail || 'Failed to publish commit to GitHub.');
+      }
+      
+      const data = await res.json();
+      setCommitResult(data);
+    } catch (err) {
+      setCommitError(err.message || 'An unexpected error occurred while committing.');
+    } finally {
+      setCommitting(false);
+    }
+  };
 
   useEffect(() => {
     const fetchGeneration = async () => {
@@ -210,6 +244,34 @@ function GenerationViewer() {
               <Save size={16} />
             )}
             {saving ? 'Saving...' : saveSuccess ? 'Changes Saved!' : 'Save Hot Tier'}
+          </button>
+
+          <button
+            onClick={() => setCommitModalOpen(true)}
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '0.5rem',
+              background: 'rgba(0, 229, 255, 0.08)',
+              border: '1px solid rgba(0, 229, 255, 0.3)',
+              color: '#00E5FF',
+              padding: '0.6rem 1.2rem',
+              borderRadius: '12px',
+              fontWeight: '600',
+              cursor: 'pointer',
+              transition: 'all 0.3s ease'
+            }}
+            onMouseOver={(e) => {
+              e.currentTarget.style.background = 'rgba(0, 229, 255, 0.15)';
+              e.currentTarget.style.borderColor = '#00E5FF';
+            }}
+            onMouseOut={(e) => {
+              e.currentTarget.style.background = 'rgba(0, 229, 255, 0.08)';
+              e.currentTarget.style.borderColor = 'rgba(0, 229, 255, 0.3)';
+            }}
+          >
+            <GitCommit size={16} />
+            Commit to GitHub
           </button>
 
           {s3Url && (
@@ -432,6 +494,232 @@ function GenerationViewer() {
           )}
         </div>
       </div>
+      
+      {/* Premium Glassmorphic Commit Modal */}
+      {commitModalOpen && (
+        <div style={{
+          position: 'fixed',
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: 0,
+          background: 'rgba(5, 5, 10, 0.85)',
+          backdropFilter: 'blur(16px)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          zIndex: 9999,
+          padding: '2rem'
+        }}>
+          <div style={{
+            width: '100%',
+            maxWidth: '520px',
+            background: 'linear-gradient(135deg, rgba(255,255,255,0.03) 0%, rgba(255,255,255,0.01) 100%)',
+            border: '1px solid rgba(255, 255, 255, 0.08)',
+            borderRadius: '24px',
+            boxShadow: '0 20px 50px rgba(0, 0, 0, 0.6)',
+            padding: '2.5rem',
+            position: 'relative',
+            display: 'flex',
+            flexDirection: 'column',
+            gap: '1.5rem'
+          }}>
+            
+            {/* Modal Title */}
+            <div>
+              <h3 style={{ margin: 0, fontSize: '1.4rem', fontWeight: '700', color: '#fff', display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
+                <GitBranch style={{ color: '#00E5FF' }} />
+                Commit to GitHub
+              </h3>
+              <p style={{ margin: '0.4rem 0 0 0', color: '#a2a2b5', fontSize: '0.85rem' }}>
+                Overlaying your configurations directly onto your repository.
+              </p>
+            </div>
+
+            {commitResult ? (
+              // Success View
+              <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', textAlign: 'center', gap: '1.2rem', padding: '1rem 0' }}>
+                <div style={{ width: '56px', height: '56px', borderRadius: '50%', background: 'rgba(16, 185, 129, 0.1)', border: '2px solid #10B981', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                  <Check size={28} style={{ color: '#10B981' }} />
+                </div>
+                <div>
+                  <h4 style={{ color: '#fff', fontSize: '1.15rem', fontWeight: '600', margin: 0 }}>Commit Published Successfully!</h4>
+                  <p style={{ color: '#a2a2b5', fontSize: '0.85rem', margin: '0.5rem 0 0 0' }}>
+                    Your generated files have been committed to the <code style={{ background: 'rgba(255,255,255,0.06)', padding: '0.2rem 0.4rem', borderRadius: '4px', color: '#00E5FF' }}>{commitResult.branch}</code> branch.
+                  </p>
+                </div>
+                
+                <div style={{ display: 'flex', width: '100%', gap: '1rem', marginTop: '0.5rem' }}>
+                  <a
+                    href={commitResult.commit_url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    style={{
+                      flex: 1,
+                      textAlign: 'center',
+                      background: 'linear-gradient(135deg, #00E5FF, #5865F2)',
+                      color: '#05050a',
+                      padding: '0.75rem',
+                      borderRadius: '12px',
+                      fontWeight: '700',
+                      textDecoration: 'none',
+                      fontSize: '0.9rem',
+                      boxShadow: '0 4px 15px rgba(88, 101, 242, 0.25)'
+                    }}
+                  >
+                    View Commit on GitHub
+                  </a>
+                  <button
+                    onClick={() => {
+                      setCommitModalOpen(false);
+                      setCommitResult(null);
+                    }}
+                    style={{
+                      flex: 0.5,
+                      background: 'rgba(255,255,255,0.05)',
+                      border: '1px solid rgba(255,255,255,0.08)',
+                      color: '#fff',
+                      padding: '0.75rem',
+                      borderRadius: '12px',
+                      fontWeight: '600',
+                      cursor: 'pointer'
+                    }}
+                  >
+                    Done
+                  </button>
+                </div>
+              </div>
+            ) : (
+              // Form View
+              <form onSubmit={handleCommit} style={{ display: 'flex', flexDirection: 'column', gap: '1.2rem' }}>
+                
+                {commitError && (
+                  <div style={{
+                    display: 'flex',
+                    alignItems: 'flex-start',
+                    gap: '0.6rem',
+                    background: 'rgba(255, 107, 107, 0.08)',
+                    border: '1px solid rgba(255, 107, 107, 0.2)',
+                    color: '#ff8585',
+                    padding: '0.8rem 1rem',
+                    borderRadius: '12px',
+                    fontSize: '0.85rem'
+                  }}>
+                    <AlertCircle size={16} style={{ flexShrink: 0, marginTop: '0.1rem' }} />
+                    <span>{commitError}</span>
+                  </div>
+                )}
+
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
+                  <label style={{ fontSize: '0.8rem', fontWeight: '600', color: '#a2a2b5' }}>TARGET BRANCH</label>
+                  <input
+                    type="text"
+                    value={commitBranch}
+                    onChange={(e) => setCommitBranch(e.target.value)}
+                    placeholder="e.g. code2cloud-setup"
+                    required
+                    style={{
+                      background: 'rgba(0, 0, 0, 0.3)',
+                      border: '1px solid rgba(255, 255, 255, 0.08)',
+                      color: '#fff',
+                      padding: '0.75rem 1rem',
+                      borderRadius: '12px',
+                      fontSize: '0.9rem',
+                      outline: 'none',
+                      transition: 'border-color 0.2s'
+                    }}
+                    onFocus={(e) => e.target.style.borderColor = '#00E5FF'}
+                    onBlur={(e) => e.target.style.borderColor = 'rgba(255, 255, 255, 0.08)'}
+                  />
+                  <span style={{ fontSize: '0.75rem', color: '#6e7191' }}>
+                    If the branch does not exist, it will be automatically created off your default branch.
+                  </span>
+                </div>
+
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
+                  <label style={{ fontSize: '0.8rem', fontWeight: '600', color: '#a2a2b5' }}>COMMIT MESSAGE</label>
+                  <textarea
+                    value={commitMessage}
+                    onChange={(e) => setCommitMessage(e.target.value)}
+                    placeholder="Describe your configurations..."
+                    required
+                    rows={3}
+                    style={{
+                      background: 'rgba(0, 0, 0, 0.3)',
+                      border: '1px solid rgba(255, 255, 255, 0.08)',
+                      color: '#fff',
+                      padding: '0.75rem 1rem',
+                      borderRadius: '12px',
+                      fontSize: '0.9rem',
+                      outline: 'none',
+                      resize: 'none',
+                      fontFamily: 'sans-serif',
+                      transition: 'border-color 0.2s'
+                    }}
+                    onFocus={(e) => e.target.style.borderColor = '#00E5FF'}
+                    onBlur={(e) => e.target.style.borderColor = 'rgba(255, 255, 255, 0.08)'}
+                  />
+                </div>
+
+                {/* Actions */}
+                <div style={{ display: 'flex', gap: '1rem', marginTop: '0.5rem' }}>
+                  <button
+                    type="button"
+                    disabled={committing}
+                    onClick={() => {
+                      setCommitModalOpen(false);
+                      setCommitError('');
+                    }}
+                    style={{
+                      flex: 1,
+                      background: 'rgba(255, 255, 255, 0.03)',
+                      border: '1px solid rgba(255, 255, 255, 0.08)',
+                      color: '#a2a2b5',
+                      padding: '0.75rem',
+                      borderRadius: '12px',
+                      fontWeight: '600',
+                      cursor: committing ? 'not-allowed' : 'pointer'
+                    }}
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={committing}
+                    style={{
+                      flex: 1,
+                      background: 'linear-gradient(135deg, #00E5FF, #5865F2)',
+                      border: 'none',
+                      color: '#05050a',
+                      padding: '0.75rem',
+                      borderRadius: '12px',
+                      fontWeight: '700',
+                      cursor: committing ? 'not-allowed' : 'pointer',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      gap: '0.5rem',
+                      boxShadow: '0 4px 15px rgba(88, 101, 242, 0.2)'
+                    }}
+                  >
+                    {committing ? (
+                      <>
+                        <RefreshCw size={16} className="loading-spinner" />
+                        Committing...
+                      </>
+                    ) : (
+                      <>
+                        <GitCommit size={16} />
+                        Publish Commit
+                      </>
+                    )}
+                  </button>
+                </div>
+              </form>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
