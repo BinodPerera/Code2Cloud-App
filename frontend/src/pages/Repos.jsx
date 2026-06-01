@@ -68,9 +68,36 @@ function Repos() {
         Your Repositories <span style={{ color: '#a2a2b5', fontSize: '1rem', fontWeight: '400', marginLeft: '0.5rem' }}>({repos.length})</span>
       </h2>
       {serviceId && (
-        <p style={{ color: '#a2a2b5', fontSize: '1.1rem', marginBottom: '2rem' }}>
+        <p style={{ color: '#a2a2b5', fontSize: '1.1rem', marginBottom: '1.5rem' }}>
           Select a repository for <strong style={{ color: '#fff', fontWeight: '600' }}>{getServiceTitle()}</strong>
         </p>
+      )}
+
+      {/* GitHub App Installation / Visibility Info Card */}
+      {!loading && !error && (
+        <div style={{
+          background: 'rgba(0, 229, 255, 0.03)',
+          border: '1px solid rgba(0, 229, 255, 0.1)',
+          borderRadius: '16px',
+          padding: '1.25rem 1.5rem',
+          marginBottom: '2rem',
+          fontSize: '0.9rem',
+          color: '#a2a2b5',
+          lineHeight: '1.5',
+          display: 'flex',
+          flexDirection: 'column',
+          gap: '0.5rem'
+        }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', color: '#00E5FF', fontWeight: '600' }}>
+            <span>💡</span> Missing collaborated or organization repositories?
+          </div>
+          <p style={{ margin: 0 }}>
+            Because Code2Cloud integrates via a secure **GitHub App**, repositories only appear if the repository owner or organization administrator has **installed the GitHub App** on their namespace.
+          </p>
+          <div style={{ margin: 0, fontSize: '0.85rem' }}>
+            <span style={{ color: '#fff', fontWeight: '500' }}>How to grant access:</span> Ask the repository owner to install the App on their account, or install it directly on your organization via the <a href="https://github.com/apps/code2cloud-dev/installations/new" target="_blank" rel="noopener noreferrer" style={{ color: '#00E5FF', textDecoration: 'underline', fontWeight: '600' }}>Code2Cloud GitHub App Settings</a>.
+          </div>
+        </div>
       )}
 
       {loading ? (
@@ -83,70 +110,80 @@ function Repos() {
         </div>
       ) : (
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))', gap: '1.5rem' }}>
-          {repos.map((repo) => (
-            <a
-              key={repo.id}
-              href={repo.html_url}
-              target="_blank"
-              rel="noreferrer"
-              style={{
-                display: 'flex',
-                flexDirection: 'column',
-                textDecoration: 'none',
-                color: 'inherit',
-                background: 'rgba(255, 255, 255, 0.03)',
-                backdropFilter: 'blur(20px)',
-                border: '1px solid rgba(255, 255, 255, 0.1)',
-                borderRadius: '16px',
-                padding: '1.5rem',
-                transition: 'transform 0.3s ease, box-shadow 0.3s ease, border-color 0.3s ease'
-              }}
-              onMouseOver={(e) => {
-                e.currentTarget.style.transform = 'translateY(-4px)';
-                e.currentTarget.style.boxShadow = '0 12px 24px -10px rgba(0,0,0,0.4)';
-                e.currentTarget.style.borderColor = 'rgba(255,255,255,0.2)';
-              }}
-              onMouseOut={(e) => {
-                e.currentTarget.style.transform = 'translateY(0)';
-                e.currentTarget.style.boxShadow = 'none';
-                e.currentTarget.style.borderColor = 'rgba(255,255,255,0.1)';
-              }}
-            >
-              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.75rem', color: '#5865F2' }}>
-                <BookMarked size={18} />
-                <h3 style={{ fontSize: '1.2rem', fontWeight: '500', margin: 0, color: '#fff', wordBreak: 'break-all', flexGrow: 1 }}>
-                  {repo.name}
-                </h3>
-                {repo.private ? (
-                  <span style={{ fontSize: '0.7rem', background: 'rgba(255,107,107,0.1)', color: '#ff6b6b', padding: '0.2rem 0.5rem', borderRadius: '6px', border: '1px solid rgba(255,107,107,0.2)', flexShrink: 0 }}>Private</span>
-                ) : (
-                  <span style={{ fontSize: '0.7rem', background: 'rgba(16,185,129,0.1)', color: '#10B981', padding: '0.2rem 0.5rem', borderRadius: '6px', border: '1px solid rgba(16,185,129,0.2)', flexShrink: 0 }}>Public</span>
-                )}
-              </div>
-
-              <p style={{ color: '#a2a2b5', fontSize: '0.9rem', marginBottom: '1.5rem', flexGrow: 1, display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>
-                {repo.description || 'No description provided.'}
-              </p>
-
-              <div style={{ display: 'flex', alignItems: 'center', gap: '1.5rem', fontSize: '0.85rem', color: '#6e7191', marginTop: 'auto' }}>
-                {repo.language && (
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
-                    <span style={{ width: '10px', height: '10px', borderRadius: '50%', background: '#5865F2' }}></span>
-                    {repo.language}
+          {repos.map((repo) => {
+            const isCollaborator = repo.owner?.login?.toLowerCase() !== user?.login?.toLowerCase();
+            return (
+              <a
+                key={repo.id}
+                href={repo.html_url}
+                target="_blank"
+                rel="noreferrer"
+                style={{
+                  display: 'flex',
+                  flexDirection: 'column',
+                  textDecoration: 'none',
+                  color: 'inherit',
+                  background: 'rgba(255, 255, 255, 0.03)',
+                  backdropFilter: 'blur(20px)',
+                  border: '1px solid rgba(255, 255, 255, 0.1)',
+                  borderRadius: '16px',
+                  padding: '1.5rem',
+                  transition: 'transform 0.3s ease, box-shadow 0.3s ease, border-color 0.3s ease'
+                }}
+                onMouseOver={(e) => {
+                  e.currentTarget.style.transform = 'translateY(-4px)';
+                  e.currentTarget.style.boxShadow = '0 12px 24px -10px rgba(0,0,0,0.4)';
+                  e.currentTarget.style.borderColor = 'rgba(255,255,255,0.2)';
+                }}
+                onMouseOut={(e) => {
+                  e.currentTarget.style.transform = 'translateY(0)';
+                  e.currentTarget.style.boxShadow = 'none';
+                  e.currentTarget.style.borderColor = 'rgba(255,255,255,0.1)';
+                }}
+              >
+                <div style={{ display: 'flex', alignItems: 'flex-start', gap: '0.5rem', marginBottom: '0.75rem', color: '#5865F2' }}>
+                  <BookMarked size={18} style={{ marginTop: '0.2rem', flexShrink: 0 }} />
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem', flexGrow: 1, overflow: 'hidden' }}>
+                    <h3 style={{ fontSize: '1.1rem', fontWeight: '600', margin: 0, color: '#fff', wordBreak: 'break-all', lineHeight: '1.3' }}>
+                      {repo.full_name}
+                    </h3>
                   </div>
-                )}
-                <div style={{ display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
-                  <Star size={14} /> {repo.stargazers_count}
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '0.35rem', alignItems: 'flex-end', flexShrink: 0 }}>
+                    {repo.private ? (
+                      <span style={{ fontSize: '0.65rem', background: 'rgba(255,107,107,0.1)', color: '#ff6b6b', padding: '0.15rem 0.4rem', borderRadius: '6px', border: '1px solid rgba(255,107,107,0.2)', fontWeight: '600' }}>Private</span>
+                    ) : (
+                      <span style={{ fontSize: '0.65rem', background: 'rgba(16,185,129,0.1)', color: '#10B981', padding: '0.15rem 0.4rem', borderRadius: '6px', border: '1px solid rgba(16,185,129,0.2)', fontWeight: '600' }}>Public</span>
+                    )}
+                    {isCollaborator && (
+                      <span style={{ fontSize: '0.65rem', background: 'rgba(0,229,255,0.1)', color: '#00E5FF', padding: '0.15rem 0.4rem', borderRadius: '6px', border: '1px solid rgba(0,229,255,0.2)', fontWeight: '700', letterSpacing: '0.2px' }}>Collaborated</span>
+                    )}
+                  </div>
                 </div>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
-                  <GitFork size={14} /> {repo.forks_count}
+
+                <p style={{ color: '#a2a2b5', fontSize: '0.9rem', marginBottom: '1.5rem', flexGrow: 1, display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>
+                  {repo.description || 'No description provided.'}
+                </p>
+
+                <div style={{ display: 'flex', alignItems: 'center', gap: '1.5rem', fontSize: '0.85rem', color: '#6e7191', marginTop: 'auto' }}>
+                  {repo.language && (
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
+                      <span style={{ width: '10px', height: '10px', borderRadius: '50%', background: '#5865F2' }}></span>
+                      {repo.language}
+                    </div>
+                  )}
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
+                    <Star size={14} /> {repo.stargazers_count}
+                  </div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
+                    <GitFork size={14} /> {repo.forks_count}
+                  </div>
+                  <div style={{ marginLeft: 'auto' }}>
+                    <ExternalLink size={14} />
+                  </div>
                 </div>
-                <div style={{ marginLeft: 'auto' }}>
-                  <ExternalLink size={14} />
-                </div>
-              </div>
-            </a>
-          ))}
+              </a>
+            );
+          })}
         </div>
       )}
     </>

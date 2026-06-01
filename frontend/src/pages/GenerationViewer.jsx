@@ -158,8 +158,8 @@ function GenerationViewer() {
     const groups = { root: [] };
     Object.keys(codeMap).forEach((path) => {
       if (path.includes('/')) {
-        const parts = path.split('/');
-        const folder = parts[0];
+        const lastSlashIndex = path.lastIndexOf('/');
+        const folder = path.substring(0, lastSlashIndex);
         if (!groups[folder]) groups[folder] = [];
         groups[folder].push(path);
       } else {
@@ -167,6 +167,15 @@ function GenerationViewer() {
       }
     });
     return groups;
+  };
+
+  // Shorten long file paths for editor tabs to keep them readable and clean
+  const getShortTabName = (path) => {
+    const parts = path.split('/');
+    if (parts.length >= 2) {
+      return `${parts[parts.length - 2]}/${parts[parts.length - 1]}`;
+    }
+    return path;
   };
 
   const fileGroups = getFileGroups();
@@ -194,7 +203,7 @@ function GenerationViewer() {
   }
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', height: 'calc(100vh - 120px)', gap: '1.5rem' }}>
+    <div style={{ display: 'flex', flexDirection: 'column', height: 'calc(100vh - 140px)', gap: '1.5rem' }}>
       
       {/* Header */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
@@ -207,18 +216,33 @@ function GenerationViewer() {
             Back
           </button>
           <div>
-            <h2 style={{ fontSize: '1.5rem', fontWeight: '600', color: '#fff', margin: 0, display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+            <h2 style={{ fontSize: '1.5rem', fontWeight: '600', color: '#fff', margin: 0 }}>
               {projectName} 
-              <span style={{ fontSize: '0.8rem', background: 'rgba(16,185,129,0.1)', color: '#10B981', padding: '0.2rem 0.6rem', borderRadius: '20px', border: '1px solid rgba(16,185,129,0.2)' }}>
-                Hot/Cold Synced
-              </span>
             </h2>
             <p style={{ color: '#a2a2b5', fontSize: '0.85rem', margin: 0 }}>Generation ID: {generationId}</p>
           </div>
         </div>
 
         {/* Action Buttons */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', flexShrink: 0 }}>
+          <span style={{ 
+            display: 'inline-flex',
+            alignItems: 'center',
+            fontSize: '0.8rem', 
+            background: 'rgba(16,185,129,0.1)', 
+            color: '#10B981', 
+            padding: '0 1rem', 
+            borderRadius: '12px', 
+            border: '1px solid rgba(16,185,129,0.2)',
+            fontWeight: '600',
+            height: '38px',
+            boxSizing: 'border-box',
+            flexShrink: 0,
+            whiteSpace: 'nowrap'
+          }}>
+            Hot/Cold Synced
+          </span>
+
           <button
             onClick={handleSave}
             disabled={saving}
@@ -229,10 +253,14 @@ function GenerationViewer() {
               background: saveSuccess ? 'rgba(16, 185, 129, 0.15)' : 'rgba(255, 255, 255, 0.05)',
               border: saveSuccess ? '1px solid #10B981' : '1px solid rgba(255, 255, 255, 0.1)',
               color: saveSuccess ? '#10B981' : '#fff',
-              padding: '0.6rem 1.2rem',
+              padding: '0 1.2rem',
               borderRadius: '12px',
               fontWeight: '600',
               cursor: 'pointer',
+              height: '38px',
+              boxSizing: 'border-box',
+              flexShrink: 0,
+              whiteSpace: 'nowrap',
               transition: 'all 0.3s ease'
             }}
           >
@@ -255,10 +283,14 @@ function GenerationViewer() {
               background: 'rgba(0, 229, 255, 0.08)',
               border: '1px solid rgba(0, 229, 255, 0.3)',
               color: '#00E5FF',
-              padding: '0.6rem 1.2rem',
+              padding: '0 1.2rem',
               borderRadius: '12px',
               fontWeight: '600',
               cursor: 'pointer',
+              height: '38px',
+              boxSizing: 'border-box',
+              flexShrink: 0,
+              whiteSpace: 'nowrap',
               transition: 'all 0.3s ease'
             }}
             onMouseOver={(e) => {
@@ -284,13 +316,17 @@ function GenerationViewer() {
                 alignItems: 'center',
                 gap: '0.5rem',
                 background: 'linear-gradient(135deg, #00E5FF, #5865F2)',
-                border: 'none',
+                border: '1px solid transparent',
                 color: '#05050a',
-                padding: '0.6rem 1.2rem',
+                padding: '0 1.2rem',
                 borderRadius: '12px',
                 fontWeight: '700',
                 textDecoration: 'none',
                 cursor: 'pointer',
+                height: '38px',
+                boxSizing: 'border-box',
+                flexShrink: 0,
+                whiteSpace: 'nowrap',
                 boxShadow: '0 4px 15px rgba(88, 101, 242, 0.25)',
                 transition: 'transform 0.2s'
               }}
@@ -305,10 +341,10 @@ function GenerationViewer() {
       </div>
 
       {/* Editor Body Workspace */}
-      <div style={{ display: 'flex', flexGrow: 1, background: 'rgba(255, 255, 255, 0.01)', border: '1px solid rgba(255, 255, 255, 0.08)', borderRadius: '24px', overflow: 'hidden', backdropFilter: 'blur(20px)' }}>
+      <div style={{ display: 'flex', flexGrow: 1, minHeight: 0, background: 'rgba(255, 255, 255, 0.01)', border: '1px solid rgba(255, 255, 255, 0.08)', borderRadius: '24px', overflow: 'hidden', backdropFilter: 'blur(20px)' }}>
         
         {/* Left Sidebar File Explorer */}
-        <div style={{ width: '260px', borderRight: '1px solid rgba(255, 255, 255, 0.08)', padding: '1.5rem 1rem', display: 'flex', flexDirection: 'column', gap: '1.5rem', background: 'rgba(0,0,0,0.15)', overflowY: 'auto' }}>
+        <div style={{ width: '260px', flexShrink: 0, borderRight: '1px solid rgba(255, 255, 255, 0.08)', padding: '1.5rem 1rem', display: 'flex', flexDirection: 'column', gap: '1.5rem', background: 'rgba(0,0,0,0.15)', overflowY: 'auto' }}>
           <div>
             <span style={{ color: '#6e7191', fontSize: '0.75rem', fontWeight: '700', textTransform: 'uppercase', letterSpacing: '1px', display: 'block', marginBottom: '1rem' }}>WORKSPACE FILES</span>
             
@@ -396,10 +432,10 @@ function GenerationViewer() {
         </div>
 
         {/* Editor Screen & Tabs */}
-        <div style={{ flexGrow: 1, display: 'flex', flexDirection: 'column', background: '#08080c' }}>
+        <div style={{ flexGrow: 1, minWidth: 0, minHeight: 0, display: 'flex', flexDirection: 'column', background: '#08080c' }}>
           
           {/* Tab Bar */}
-          <div style={{ display: 'flex', background: '#040407', borderBottom: '1px solid rgba(255,255,255,0.05)', overflowX: 'auto' }}>
+          <div style={{ display: 'flex', background: '#040407', borderBottom: '1px solid rgba(255,255,255,0.05)', overflowX: 'auto', position: 'sticky', top: 0, zIndex: 10 }}>
             {activeTabs.map((tab) => {
               const isActive = selectedFile === tab;
               const isModified = codeMap[tab] !== initialCodeMap[tab];
@@ -407,6 +443,7 @@ function GenerationViewer() {
                 <div
                   key={tab}
                   onClick={() => setSelectedFile(tab)}
+                  title={tab}
                   style={{
                     display: 'flex',
                     alignItems: 'center',
@@ -418,11 +455,13 @@ function GenerationViewer() {
                     fontSize: '0.85rem',
                     cursor: 'pointer',
                     position: 'relative',
+                    flexShrink: 0,
+                    whiteSpace: 'nowrap',
                     transition: 'all 0.2s'
                   }}
                 >
                   {isModified && <span style={{ width: '6px', height: '6px', borderRadius: '50%', background: '#00E5FF' }}></span>}
-                  <span>{tab}</span>
+                  <span>{getShortTabName(tab)}</span>
                   <span
                     onClick={(e) => closeTab(e, tab)}
                     style={{ fontSize: '0.75rem', color: '#6e7191', padding: '0.1rem 0.25rem', borderRadius: '4px', display: 'inline-block' }}
@@ -438,7 +477,7 @@ function GenerationViewer() {
 
           {/* Main Text Editor Workspace */}
           {selectedFile ? (
-            <div style={{ display: 'flex', flexGrow: 1, position: 'relative', overflow: 'hidden' }}>
+            <div style={{ display: 'flex', flexGrow: 1, minHeight: 0, position: 'relative', overflow: 'hidden' }}>
               
               {/* Line Numbers column */}
               <div

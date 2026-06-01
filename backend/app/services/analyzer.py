@@ -40,7 +40,7 @@ class TechStackAnalyzer:
         languages = {}
         components = []
         
-        async with httpx.AsyncClient() as client:
+        async with httpx.AsyncClient(timeout=30.0) as client:
             # 1. Get Repo default branch
             default_branch = "main"
             try:
@@ -83,7 +83,7 @@ class TechStackAnalyzer:
                                 content_data = file_res.json()
                                 content = base64.b64decode(content_data["content"]).decode("utf-8")
                                 
-                                component_name = path.split("/")[0] if "/" in path else "Root"
+                                component_name = path.rsplit("/", 1)[0] if "/" in path else "Root"
                                 component_libraries = []
                                 
                                 if path.endswith("package.json"):

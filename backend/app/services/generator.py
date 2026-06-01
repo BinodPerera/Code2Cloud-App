@@ -58,7 +58,8 @@ class CodeGenerator:
             else:
                 compose_components = []
                 for comp in components_list:
-                    comp_name = comp.get("name", "app").lower()
+                    raw_name = comp.get("name", "app")
+                    comp_name = raw_name.lower().replace("/", "-").replace("\\", "-")
                     comp_path = comp.get("path", ".")
                     comp_type = comp.get("type", "")
                     
@@ -83,7 +84,7 @@ class CodeGenerator:
                         "name": comp_name,
                         "path": comp_path,
                         "port": port,
-                        "depends_on": [] if comp_name == "backend" else ["backend"] if any(c.get("name", "").lower() == "backend" for c in components_list) else []
+                        "depends_on": [] if comp_name == "backend" else ["backend"] if any(c.get("name", "").lower().replace("/", "-").replace("\\", "-") == "backend" for c in components_list) else []
                     })
                 
                 try:
@@ -96,7 +97,8 @@ class CodeGenerator:
         elif service_id == "terraform":
             tf_components = []
             for comp in components_list:
-                comp_name = comp.get("name", "app").lower()
+                raw_name = comp.get("name", "app")
+                comp_name = raw_name.lower().replace("/", "-").replace("\\", "-")
                 comp_type = comp.get("type", "")
                 port = comp.get("port") or 3000
                 if "Python" in comp_type:
@@ -107,7 +109,7 @@ class CodeGenerator:
                 tf_components.append({
                     "name": comp_name,
                     "port": port,
-                    "depends_on": [] if comp_name == "backend" else ["backend"] if any(c.get("name", "").lower() == "backend" for c in components_list) else []
+                    "depends_on": [] if comp_name == "backend" else ["backend"] if any(c.get("name", "").lower().replace("/", "-").replace("\\", "-") == "backend" for c in components_list) else []
                 })
                 
             if cloud.lower() == "aws":
@@ -168,7 +170,8 @@ class CodeGenerator:
             "generated_code": generated_code,
             "s3_url": s3_url,
             "service_id": service_id,
-            "cloud": cloud
+            "cloud": cloud,
+            "committed": False
         }
         
         if db is not None:

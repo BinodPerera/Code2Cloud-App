@@ -34,7 +34,7 @@ async def github_callback(code: str, request: Request):
     Exchanges authorization code for an access token and returns a local JWT.
     """
     # Exchange code for access token
-    async with httpx.AsyncClient() as client:
+    async with httpx.AsyncClient(timeout=30.0) as client:
         token_response = await client.post(
             "https://github.com/login/oauth/access_token",
             headers={"Accept": "application/json"},

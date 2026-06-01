@@ -39,7 +39,7 @@ async def get_user_repositories(
             detail="GitHub access token not found. Please log in again."
         )
         
-    async with httpx.AsyncClient() as client:
+    async with httpx.AsyncClient(timeout=30.0) as client:
         try:
             response = await client.get(
                 "https://api.github.com/user/repos",
@@ -50,7 +50,8 @@ async def get_user_repositories(
                 params={
                     "per_page": 100,
                     "sort": "updated",
-                    "direction": "desc"
+                    "direction": "desc",
+                    "affiliation": "owner,collaborator,organization_member"
                 }
             )
             if response.status_code != 200:
@@ -138,6 +139,24 @@ async def generate_deployment_code(
         db=db
     )
 
+@router.get("/generations/history")
+async def get_user_generation_history(
+    current_user: UserBase = Depends(get_current_user)
+):
+    """
+    Fetch all generated configurations for the authenticated user, excluding heavy code content.
+    """
+    db = await get_database()
+    cursor = db.generations.find({"user_id": current_user.login}).sort("timestamp", -1)
+    history = []
+    async for doc in cursor:
+        doc["_id"] = str(doc["_id"])
+        # Strip heavy raw code block to minimize network payload size
+        if "generated_code" in doc:
+            del doc["generated_code"]
+        history.append(doc)
+    return history
+
 @router.get("/generations/{generation_id}")
 async def get_generation_by_id(
     generation_id: str,
@@ -220,7 +239,7 @@ async def commit_generation_code(
         "Accept": "application/vnd.github.v3+json"
     }
     
-    async with httpx.AsyncClient() as client:
+    async with httpx.AsyncClient(timeout=30.0) as client:
         # Step 0: Get default branch if we need to fall back or branch off
         default_branch = "main"
         try:
@@ -351,6 +370,13 @@ async def commit_generation_code(
             raise HTTPException(status_code=400, detail=f"Failed to point branch ref to new commit: {update_res.text}")
             
         commit_web_url = f"https://github.com/{owner}/{repo}/commit/{new_commit_sha}"
+        
+        # Update committed status to True in MongoDB Hot Tier
+        await db.generations.update_one(
+            {"generation_id": generation_id},
+            {"$set": {"committed": True}}
+        )
+        
         return {
             "status": "success",
             "branch": branch,

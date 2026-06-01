@@ -1,25 +1,15 @@
-import React, { useState } from 'react';
+import React from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
-import { LogOut, MessageSquare, LayoutDashboard, Copy, Key, Check } from 'lucide-react';
+import { LogOut, MessageSquare, LayoutDashboard, History, Settings } from 'lucide-react';
 
 function Sidebar() {
   const { user, logout } = useAuth();
-  const [copied, setCopied] = useState(false);
   const location = useLocation();
   const navigate = useNavigate();
 
   const handleNavClick = (path) => {
     navigate(path);
-  };
-
-  const copyToken = () => {
-    const token = localStorage.getItem('code2cloud_token');
-    if (token) {
-      navigator.clipboard.writeText(token);
-      setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
-    }
   };
 
   return (
@@ -96,6 +86,32 @@ function Sidebar() {
           <MessageSquare size={20} style={{ color: location.pathname === '/chat' ? '#5865F2' : 'inherit' }} />
           Chat
         </button>
+
+        <button
+          onClick={() => handleNavClick('/history')}
+          style={{
+            display: 'flex', alignItems: 'center', gap: '1rem', padding: '1rem',
+            borderRadius: '16px', border: 'none', cursor: 'pointer', transition: 'all 0.2s',
+            background: location.pathname === '/history' ? 'rgba(88, 101, 242, 0.15)' : 'transparent',
+            color: location.pathname === '/history' ? '#fff' : '#a2a2b5',
+            fontWeight: location.pathname === '/history' ? '600' : '500'
+          }}
+          onMouseOver={(e) => {
+            if (location.pathname !== '/history') {
+              e.currentTarget.style.background = 'rgba(255, 255, 255, 0.05)';
+              e.currentTarget.style.color = '#fff';
+            }
+          }}
+          onMouseOut={(e) => {
+            if (location.pathname !== '/history') {
+              e.currentTarget.style.background = 'transparent';
+              e.currentTarget.style.color = '#a2a2b5';
+            }
+          }}
+        >
+          <History size={20} style={{ color: location.pathname === '/history' ? '#5865F2' : 'inherit' }} />
+          Generation History
+        </button>
       </nav>
 
       {/* User Profile Section at Bottom */}
@@ -111,31 +127,35 @@ function Sidebar() {
             <p style={{ fontSize: '0.85rem', color: '#a2a2b5', margin: 0, whiteSpace: 'nowrap', textOverflow: 'ellipsis', overflow: 'hidden' }}>@{user?.login}</p>
           </div>
         </div>
+
+        {/* Settings button relocated at the bottom developer tray */}
         <button
-          onClick={copyToken}
+          onClick={() => handleNavClick('/settings')}
           style={{
             width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem',
-            background: copied ? 'rgba(16, 185, 129, 0.1)' : 'rgba(255, 255, 255, 0.03)',
-            border: copied ? '1px solid rgba(16, 185, 129, 0.3)' : '1px solid rgba(255,255,255,0.1)',
-            color: copied ? '#10B981' : '#a2a2b5', padding: '0.85rem', borderRadius: '12px', cursor: 'pointer', transition: 'all 0.2s',
-            fontSize: '0.95rem', marginBottom: '0.75rem'
+            background: location.pathname === '/settings' ? 'rgba(88, 101, 242, 0.15)' : 'rgba(255, 255, 255, 0.03)',
+            border: location.pathname === '/settings' ? '1px solid rgba(88, 101, 242, 0.3)' : '1px solid rgba(255, 255, 255, 0.1)',
+            color: location.pathname === '/settings' ? '#fff' : '#a2a2b5', padding: '0.85rem', borderRadius: '12px', cursor: 'pointer', transition: 'all 0.2s',
+            fontSize: '0.95rem', marginBottom: '0.75rem',
+            fontWeight: location.pathname === '/settings' ? '600' : '500'
           }}
           onMouseOver={(e) => {
-            if (!copied) {
+            if (location.pathname !== '/settings') {
               e.currentTarget.style.color = '#fff';
               e.currentTarget.style.background = 'rgba(255, 255, 255, 0.08)';
             }
           }}
           onMouseOut={(e) => {
-            if (!copied) {
+            if (location.pathname !== '/settings') {
               e.currentTarget.style.color = '#a2a2b5';
               e.currentTarget.style.background = 'rgba(255, 255, 255, 0.03)';
             }
           }}
         >
-          {copied ? <Check size={16} /> : <Copy size={16} />}
-          {copied ? 'Token Copied!' : 'Copy JWT Token'}
+          <Settings size={16} />
+          Settings
         </button>
+
         <button
           onClick={logout}
           style={{

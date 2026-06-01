@@ -5,6 +5,8 @@ import Services from './pages/Services';
 import Repos from './pages/Repos';
 import ServiceSetup from './pages/ServiceSetup';
 import GenerationViewer from './pages/GenerationViewer';
+import HistoryPage from './pages/History';
+import SettingsPage from './pages/Settings';
 import PrivateRoute from './components/PrivateRoute';
 import DashboardLayout from './components/DashboardLayout';
 import './App.css';
@@ -33,6 +35,8 @@ function App() {
             </div>
           } />
           <Route path="/repos" element={<Repos />} />
+          <Route path="/history" element={<HistoryPage />} />
+          <Route path="/settings" element={<SettingsPage />} />
         </Route>
       </Route>
 

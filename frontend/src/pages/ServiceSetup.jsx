@@ -5,7 +5,7 @@ import { BookMarked, ArrowLeft } from 'lucide-react';
 import { apiClient } from '../utils/api';
 
 function ServiceSetup() {
-  const { token } = useAuth();
+  const { user, token } = useAuth();
   const navigate = useNavigate();
   const { serviceId } = useParams();
   
@@ -130,7 +130,7 @@ function ServiceSetup() {
     }
   };
 
-  const sortedRepos = [...repos].sort((a, b) => a.name.localeCompare(b.name));
+  const sortedRepos = [...repos].sort((a, b) => a.full_name.localeCompare(b.full_name));
 
   return (
     <>
@@ -167,9 +167,41 @@ function ServiceSetup() {
           <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
             <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
               <label style={{ color: '#a2a2b5', fontSize: '0.95rem', fontWeight: '500' }}>Choose Repository</label>
-              <div style={{ position: 'relative' }}>
-                <div 
-                  onClick={() => setIsOpen(!isOpen)}
+              <div style={{ position: 'relative', zIndex: 995 }}>
+                {/* Click-outside capture overlay */}
+                {isOpen && (
+                  <div 
+                    onClick={() => {
+                      setIsOpen(false);
+                      setSearchQuery('');
+                    }}
+                    style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, zIndex: 990, cursor: 'default' }}
+                  />
+                )}
+
+                <input
+                  type="text"
+                  value={isOpen ? searchQuery : (selectedRepo ? selectedRepo.full_name : '')}
+                  placeholder="-- Type to search or choose repository --"
+                  onChange={(e) => {
+                    setSearchQuery(e.target.value);
+                    setIsOpen(true);
+                    if (e.target.value === '') {
+                      setSelectedRepo(null);
+                      setSelectedRepoId('');
+                      setTechStack(null);
+                    }
+                  }}
+                  onFocus={() => {
+                    setIsOpen(true);
+                    if (selectedRepo) {
+                      setSearchQuery(selectedRepo.full_name);
+                    }
+                  }}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setIsOpen(true);
+                  }}
                   style={{
                     background: 'rgba(255, 255, 255, 0.03)',
                     backdropFilter: 'blur(20px)',
@@ -177,23 +209,38 @@ function ServiceSetup() {
                     borderRadius: '16px',
                     color: '#fff',
                     padding: '1.2rem',
+                    paddingRight: '3.5rem',
                     width: '100%',
                     fontSize: '1.1rem',
-                    cursor: 'pointer',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'space-between',
+                    outline: 'none',
+                    cursor: 'text',
                     transition: 'border-color 0.2s',
                     boxSizing: 'border-box'
                   }}
                   onMouseOver={(e) => { e.currentTarget.style.borderColor = 'rgba(255,255,255,0.2)'; }}
                   onMouseOut={(e) => { e.currentTarget.style.borderColor = isOpen ? currentConfig.color : 'rgba(255,255,255,0.1)'; }}
+                />
+
+                <span 
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setIsOpen(!isOpen);
+                    if (isOpen) setSearchQuery('');
+                  }}
+                  style={{
+                    position: 'absolute',
+                    right: '1.2rem',
+                    top: '50%',
+                    transform: 'translateY(-50%)',
+                    color: '#a2a2b5',
+                    fontSize: '0.8rem',
+                    cursor: 'pointer',
+                    userSelect: 'none',
+                    zIndex: 996
+                  }}
                 >
-                  <span style={{ color: selectedRepo ? '#fff' : '#a2a2b5' }}>
-                    {selectedRepo ? selectedRepo.name : '-- Select a repository --'}
-                  </span>
-                  <span style={{ color: '#a2a2b5', fontSize: '0.8rem' }}>{isOpen ? '▲' : '▼'}</span>
-                </div>
+                  {isOpen ? '▲' : '▼'}
+                </span>
 
                 {isOpen && (
                   <div style={{
@@ -204,7 +251,7 @@ function ServiceSetup() {
                     background: '#0c0c12',
                     border: '1px solid rgba(255, 255, 255, 0.1)',
                     borderRadius: '16px',
-                    maxHeight: '320px',
+                    maxHeight: '260px',
                     zIndex: 999,
                     boxShadow: '0 10px 30px rgba(0,0,0,0.5)',
                     padding: '0.75rem',
@@ -213,68 +260,67 @@ function ServiceSetup() {
                     gap: '0.5rem',
                     boxSizing: 'border-box'
                   }}>
-                    <input 
-                      type="text"
-                      placeholder="Type to search repository..."
-                      value={searchQuery}
-                      onChange={(e) => setSearchQuery(e.target.value)}
-                      onClick={(e) => e.stopPropagation()}
-                      style={{
-                        width: '100%',
-                        padding: '0.8rem 1rem',
-                        background: 'rgba(255, 255, 255, 0.05)',
-                        border: '1px solid rgba(255, 255, 255, 0.1)',
-                        borderRadius: '12px',
-                        color: '#fff',
-                        fontSize: '0.95rem',
-                        outline: 'none',
-                        boxSizing: 'border-box',
-                        marginBottom: '0.25rem',
-                        transition: 'border-color 0.2s'
-                      }}
-                      onFocus={(e) => e.currentTarget.style.borderColor = currentConfig.color}
-                      onBlur={(e) => e.currentTarget.style.borderColor = 'rgba(255, 255, 255, 0.1)'}
-                    />
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.3rem', overflowY: 'auto', maxHeight: '180px' }}>
-                      {sortedRepos.filter(repo => repo.name.toLowerCase().includes(searchQuery.toLowerCase())).length === 0 ? (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.3rem', overflowY: 'auto', maxHeight: '220px' }}>
+                      {sortedRepos.filter(repo => repo.full_name.toLowerCase().includes(searchQuery.toLowerCase())).length === 0 ? (
                         <div style={{ padding: '1rem', color: '#6e7191', fontSize: '0.95rem', textAlign: 'center' }}>
                           No repositories found
                         </div>
                       ) : (
                         sortedRepos
-                          .filter(repo => repo.name.toLowerCase().includes(searchQuery.toLowerCase()))
-                          .map((repo) => (
-                            <div 
-                              key={repo.id}
-                              onClick={() => {
-                                setSelectedRepoId(repo.id.toString());
-                                setSelectedRepo(repo);
-                                setIsOpen(false);
-                                setTechStack(null);
-                                setSearchQuery(''); // Reset query on select
-                              }}
-                              style={{
-                                padding: '1rem',
-                                borderRadius: '10px',
-                                cursor: 'pointer',
-                                display: 'flex',
-                                alignItems: 'center',
-                                justifyContent: 'space-between',
-                                color: '#fff',
-                                background: selectedRepoId === repo.id.toString() ? 'rgba(255,255,255,0.05)' : 'transparent',
-                                transition: 'background 0.2s'
-                              }}
-                              onMouseOver={(e) => { if (selectedRepoId !== repo.id.toString()) e.currentTarget.style.background = 'rgba(255,255,255,0.03)'; }}
-                              onMouseOut={(e) => { if (selectedRepoId !== repo.id.toString()) e.currentTarget.style.background = 'transparent'; }}
-                            >
-                              <span style={{ fontSize: '0.95rem' }}>{repo.name}</span>
-                              {repo.private ? <span style={{ color: '#ff6b6b' }}>🔒</span> : <span style={{ color: '#10B981' }}>🌐</span>}
-                            </div>
-                          ))
+                          .filter(repo => repo.full_name.toLowerCase().includes(searchQuery.toLowerCase()))
+                          .map((repo) => {
+                            const isCollaborator = repo.owner?.login?.toLowerCase() !== user?.login?.toLowerCase();
+                            return (
+                              <div 
+                                key={repo.id}
+                                onClick={() => {
+                                  setSelectedRepoId(repo.id.toString());
+                                  setSelectedRepo(repo);
+                                  setIsOpen(false);
+                                  setTechStack(null);
+                                  setSearchQuery(''); // Reset query on select
+                                }}
+                                style={{
+                                  padding: '1rem',
+                                  borderRadius: '10px',
+                                  cursor: 'pointer',
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                  justifyContent: 'space-between',
+                                  color: '#fff',
+                                  background: selectedRepoId === repo.id.toString() ? 'rgba(255,255,255,0.05)' : 'transparent',
+                                  transition: 'background 0.2s'
+                                }}
+                                onMouseOver={(e) => { if (selectedRepoId !== repo.id.toString()) e.currentTarget.style.background = 'rgba(255,255,255,0.03)'; }}
+                                onMouseOut={(e) => { if (selectedRepoId !== repo.id.toString()) e.currentTarget.style.background = 'transparent'; }}
+                              >
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
+                                  <span style={{ fontSize: '0.95rem' }}>{repo.full_name}</span>
+                                  {isCollaborator && (
+                                    <span style={{ fontSize: '0.65rem', background: 'rgba(0,229,255,0.1)', color: '#00E5FF', padding: '0.1rem 0.35rem', borderRadius: '4px', border: '1px solid rgba(0,229,255,0.2)', fontWeight: '600' }}>Collaborated</span>
+                                  )}
+                                </div>
+                                {repo.private ? <span style={{ color: '#ff6b6b' }}>🔒</span> : <span style={{ color: '#10B981' }}>🌐</span>}
+                              </div>
+                            );
+                          })
                       )}
                     </div>
                   </div>
                 )}
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '0.35rem', padding: '0 0.25rem' }}>
+                <span style={{ fontSize: '0.8rem', color: '#6e7191' }}>
+                  Type owner or repository name to search.
+                </span>
+                <a 
+                  href="https://github.com/apps/code2cloud-dev/installations/new" 
+                  target="_blank" 
+                  rel="noopener noreferrer" 
+                  style={{ fontSize: '0.8rem', color: '#00E5FF', textDecoration: 'underline', cursor: 'pointer' }}
+                >
+                  Missing organization/shared repos? Grant access
+                </a>
               </div>
             </div>
 
@@ -283,7 +329,7 @@ function ServiceSetup() {
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', color: currentConfig.color }}>
                     <BookMarked size={24} />
-                    <h3 style={{ fontSize: '1.5rem', fontWeight: '600', color: '#fff', margin: 0 }}>{selectedRepo.name}</h3>
+                    <h3 style={{ fontSize: '1.5rem', fontWeight: '600', color: '#fff', margin: 0 }}>{selectedRepo.full_name}</h3>
                   </div>
                 </div>
 
