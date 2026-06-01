@@ -3,6 +3,8 @@ import io
 import uuid
 import zipfile
 import boto3
+import cloudinary
+import cloudinary.uploader
 from datetime import datetime
 from jinja2 import Environment, FileSystemLoader
 from typing import Dict, Any, List, Optional
@@ -139,24 +141,26 @@ class CodeGenerator:
                 zip_file.writestr(filename, content)
         zip_buffer.seek(0)
         
-        # S3 upload
-        s3_url = f"https://{settings.AWS_S3_BUCKET_NAME}.s3.amazonaws.com/history/{generation_id}.zip" if settings.AWS_S3_BUCKET_NAME else ""
-        if settings.AWS_ACCESS_KEY_ID and settings.AWS_SECRET_ACCESS_KEY and settings.AWS_S3_BUCKET_NAME:
+        # Cloudinary upload
+        cloudinary_url = ""
+        if settings.CLOUDINARY_CLOUD_NAME and settings.CLOUDINARY_API_KEY and settings.CLOUDINARY_API_SECRET:
             try:
-                s3_client = boto3.client(
-                    "s3",
-                    aws_access_key_id=settings.AWS_ACCESS_KEY_ID,
-                    aws_secret_access_key=settings.AWS_SECRET_ACCESS_KEY,
-                    region_name=settings.AWS_REGION
+                cloudinary.config(
+                    cloud_name=settings.CLOUDINARY_CLOUD_NAME,
+                    api_key=settings.CLOUDINARY_API_KEY,
+                    api_secret=settings.CLOUDINARY_API_SECRET,
+                    secure=True
                 )
-                s3_client.put_object(
-                    Bucket=settings.AWS_S3_BUCKET_NAME,
-                    Key=f"history/{generation_id}.zip",
-                    Body=zip_buffer.getvalue(),
-                    ContentType="application/zip"
+                res = cloudinary.uploader.upload(
+                    zip_buffer.getvalue(),
+                    resource_type="raw",
+                    folder="code2cloud/generations",
+                    public_id=f"{generation_id}.zip",
+                    overwrite=True
                 )
+                cloudinary_url = res.get("secure_url") or res.get("url") or ""
             except Exception as e:
-                print(f"AWS S3 UPLOAD FAILURE: {e}")
+                print(f"CLOUDINARY UPLOAD FAILURE: {e}")
                 
         # Persist MongoDB Hot Tier
         generation_record = {
@@ -168,7 +172,7 @@ class CodeGenerator:
             "timestamp": datetime.utcnow().isoformat(),
             "detected_tech": list(set([comp.get("type", "Generic") for comp in components_list])),
             "generated_code": generated_code,
-            "s3_url": s3_url,
+            "url": cloudinary_url,
             "service_id": service_id,
             "cloud": cloud,
             "committed": False
@@ -180,40 +184,50 @@ class CodeGenerator:
         return {
             "generation_id": generation_id,
             "generated_code": generated_code,
-            "s3_url": s3_url,
+            "url": cloudinary_url,
             "project_name": repo
         }
         
     @staticmethod
     async def update_code(generation_id: str, new_code: Dict[str, str], db) -> Dict[str, Any]:
-        # 1. Update Hot Tier DB
-        await db.generations.update_one(
-            {"generation_id": generation_id},
-            {"$set": {"generated_code": new_code, "timestamp": datetime.utcnow().isoformat()}}
-        )
-        
-        # 2. Re-compile ZIP & Re-upload Cold S3 Tier
+        # 1. Re-compile ZIP & Re-upload Cold Cloudinary Tier
         zip_buffer = io.BytesIO()
         with zipfile.ZipFile(zip_buffer, "w", zipfile.ZIP_DEFLATED) as zip_file:
             for filename, content in new_code.items():
                 zip_file.writestr(filename, content)
         zip_buffer.seek(0)
         
-        if settings.AWS_ACCESS_KEY_ID and settings.AWS_SECRET_ACCESS_KEY and settings.AWS_S3_BUCKET_NAME:
+        cloudinary_url = ""
+        if settings.CLOUDINARY_CLOUD_NAME and settings.CLOUDINARY_API_KEY and settings.CLOUDINARY_API_SECRET:
             try:
-                s3_client = boto3.client(
-                    "s3",
-                    aws_access_key_id=settings.AWS_ACCESS_KEY_ID,
-                    aws_secret_access_key=settings.AWS_SECRET_ACCESS_KEY,
-                    region_name=settings.AWS_REGION
+                cloudinary.config(
+                    cloud_name=settings.CLOUDINARY_CLOUD_NAME,
+                    api_key=settings.CLOUDINARY_API_KEY,
+                    api_secret=settings.CLOUDINARY_API_SECRET,
+                    secure=True
                 )
-                s3_client.put_object(
-                    Bucket=settings.AWS_S3_BUCKET_NAME,
-                    Key=f"history/{generation_id}.zip",
-                    Body=zip_buffer.getvalue(),
-                    ContentType="application/zip"
+                res = cloudinary.uploader.upload(
+                    zip_buffer.getvalue(),
+                    resource_type="raw",
+                    folder="code2cloud/generations",
+                    public_id=f"{generation_id}.zip",
+                    overwrite=True
                 )
+                cloudinary_url = res.get("secure_url") or res.get("url") or ""
             except Exception as e:
-                print(f"AWS S3 RE-UPLOAD FAILURE: {e}")
+                print(f"CLOUDINARY RE-UPLOAD FAILURE: {e}")
                 
-        return {"message": "Success", "generated_code": new_code}
+        # 2. Update Hot Tier DB (and update the Cloudinary url)
+        update_fields = {
+            "generated_code": new_code,
+            "timestamp": datetime.utcnow().isoformat()
+        }
+        if cloudinary_url:
+            update_fields["url"] = cloudinary_url
+
+        await db.generations.update_one(
+            {"generation_id": generation_id},
+            {"$set": update_fields}
+        )
+                
+        return {"message": "Success", "generated_code": new_code, "url": cloudinary_url}

@@ -173,6 +173,43 @@ async def get_generation_by_id(
     gen["_id"] = str(gen["_id"])
     return gen
 
+@router.get("/generations/{generation_id}/download")
+async def download_generation_zip(
+    generation_id: str,
+    current_user: UserBase = Depends(get_current_user)
+):
+    """
+    Download the generated code as a zip file directly from the database configurations.
+    """
+    import io
+    import zipfile
+    from fastapi.responses import StreamingResponse
+    
+    db = await get_database()
+    gen = await db.generations.find_one({"generation_id": generation_id})
+    if not gen:
+        raise HTTPException(status_code=404, detail="Generation not found")
+        
+    generated_code = gen.get("generated_code", {})
+    project_name = gen.get("project_name", "project")
+    
+    # Create zip in memory
+    zip_buffer = io.BytesIO()
+    with zipfile.ZipFile(zip_buffer, "w", zipfile.ZIP_DEFLATED) as zip_file:
+        for filename, content in generated_code.items():
+            zip_file.writestr(filename, content)
+    zip_buffer.seek(0)
+    
+    headers = {
+        "Content-Disposition": f"attachment; filename={project_name}-{generation_id}.zip",
+        "Access-Control-Expose-Headers": "Content-Disposition"
+    }
+    return StreamingResponse(
+        zip_buffer,
+        media_type="application/zip",
+        headers=headers
+    )
+
 class UpdateCodeRequest(BaseModel):
     generated_code: Dict[str, str]
 

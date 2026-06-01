@@ -27,6 +27,12 @@ class Settings(BaseSettings):
     AWS_REGION: str = "us-east-1"
     AWS_S3_BUCKET_NAME: Optional[str] = None
 
+    # Cloudinary
+    CLOUDINARY_CLOUD_NAME: Optional[str] = None
+    CLOUDINARY_API_KEY: Optional[str] = None
+    CLOUDINARY_API_SECRET: Optional[str] = None
+
+
     model_config = SettingsConfigDict(
         env_file=".env",
         case_sensitive=True,

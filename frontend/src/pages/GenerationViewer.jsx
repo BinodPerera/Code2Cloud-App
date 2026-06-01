@@ -10,7 +10,7 @@ function GenerationViewer() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [projectName, setProjectName] = useState('');
-  const [s3Url, setS3Url] = useState('');
+  const [url, setUrl] = useState('');
   
   // Hot code map: { "Dockerfile": "...", "docker-compose.yml": "..." }
   const [codeMap, setCodeMap] = useState({});
@@ -68,7 +68,7 @@ function GenerationViewer() {
         setCodeMap(data.generated_code || {});
         setInitialCodeMap(JSON.parse(JSON.stringify(data.generated_code || {})));
         setProjectName(data.project_name || 'Project');
-        setS3Url(data.s3_url || '');
+        setUrl(data.url || '');
         
         // Pick first file as active by default
         const files = Object.keys(data.generated_code || {});
@@ -145,6 +145,31 @@ function GenerationViewer() {
       alert(err.message || 'Error saving changes.');
     } finally {
       setSaving(false);
+    }
+  };
+
+  const [downloading, setDownloading] = useState(false);
+
+  const handleDownload = async () => {
+    try {
+      setDownloading(true);
+      const res = await apiClient.get(`/repos/generations/${generationId}/download`);
+      if (!res.ok) {
+        throw new Error('Could not fetch the ZIP package from server.');
+      }
+      const blob = await res.blob();
+      const downloadUrl = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = downloadUrl;
+      a.download = `${projectName}-${generationId}.zip`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      window.URL.revokeObjectURL(downloadUrl);
+    } catch (err) {
+      alert(err.message || 'Error downloading ZIP.');
+    } finally {
+      setDownloading(false);
     }
   };
 
@@ -306,11 +331,10 @@ function GenerationViewer() {
             Commit to GitHub
           </button>
 
-          {s3Url && (
-            <a
-              href={s3Url}
-              target="_blank"
-              rel="noopener noreferrer"
+          {url && (
+            <button
+              onClick={handleDownload}
+              disabled={downloading}
               style={{
                 display: 'flex',
                 alignItems: 'center',
@@ -321,23 +345,28 @@ function GenerationViewer() {
                 padding: '0 1.2rem',
                 borderRadius: '12px',
                 fontWeight: '700',
-                textDecoration: 'none',
-                cursor: 'pointer',
+                cursor: downloading ? 'not-allowed' : 'pointer',
                 height: '38px',
                 boxSizing: 'border-box',
                 flexShrink: 0,
                 whiteSpace: 'nowrap',
                 boxShadow: '0 4px 15px rgba(88, 101, 242, 0.25)',
-                transition: 'transform 0.2s'
+                transition: 'transform 0.2s',
+                opacity: downloading ? 0.7 : 1
               }}
-              onMouseOver={(e) => e.currentTarget.style.transform = 'translateY(-2px)'}
-              onMouseOut={(e) => e.currentTarget.style.transform = 'translateY(0)'}
+              onMouseOver={(e) => !downloading && (e.currentTarget.style.transform = 'translateY(-2px)')}
+              onMouseOut={(e) => !downloading && (e.currentTarget.style.transform = 'translateY(0)')}
             >
-              <Download size={16} />
-              Cold S3 Bundle (.zip)
-            </a>
+              {downloading ? (
+                <RefreshCw size={16} className="loading-spinner" />
+              ) : (
+                <Download size={16} />
+              )}
+              {downloading ? 'Downloading...' : 'Download ZIP (.zip)'}
+            </button>
           )}
         </div>
+
       </div>
 
       {/* Editor Body Workspace */}

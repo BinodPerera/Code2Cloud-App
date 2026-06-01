@@ -10,3 +10,4 @@ pydantic-settings
 motor
 jinja2
 boto3
+cloudinary

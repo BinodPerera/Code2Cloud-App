@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
-import { History, Eye, Download, CheckCircle, HelpCircle, ExternalLink, Calendar, Layers, Cpu, Server, Play } from 'lucide-react';
+import { History, Eye, Download, CheckCircle, HelpCircle, ExternalLink, Calendar, Layers, Cpu, Server, Play, RefreshCw } from 'lucide-react';
 import { apiClient } from '../utils/api';
 
 function HistoryPage() {
@@ -47,6 +47,31 @@ function HistoryPage() {
       });
     } catch (e) {
       return isoString;
+    }
+  };
+
+  const [downloadingMap, setDownloadingMap] = useState({});
+
+  const handleDownload = async (generationId, projectName) => {
+    try {
+      setDownloadingMap((prev) => ({ ...prev, [generationId]: true }));
+      const res = await apiClient.get(`/repos/generations/${generationId}/download`);
+      if (!res.ok) {
+        throw new Error('Could not fetch the ZIP package from server.');
+      }
+      const blob = await res.blob();
+      const downloadUrl = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = downloadUrl;
+      a.download = `${projectName}-${generationId}.zip`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      window.URL.revokeObjectURL(downloadUrl);
+    } catch (err) {
+      alert(err.message || 'Error downloading ZIP.');
+    } finally {
+      setDownloadingMap((prev) => ({ ...prev, [generationId]: false }));
     }
   };
 
@@ -284,12 +309,11 @@ function HistoryPage() {
                     View & Edit
                   </button>
 
-                  {/* S3 Download direct link */}
-                  {item.s3_url && (
-                    <a
-                      href={item.s3_url}
-                      target="_blank"
-                      rel="noopener noreferrer"
+                  {/* Cloudinary Download direct link */}
+                  {item.url && (
+                    <button
+                      onClick={() => handleDownload(item.generation_id, item.project_name)}
+                      disabled={downloadingMap[item.generation_id]}
                       style={{
                         display: 'flex',
                         alignItems: 'center',
@@ -300,15 +324,20 @@ function HistoryPage() {
                         border: '1px solid rgba(88, 101, 242, 0.3)',
                         borderRadius: '12px',
                         color: '#00E5FF',
-                        cursor: 'pointer',
-                        transition: 'transform 0.2s'
+                        cursor: downloadingMap[item.generation_id] ? 'not-allowed' : 'pointer',
+                        transition: 'transform 0.2s',
+                        opacity: downloadingMap[item.generation_id] ? 0.7 : 1
                       }}
-                      onMouseOver={(e) => { e.currentTarget.style.transform = 'scale(1.05)'; e.currentTarget.style.borderColor = '#00E5FF'; }}
-                      onMouseOut={(e) => { e.currentTarget.style.transform = 'scale(1)'; e.currentTarget.style.borderColor = 'rgba(88, 101, 242, 0.3)'; }}
-                      title="Download S3 ZIP package"
+                      onMouseOver={(e) => { !downloadingMap[item.generation_id] && (e.currentTarget.style.transform = 'scale(1.05)'); !downloadingMap[item.generation_id] && (e.currentTarget.style.borderColor = '#00E5FF'); }}
+                      onMouseOut={(e) => { !downloadingMap[item.generation_id] && (e.currentTarget.style.transform = 'scale(1)'); !downloadingMap[item.generation_id] && (e.currentTarget.style.borderColor = 'rgba(88, 101, 242, 0.3)'); }}
+                      title="Download ZIP package"
                     >
-                      <Download size={15} />
-                    </a>
+                      {downloadingMap[item.generation_id] ? (
+                        <RefreshCw size={15} className="loading-spinner" />
+                      ) : (
+                        <Download size={15} />
+                      )}
+                    </button>
                   )}
 
                 </div>
