@@ -3,6 +3,7 @@ import { useNavigate, useParams } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { BookMarked, ArrowLeft } from 'lucide-react';
 import { apiClient } from '../utils/api';
+import Preloader from '../components/Preloader';
 
 function ServiceSetup() {
   const { user, token } = useAuth();
@@ -337,7 +338,11 @@ function ServiceSetup() {
                   <h4 style={{ color: '#fff', fontSize: '1.1rem', marginBottom: '0.75rem' }}>Tech Stack Analytics</h4>
                   
                   {loadingStack ? (
-                    <span>Analyzing dependencies...</span>
+                    <Preloader 
+                      message="Analyzing your repository..." 
+                      submessage="Scanning configuration files, mapping dependencies, and identifying sub-project components." 
+                      color={currentConfig.color}
+                    />
                   ) : techStack ? (
                     <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
                       {/* Languages */}

@@ -32,6 +32,17 @@ class CodeGenerator:
                 "libraries": []
             }]
             
+        # Clean paths of all components to be directories instead of manifest files
+        for comp in components_list:
+            comp_path = comp.get("path", ".")
+            for suffix in ["/package.json", "/pom.xml", "/requirements.txt", "/build.gradle", "/build.gradle.kts"]:
+                if comp_path.endswith(suffix):
+                    comp_path = comp_path[:-len(suffix)]
+                    break
+            if comp_path in ["package.json", "pom.xml", "requirements.txt", "build.gradle", "build.gradle.kts"]:
+                comp_path = "."
+            comp["path"] = comp_path
+            
         base_dir = os.path.dirname(os.path.dirname(os.path.dirname(__file__)))
         template_dir = os.path.join(base_dir, "templates")
         env = Environment(loader=FileSystemLoader(template_dir))
@@ -57,6 +68,23 @@ class CodeGenerator:
                     generated_code["Dockerfile"] = tmpl.render(port=port)
                 except Exception as e:
                     generated_code["Dockerfile"] = f"# Fallback Dockerfile\nFROM node:18-alpine\nWORKDIR /app\nCOPY . .\nRUN npm install\nCMD [\"npm\", \"start\"]\n# error: {str(e)}"
+
+                # Generate Docker README
+                try:
+                    comp_details = {
+                        "name": comp.get("name", "app"),
+                        "path": comp.get("path", "."),
+                        "type": comp.get("type", "NodeJS / Javascript"),
+                        "port": port
+                    }
+                    readme_tmpl = env.get_template("docker/readme.jinja")
+                    generated_code["README.md"] = readme_tmpl.render(
+                        project_name=repo,
+                        is_multicomponent=False,
+                        components=[comp_details]
+                    )
+                except Exception as e:
+                    generated_code["README.md"] = f"# Error generating Docker README: {str(e)}"
             else:
                 compose_components = []
                 for comp in components_list:
@@ -85,6 +113,7 @@ class CodeGenerator:
                     compose_components.append({
                         "name": comp_name,
                         "path": comp_path,
+                        "type": comp_type,
                         "port": port,
                         "depends_on": [] if comp_name == "backend" else ["backend"] if any(c.get("name", "").lower().replace("/", "-").replace("\\", "-") == "backend" for c in components_list) else []
                     })
@@ -94,6 +123,17 @@ class CodeGenerator:
                     generated_code["docker-compose.yml"] = compose_tmpl.render(components=compose_components)
                 except Exception as e:
                     generated_code["docker-compose.yml"] = f"version: '3.8'\nservices:\n# error: {str(e)}"
+
+                # Generate multi-component Docker README
+                try:
+                    readme_tmpl = env.get_template("docker/readme.jinja")
+                    generated_code["README.md"] = readme_tmpl.render(
+                        project_name=repo,
+                        is_multicomponent=True,
+                        components=compose_components
+                    )
+                except Exception as e:
+                    generated_code["README.md"] = f"# Error generating Docker README: {str(e)}"
 
         # Terraform Configurations
         elif service_id == "terraform":
@@ -111,6 +151,8 @@ class CodeGenerator:
                 tf_components.append({
                     "name": comp_name,
                     "port": port,
+                    "path": comp.get("path", "."),
+                    "type": comp_type,
                     "depends_on": [] if comp_name == "backend" else ["backend"] if any(c.get("name", "").lower().replace("/", "-").replace("\\", "-") == "backend" for c in components_list) else []
                 })
                 
@@ -130,6 +172,18 @@ class CodeGenerator:
             else:
                 generated_code["terraform/providers.tf"] = f"provider \"{cloud.lower()}\" {{\n}}"
                 generated_code["terraform/main.tf"] = f"# Deployment script for {cloud}\nresource \"{cloud.lower()}_instance\" \"app\" {{\n  name = \"{repo}-app\"\n}}"
+
+            # Generate Terraform README
+            try:
+                readme_tmpl = env.get_template("terraform/readme.jinja")
+                generated_code["terraform/README.md"] = readme_tmpl.render(
+                    project_name=repo,
+                    cloud=cloud,
+                    aws_region="us-east-1",
+                    components=tf_components
+                )
+            except Exception as e:
+                generated_code["terraform/README.md"] = f"# Error generating Terraform README: {str(e)}"
 
         else:
             generated_code["finops_budget.json"] = "{\n  \"budget_name\": \"" + repo + "-monthly-budget\",\n  \"limit_amount\": \"100\"\n}"
