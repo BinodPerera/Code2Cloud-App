@@ -145,6 +145,12 @@ class TechStackAnalyzer:
                                     })
                         except Exception:
                             continue
+                    
+                    # If standard manifests yields nothing, trigger the Deep Analyzer fallback
+                    if not components:
+                        deep_components = await TechStackAnalyzer.deep_analyze(client, tree_items, owner, repo, headers)
+                        if deep_components:
+                            components.extend(deep_components)
             except Exception:
                 pass
 
@@ -152,3 +158,187 @@ class TechStackAnalyzer:
             "languages": languages,
             "components": components
         }
+
+    @staticmethod
+    async def deep_analyze(
+        client: httpx.AsyncClient,
+        tree_items: List[Dict[str, Any]],
+        owner: str,
+        repo: str,
+        headers: Dict[str, str]
+    ) -> List[Dict[str, Any]]:
+        """
+        Fallback deep analyzer that scans alternative files, file extensions, and entrypoint source imports
+        to identify components, libraries, and ports when requirements.txt or package.json are missing.
+        """
+        # 1. Scan for alternative configuration/lock files
+        alt_manifests = {
+            "pyproject.toml": "Python",
+            "setup.py": "Python",
+            "poetry.lock": "Python",
+            "Pipfile": "Python",
+            "yarn.lock": "NodeJS / Javascript",
+            "pnpm-lock.yaml": "NodeJS / Javascript",
+            "bun.lockb": "NodeJS / Javascript",
+        }
+
+        found_alt_components = []
+        for item in tree_items:
+            path = item.get("path", "")
+            # Skip common ignore directories
+            if any(p in path.split("/") for p in ["node_modules", "venv", ".venv", ".git", ".idea", ".vscode"]):
+                continue
+            
+            filename = path.split("/")[-1]
+            if filename in alt_manifests:
+                component_name = path.rsplit("/", 1)[0] if "/" in path else "Root"
+                component_path = path.rsplit("/", 1)[0] if "/" in path else "."
+                cmp_type = alt_manifests[filename]
+                
+                # Assign default ports
+                port = 8000 if cmp_type == "Python" else 3000
+                
+                found_alt_components.append({
+                    "name": component_name,
+                    "path": component_path,
+                    "type": cmp_type,
+                    "libraries": [],
+                    "port": port
+                })
+        
+        if found_alt_components:
+            # Deduplicate by path
+            seen_paths = set()
+            dedup_components = []
+            for comp in found_alt_components:
+                if comp["path"] not in seen_paths:
+                    seen_paths.add(comp["path"])
+                    dedup_components.append(comp)
+            return dedup_components
+
+        # 2. Count extensions if no lockfiles found
+        extension_counts = {}
+        for item in tree_items:
+            path = item.get("path", "")
+            if any(p in path.split("/") for p in ["node_modules", "venv", ".venv", ".git", ".idea", ".vscode"]):
+                continue
+            
+            filename = path.split("/")[-1]
+            if "." in filename:
+                ext = filename.split(".")[-1].lower()
+                if ext in ["py", "js", "ts", "java"]:
+                    extension_counts[ext] = extension_counts.get(ext, 0) + 1
+        
+        if not extension_counts:
+            return []
+            
+        primary_ext = max(extension_counts, key=extension_counts.get)
+        
+        # 3. Detect framework and library based on entrypoints
+        # For Python:
+        if primary_ext == "py":
+            python_entrypoints = ["main.py", "app.py", "manage.py", "wsgi.py"]
+            entrypoint_item = None
+            for item in tree_items:
+                path = item.get("path", "")
+                if any(p in path.split("/") for p in ["node_modules", "venv", ".venv", ".git"]):
+                    continue
+                filename = path.split("/")[-1]
+                if filename in python_entrypoints:
+                    entrypoint_item = item
+                    break
+            
+            libraries = []
+            port = 8000
+            
+            if entrypoint_item:
+                try:
+                    path = entrypoint_item.get("path")
+                    file_res = await client.get(
+                        f"https://api.github.com/repos/{owner}/{repo}/contents/{path}",
+                        headers=headers
+                    )
+                    if file_res.status_code == 200:
+                        content_data = file_res.json()
+                        content = base64.b64decode(content_data["content"]).decode("utf-8")
+                        
+                        # Match FastAPI / Flask / Django
+                        if re.search(r'\b(fastapi|FastAPI)\b', content):
+                            libraries.append("fastapi")
+                        elif re.search(r'\b(flask|Flask)\b', content):
+                            libraries.append("flask")
+                            port = 5000
+                        elif re.search(r'\b(django|DJANGO_SETTINGS_MODULE)\b', content):
+                            libraries.append("django")
+                except Exception:
+                    pass
+            
+            comp_path = "." if not entrypoint_item or "/" not in entrypoint_item.get("path") else entrypoint_item.get("path").rsplit("/", 1)[0]
+            comp_name = "Root" if comp_path == "." else comp_path
+            
+            return [{
+                "name": comp_name,
+                "path": comp_path,
+                "type": "Python",
+                "libraries": libraries,
+                "port": port
+            }]
+            
+        # For NodeJS:
+        elif primary_ext in ["js", "ts"]:
+            node_entrypoints = ["index.js", "server.js", "main.js", "index.ts", "server.ts"]
+            entrypoint_item = None
+            for item in tree_items:
+                path = item.get("path", "")
+                if any(p in path.split("/") for p in ["node_modules", "venv", ".venv", ".git"]):
+                    continue
+                filename = path.split("/")[-1]
+                if filename in node_entrypoints:
+                    entrypoint_item = item
+                    break
+            
+            libraries = []
+            port = 3000
+            
+            if entrypoint_item:
+                try:
+                    path = entrypoint_item.get("path")
+                    file_res = await client.get(
+                        f"https://api.github.com/repos/{owner}/{repo}/contents/{path}",
+                        headers=headers
+                    )
+                    if file_res.status_code == 200:
+                        content_data = file_res.json()
+                        content = base64.b64decode(content_data["content"]).decode("utf-8")
+                        
+                        if re.search(r'\bexpress\b', content) or re.search(r'require\(\s*[\'"]express[\'"]\s*\)', content):
+                            libraries.append("express")
+                        elif re.search(r'\bkoa\b', content) or re.search(r'require\(\s*[\'"]koa[\'"]\s*\)', content):
+                            libraries.append("koa")
+                        elif re.search(r'\bnestjs\b', content) or re.search(r'@Module', content):
+                            libraries.append("nestjs")
+                except Exception:
+                    pass
+            
+            comp_path = "." if not entrypoint_item or "/" not in entrypoint_item.get("path") else entrypoint_item.get("path").rsplit("/", 1)[0]
+            comp_name = "Root" if comp_path == "." else comp_path
+                    
+            return [{
+                "name": comp_name,
+                "path": comp_path,
+                "type": "NodeJS / Javascript",
+                "libraries": libraries,
+                "port": port
+            }]
+
+        # For Java:
+        elif primary_ext == "java":
+            return [{
+                "name": "Root",
+                "path": ".",
+                "type": "Java / Maven",
+                "libraries": ["spring-boot"],
+                "port": 8080
+            }]
+
+        return []
