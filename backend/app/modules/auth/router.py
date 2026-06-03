@@ -4,15 +4,16 @@ import httpx
 import base64
 import json
 import urllib.parse
-from typing import Any
 from app.core.config import settings
 from app.core.security import create_access_token
-from app.schemas.token import Token
-from app.db.mongodb import get_database
+from app.modules.auth.schemas import UserBase
+from app.modules.auth.repository import UserRepository
+from app.modules.auth.deps import get_user_repository, get_current_user
 
-router = APIRouter()
+auth_router = APIRouter()
+users_router = APIRouter()
 
-@router.get("/github/login")
+@auth_router.get("/github/login")
 async def github_login():
     """
     Redirect to GitHub for OAuth authentication.
@@ -27,8 +28,12 @@ async def github_login():
     github_url = f"https://github.com/login/oauth/authorize?{query_string}"
     return RedirectResponse(github_url)
 
-@router.get("/github/callback")
-async def github_callback(code: str, request: Request):
+@auth_router.get("/github/callback")
+async def github_callback(
+    code: str, 
+    request: Request,
+    user_repo: UserRepository = Depends(get_user_repository)
+):
     """
     Callback for GitHub OAuth. 
     Exchanges authorization code for an access token and returns a local JWT.
@@ -68,12 +73,7 @@ async def github_callback(code: str, request: Request):
         
     # Persist user in MongoDB
     if settings.MONGODB_URL:
-        db = await get_database()
-        await db.users.update_one(
-            {"login": user_data.get("login")},
-            {"$set": user_data},
-            upsert=True
-        )
+        await user_repo.upsert_user(user_data.get("login"), user_data)
     
     # Create JWT for the user
     jwt_token = create_access_token(subject=user_data.get("login"))
@@ -97,3 +97,13 @@ async def github_callback(code: str, request: Request):
     # Redirect to frontend callback page
     redirect_url = f"{settings.FRONTEND_URL}/callback?data={safe_encoded_data}"
     return RedirectResponse(redirect_url)
+
+
+@users_router.get("/me", response_model=UserBase)
+async def read_user_me(
+    current_user: UserBase = Depends(get_current_user)
+):
+    """
+    Get current logged-in user.
+    """
+    return current_user

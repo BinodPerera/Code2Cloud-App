@@ -9,6 +9,7 @@ from datetime import datetime
 from jinja2 import Environment, FileSystemLoader
 from typing import Dict, Any, List, Optional
 from app.core.config import settings
+from app.modules.generation.repository import GenerationRepository
 
 class CodeGenerator:
     @staticmethod
@@ -19,7 +20,7 @@ class CodeGenerator:
         cloud: str,
         tech_stack: Optional[Dict[str, Any]],
         current_user_login: str,
-        db
+        generation_repo: GenerationRepository
     ) -> Dict[str, Any]:
         components_list = []
         if tech_stack and "components" in tech_stack and tech_stack["components"]:
@@ -43,8 +44,8 @@ class CodeGenerator:
                 comp_path = "."
             comp["path"] = comp_path
             
-        base_dir = os.path.dirname(os.path.dirname(os.path.dirname(__file__)))
-        template_dir = os.path.join(base_dir, "templates")
+        # Load templates from the module templates subdirectory
+        template_dir = os.path.join(os.path.dirname(__file__), "templates")
         env = Environment(loader=FileSystemLoader(template_dir))
         
         generated_code = {}
@@ -232,8 +233,8 @@ class CodeGenerator:
             "committed": False
         }
         
-        if db is not None:
-            await db.generations.insert_one(generation_record)
+        if generation_repo is not None:
+            await generation_repo.insert_generation(generation_record)
             
         return {
             "generation_id": generation_id,
@@ -243,7 +244,7 @@ class CodeGenerator:
         }
         
     @staticmethod
-    async def update_code(generation_id: str, new_code: Dict[str, str], db) -> Dict[str, Any]:
+    async def update_code(generation_id: str, new_code: Dict[str, str], generation_repo: GenerationRepository) -> Dict[str, Any]:
         # 1. Re-compile ZIP & Re-upload Cold Cloudinary Tier
         zip_buffer = io.BytesIO()
         with zipfile.ZipFile(zip_buffer, "w", zipfile.ZIP_DEFLATED) as zip_file:
@@ -271,17 +272,7 @@ class CodeGenerator:
             except Exception as e:
                 print(f"CLOUDINARY RE-UPLOAD FAILURE: {e}")
                 
-        # 2. Update Hot Tier DB (and update the Cloudinary url)
-        update_fields = {
-            "generated_code": new_code,
-            "timestamp": datetime.utcnow().isoformat()
-        }
-        if cloudinary_url:
-            update_fields["url"] = cloudinary_url
-
-        await db.generations.update_one(
-            {"generation_id": generation_id},
-            {"$set": update_fields}
-        )
+        # 2. Update Hot Tier DB (and update the Cloudinary url) via Repository
+        await generation_repo.update_generation_code(generation_id, new_code, cloudinary_url)
                 
         return {"message": "Success", "generated_code": new_code, "url": cloudinary_url}

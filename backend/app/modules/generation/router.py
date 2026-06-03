@@ -1,77 +1,28 @@
 from fastapi import APIRouter, Depends, HTTPException, status
-from app.schemas.token import UserBase
-from app.api.deps import get_current_user
+from app.modules.auth.schemas import UserBase
+from app.modules.auth.deps import get_current_user, get_user_repository
+from app.modules.auth.repository import UserRepository
+from app.modules.generation.repository import GenerationRepository
+from app.modules.generation.schemas import GenerateRequest, UpdateCodeRequest, CommitRequest
+from app.modules.generation.service_analyzer import TechStackAnalyzer
+from app.modules.generation.service_generator import CodeGenerator
 from app.db.mongodb import get_database
 from app.core.config import settings
-from app.services import TechStackAnalyzer, CodeGenerator
 import httpx
-from pydantic import BaseModel
 from typing import Optional, Dict, Any
 
 router = APIRouter()
 
-@router.get("/")
-async def get_user_repositories(
-    current_user: UserBase = Depends(get_current_user)
-):
-    """
-    Get all repositories (public and private) for the authenticated user.
-    """
-    if not settings.MONGODB_URL:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Database not configured"
-        )
-        
+async def get_generation_repository() -> GenerationRepository:
     db = await get_database()
-    user_data = await db.users.find_one({"login": current_user.login})
-    
-    if not user_data:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="User data not found"
-        )
-        
-    github_access_token = user_data.get("github_access_token")
-    if not github_access_token:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="GitHub access token not found. Please log in again."
-        )
-        
-    async with httpx.AsyncClient(timeout=30.0) as client:
-        try:
-            response = await client.get(
-                "https://api.github.com/user/repos",
-                headers={
-                    "Authorization": f"token {github_access_token}",
-                    "Accept": "application/vnd.github.v3+json"
-                },
-                params={
-                    "per_page": 100,
-                    "sort": "updated",
-                    "direction": "desc",
-                    "affiliation": "owner,collaborator,organization_member"
-                }
-            )
-            if response.status_code != 200:
-                raise HTTPException(
-                    status_code=response.status_code,
-                    detail=f"GitHub API Error: {response.text}"
-                )
-            repos = response.json()
-            return repos
-        except httpx.RequestError as exc:
-            raise HTTPException(
-                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-                detail=f"Connection failure contacting GitHub API: {exc}"
-            )
+    return GenerationRepository(db)
 
 @router.get("/{owner}/{repo}/tech-stack")
 async def get_repository_tech_stack(
     owner: str,
     repo: str,
-    current_user: UserBase = Depends(get_current_user)
+    current_user: UserBase = Depends(get_current_user),
+    user_repo: UserRepository = Depends(get_user_repository)
 ):
     """
     Fetch languages and parse manifest files to identify components using the TechStackAnalyzer service.
@@ -82,8 +33,7 @@ async def get_repository_tech_stack(
             detail="Database not configured"
         )
         
-    db = await get_database()
-    user_data = await db.users.find_one({"login": current_user.login})
+    user_data = await user_repo.get_by_login(current_user.login)
     if not user_data:
          raise HTTPException(status_code=404, detail="User not found")
          
@@ -91,20 +41,16 @@ async def get_repository_tech_stack(
     if not github_access_token:
         raise HTTPException(status_code=400, detail="GitHub access token missing")
 
-    # Delegate to the standalone TechStackAnalyzer service
     return await TechStackAnalyzer.analyze(owner, repo, github_access_token)
-
-class GenerateRequest(BaseModel):
-    serviceId: str
-    cloud: str
-    techStack: Optional[Dict[str, Any]] = None
 
 @router.post("/{owner}/{repo}/generate")
 async def generate_deployment_code(
     owner: str,
     repo: str,
     request: GenerateRequest,
-    current_user: UserBase = Depends(get_current_user)
+    current_user: UserBase = Depends(get_current_user),
+    user_repo: UserRepository = Depends(get_user_repository),
+    generation_repo: GenerationRepository = Depends(get_generation_repository)
 ):
     """
     Generate deployment configurations using the modular CodeGenerator service.
@@ -114,10 +60,9 @@ async def generate_deployment_code(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Database not configured"
         )
-    db = await get_database()
     
     # Self-healing: Resolve github access token and dynamically fetch stack if null
-    user_data = await db.users.find_one({"login": current_user.login})
+    user_data = await user_repo.get_by_login(current_user.login)
     github_access_token = user_data.get("github_access_token") if user_data else None
     
     tech_stack = request.techStack
@@ -128,7 +73,7 @@ async def generate_deployment_code(
             except Exception:
                 pass
     
-    # Delegate to the standalone CodeGenerator service
+    # Delegate to the modular CodeGenerator service
     return await CodeGenerator.generate(
         owner=owner,
         repo=repo,
@@ -136,37 +81,29 @@ async def generate_deployment_code(
         cloud=request.cloud,
         tech_stack=tech_stack,
         current_user_login=current_user.login,
-        db=db
+        generation_repo=generation_repo
     )
 
 @router.get("/generations/history")
 async def get_user_generation_history(
-    current_user: UserBase = Depends(get_current_user)
+    current_user: UserBase = Depends(get_current_user),
+    generation_repo: GenerationRepository = Depends(get_generation_repository)
 ):
     """
     Fetch all generated configurations for the authenticated user, excluding heavy code content.
     """
-    db = await get_database()
-    cursor = db.generations.find({"user_id": current_user.login}).sort("timestamp", -1)
-    history = []
-    async for doc in cursor:
-        doc["_id"] = str(doc["_id"])
-        # Strip heavy raw code block to minimize network payload size
-        if "generated_code" in doc:
-            del doc["generated_code"]
-        history.append(doc)
-    return history
+    return await generation_repo.get_history_by_user(current_user.login)
 
 @router.get("/generations/{generation_id}")
 async def get_generation_by_id(
     generation_id: str,
-    current_user: UserBase = Depends(get_current_user)
+    current_user: UserBase = Depends(get_current_user),
+    generation_repo: GenerationRepository = Depends(get_generation_repository)
 ):
     """
     Get raw generated configurations from MongoDB Hot Tier.
     """
-    db = await get_database()
-    gen = await db.generations.find_one({"generation_id": generation_id})
+    gen = await generation_repo.get_by_id(generation_id)
     if not gen:
         raise HTTPException(status_code=404, detail="Generation not found")
         
@@ -176,7 +113,8 @@ async def get_generation_by_id(
 @router.get("/generations/{generation_id}/download")
 async def download_generation_zip(
     generation_id: str,
-    current_user: UserBase = Depends(get_current_user)
+    current_user: UserBase = Depends(get_current_user),
+    generation_repo: GenerationRepository = Depends(get_generation_repository)
 ):
     """
     Download the generated code as a zip file directly from the database configurations.
@@ -185,8 +123,7 @@ async def download_generation_zip(
     import zipfile
     from fastapi.responses import StreamingResponse
     
-    db = await get_database()
-    gen = await db.generations.find_one({"generation_id": generation_id})
+    gen = await generation_repo.get_by_id(generation_id)
     if not gen:
         raise HTTPException(status_code=404, detail="Generation not found")
         
@@ -210,40 +147,34 @@ async def download_generation_zip(
         headers=headers
     )
 
-class UpdateCodeRequest(BaseModel):
-    generated_code: Dict[str, str]
-
 @router.put("/generations/{generation_id}/update")
 async def update_generation_code(
     generation_id: str,
     request: UpdateCodeRequest,
-    current_user: UserBase = Depends(get_current_user)
+    current_user: UserBase = Depends(get_current_user),
+    generation_repo: GenerationRepository = Depends(get_generation_repository)
 ):
     """
     Update Hot Tier code and re-upload Cold Tier S3 package.
     """
-    db = await get_database()
     return await CodeGenerator.update_code(
         generation_id=generation_id,
         new_code=request.generated_code,
-        db=db
+        generation_repo=generation_repo
     )
-
-class CommitRequest(BaseModel):
-    branch: Optional[str] = None
-    commit_message: Optional[str] = None
 
 @router.post("/generations/{generation_id}/commit")
 async def commit_generation_code(
     generation_id: str,
     request: CommitRequest,
-    current_user: UserBase = Depends(get_current_user)
+    current_user: UserBase = Depends(get_current_user),
+    user_repo: UserRepository = Depends(get_user_repository),
+    generation_repo: GenerationRepository = Depends(get_generation_repository)
 ):
     """
     Directly commit generated and live-edited files to the SCM (GitHub repository) in a single atomic commit.
     """
-    db = await get_database()
-    gen = await db.generations.find_one({"generation_id": generation_id})
+    gen = await generation_repo.get_by_id(generation_id)
     if not gen:
         raise HTTPException(status_code=404, detail="Generation not found")
         
@@ -258,7 +189,7 @@ async def commit_generation_code(
     owner = parts[0]
     repo = parts[1]
     
-    user_data = await db.users.find_one({"login": current_user.login})
+    user_data = await user_repo.get_by_login(current_user.login)
     if not user_data or not user_data.get("github_access_token"):
         raise HTTPException(status_code=401, detail="GitHub access token not found. Please log in again.")
     github_access_token = user_data["github_access_token"]
@@ -327,7 +258,7 @@ async def commit_generation_code(
                         "integration lacks write access (Repository Permissions > 'Contents' must be set to 'Read & write'). "
                         "Please go to your GitHub developer settings, upgrade permissions for your App, and accept the "
                         "updated permission consent on your repository settings page."
-                    )
+                      )
                 )
             if create_res.status_code not in (200, 201):
                 raise HTTPException(status_code=400, detail=f"Failed to create new branch '{branch}': {create_res.text}")
@@ -409,10 +340,7 @@ async def commit_generation_code(
         commit_web_url = f"https://github.com/{owner}/{repo}/commit/{new_commit_sha}"
         
         # Update committed status to True in MongoDB Hot Tier
-        await db.generations.update_one(
-            {"generation_id": generation_id},
-            {"$set": {"committed": True}}
-        )
+        await generation_repo.mark_as_committed(generation_id)
         
         return {
             "status": "success",
@@ -420,4 +348,3 @@ async def commit_generation_code(
             "commit_sha": new_commit_sha,
             "commit_url": commit_web_url
         }
-

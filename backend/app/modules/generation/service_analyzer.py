@@ -5,7 +5,6 @@ import httpx
 from typing import Dict, Any, List, Optional
 
 def parse_spring_port(content: str, filename: str) -> Optional[int]:
-    import re
     if filename.endswith(".properties"):
         match = re.search(r'server\.port\s*=\s*(\d+)', content)
         if match:
