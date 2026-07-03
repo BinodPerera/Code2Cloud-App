@@ -51,7 +51,7 @@ resource "aws_route_table_association" "a1" {
 
 # --- IAM Role for EC2 ECR Read Access ---
 resource "aws_iam_role" "ec2_role" {
-  name = "${var.project_name}-ec2-role"
+  name_prefix = "${lower(var.project_name)}-ec2-role-"
 
   assume_role_policy = jsonencode({
     Version = "2012-10-17"
@@ -73,13 +73,13 @@ resource "aws_iam_role_policy_attachment" "ecr_read" {
 }
 
 resource "aws_iam_instance_profile" "ec2_profile" {
-  name = "${var.project_name}-ec2-profile"
-  role = aws_iam_role.ec2_role.name
+  name_prefix = "${lower(var.project_name)}-ec2-profile-"
+  role        = aws_iam_role.ec2_role.name
 }
 
 # --- Security Group ---
 resource "aws_security_group" "web_sg" {
-  name        = "${var.project_name}-web-sg"
+  name_prefix = "${lower(var.project_name)}-web-sg-"
   description = "Allow SSH and HTTP inbound traffic"
   vpc_id      = aws_vpc.main.id
 
