@@ -135,7 +135,6 @@ resource "aws_eip_association" "eip_assoc" {
 resource "aws_ecr_repository" "backend" {
   name                 = "${lower(var.project_name)}-backend"
   image_tag_mutability = "MUTABLE"
-  force_destroy        = true
 }
 
 resource "aws_instance" "backend" {
@@ -173,7 +172,6 @@ resource "aws_instance" "backend" {
 resource "aws_ecr_repository" "frontend" {
   name                 = "${lower(var.project_name)}-frontend"
   image_tag_mutability = "MUTABLE"
-  force_destroy        = true
 }
 
 resource "aws_instance" "frontend" {
