@@ -93,22 +93,6 @@ After the infrastructure is provisioned, you need to push your Docker images to 
    docker push <YOUR_AWS_ACCOUNT_ID>.dkr.ecr.us-east-1.amazonaws.com/Code2Cloud-App-frontend:latest
    ```
 
-#### 🐳 For Component: `root`
-1. **Authenticate Docker to ECR**:
-   ```bash
-   aws ecr get-login-password --region us-east-1 | docker login --username AWS --password-stdin <YOUR_AWS_ACCOUNT_ID>.dkr.ecr.us-east-1.amazonaws.com
-   ```
-2. **Build and Tag your Docker image**:
-   ```bash
-   # From the root of your repository or component folder
-   docker build -t Code2Cloud-App-root .
-   docker tag Code2Cloud-App-root:latest <YOUR_AWS_ACCOUNT_ID>.dkr.ecr.us-east-1.amazonaws.com/Code2Cloud-App-root:latest
-   ```
-3. **Push to ECR**:
-   ```bash
-   docker push <YOUR_AWS_ACCOUNT_ID>.dkr.ecr.us-east-1.amazonaws.com/Code2Cloud-App-root:latest
-   ```
-
 
 
 ---

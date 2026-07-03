@@ -127,8 +127,6 @@ resource "aws_eip_association" "eip_assoc" {
   
   
   
-  
-  
 }
 
 
@@ -208,44 +206,5 @@ resource "aws_instance" "frontend" {
 
   tags = {
     Name = "${var.project_name}-frontend"
-  }
-}
-
-resource "aws_ecr_repository" "root" {
-  name                 = "${lower(var.project_name)}-root"
-  image_tag_mutability = "MUTABLE"
-  force_destroy        = true
-}
-
-resource "aws_instance" "root" {
-  ami                  = "ami-0c7217cdde317cfec"
-  instance_type        = "t3.micro"
-  subnet_id            = aws_subnet.public_1.id
-  vpc_security_group_ids = [aws_security_group.web_sg.id]
-  iam_instance_profile = aws_iam_instance_profile.ec2_profile.name
-
-  user_data_replace_on_change = true
-
-  user_data = <<-EOF
-    #!/bin/bash
-    dnf update -y
-    dnf install -y docker
-    systemctl start docker
-    systemctl enable docker
-    
-    # Authenticate Docker against ECR
-    aws ecr get-login-password --region \${var.aws_region} | docker login --username AWS --password-stdin \${aws_ecr_repository.root.repository_url}
-    
-    # Run the container
-    docker run -d -p 80:3000 \
-      --name root \
-      --restart always \
-      -e PORT=3000 \
-      -e BACKEND_URL=http://localhost:3000 \
-      \${aws_ecr_repository.root.repository_url}:latest
-  EOF
-
-  tags = {
-    Name = "${var.project_name}-root"
   }
 }
