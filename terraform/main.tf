@@ -1,3 +1,6 @@
+data "aws_caller_identity" "current" {}
+data "aws_region" "current" {}
+
 # --- Networking (VPC Setup) ---
 resource "aws_vpc" "main" {
   cidr_block           = "10.0.0.0/16"
@@ -130,12 +133,7 @@ resource "aws_eip_association" "eip_assoc" {
 }
 
 
-# --- ECR Repositories & EC2 Instances ---
-
-resource "aws_ecr_repository" "backend" {
-  name                 = "${lower(var.project_name)}-backend"
-  image_tag_mutability = "MUTABLE"
-}
+# --- EC2 Instances ---
 
 resource "aws_instance" "backend" {
   ami                  = "ami-0c7217cdde317cfec"
@@ -154,24 +152,19 @@ resource "aws_instance" "backend" {
     systemctl enable docker
     
     # Authenticate Docker against ECR
-    aws ecr get-login-password --region \${var.aws_region} | docker login --username AWS --password-stdin \${aws_ecr_repository.backend.repository_url}
+    aws ecr get-login-password --region \${var.aws_region} | docker login --username AWS --password-stdin \${data.aws_caller_identity.current.account_id}.dkr.ecr.\${data.aws_region.current.name}.amazonaws.com/\${lower(var.project_name)}-backend
     
     # Run the container
     docker run -d -p 80:8000 \
       --name backend \
       --restart always \
       -e PORT=8000 \
-      \${aws_ecr_repository.backend.repository_url}:latest
+      \${data.aws_caller_identity.current.account_id}.dkr.ecr.\${data.aws_region.current.name}.amazonaws.com/\${lower(var.project_name)}-backend:latest
   EOF
 
   tags = {
     Name = "${var.project_name}-backend"
   }
-}
-
-resource "aws_ecr_repository" "frontend" {
-  name                 = "${lower(var.project_name)}-frontend"
-  image_tag_mutability = "MUTABLE"
 }
 
 resource "aws_instance" "frontend" {
@@ -191,7 +184,7 @@ resource "aws_instance" "frontend" {
     systemctl enable docker
     
     # Authenticate Docker against ECR
-    aws ecr get-login-password --region \${var.aws_region} | docker login --username AWS --password-stdin \${aws_ecr_repository.frontend.repository_url}
+    aws ecr get-login-password --region \${var.aws_region} | docker login --username AWS --password-stdin \${data.aws_caller_identity.current.account_id}.dkr.ecr.\${data.aws_region.current.name}.amazonaws.com/\${lower(var.project_name)}-frontend
     
     # Run the container
     docker run -d -p 80:3000 \
@@ -199,7 +192,7 @@ resource "aws_instance" "frontend" {
       --restart always \
       -e PORT=3000 \
       -e BACKEND_URL=http://localhost:3000 \
-      \${aws_ecr_repository.frontend.repository_url}:latest
+      \${data.aws_caller_identity.current.account_id}.dkr.ecr.\${data.aws_region.current.name}.amazonaws.com/\${lower(var.project_name)}-frontend:latest
   EOF
 
   tags = {
