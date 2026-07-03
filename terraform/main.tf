@@ -135,7 +135,7 @@ resource "aws_eip_association" "eip_assoc" {
 # --- ECR Repositories & EC2 Instances ---
 
 resource "aws_ecr_repository" "backend" {
-  name                 = "${var.project_name}-backend"
+  name                 = "${lower(var.project_name)}-backend"
   image_tag_mutability = "MUTABLE"
   force_destroy        = true
 }
@@ -173,7 +173,7 @@ resource "aws_instance" "backend" {
 }
 
 resource "aws_ecr_repository" "frontend" {
-  name                 = "${var.project_name}-frontend"
+  name                 = "${lower(var.project_name)}-frontend"
   image_tag_mutability = "MUTABLE"
   force_destroy        = true
 }
@@ -212,7 +212,7 @@ resource "aws_instance" "frontend" {
 }
 
 resource "aws_ecr_repository" "root" {
-  name                 = "${var.project_name}-root"
+  name                 = "${lower(var.project_name)}-root"
   image_tag_mutability = "MUTABLE"
   force_destroy        = true
 }

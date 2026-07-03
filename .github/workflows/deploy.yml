@@ -31,7 +31,7 @@ jobs:
       - name: Build, tag, and push image to Amazon ECR
         env:
           ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
-          ECR_REPOSITORY: Code2Cloud-App-app
+          ECR_REPOSITORY: code2cloud-app-app
           IMAGE_TAG: ${{ github.sha }}
         run: |
           # Create repository if it doesn't exist
