@@ -81,10 +81,11 @@ function Services() {
           >
             <div style={{
               width: '64px', height: '64px', borderRadius: '20px',
-              background: `linear-gradient(135deg, rgba(255,255,255,0.03), rgba(255,255,255,0.0))`,
-              border: '2px solid var(--c2c-border)',
+              background: 'var(--c2c-green)',
+              border: '2px solid transparent',
               display: 'flex', alignItems: 'center', justifyContent: 'center',
-              marginBottom: '2rem', flexShrink: 0, color: service.color
+              marginBottom: '2rem', flexShrink: 0, color: '#ffffff',
+              boxShadow: 'none'
             }}>
               <service.icon size={32} />
             </div>
@@ -98,8 +99,19 @@ function Services() {
             </p>
 
             <div style={{
-              marginTop: '2rem', display: 'flex', alignItems: 'center', gap: '0.5rem',
-              color: service.color, fontSize: '1rem', fontWeight: '600'
+              marginTop: '2rem',
+              display: 'inline-flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              gap: '0.5rem',
+              background: 'var(--c2c-green)',
+              color: '#0f141d',
+              padding: '0.65rem 2rem',
+              borderRadius: '999px',
+              fontSize: '0.95rem',
+              fontWeight: '700',
+              transition: 'all 0.2s ease',
+              width: 'fit-content'
             }}>
               Select Service →
             </div>
