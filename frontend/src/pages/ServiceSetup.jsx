@@ -37,13 +37,13 @@ function ServiceSetup() {
       title: 'Cost Analysis (FinOps) Setup',
       description: 'Select a repository to begin scanning the infrastructure weight maps.',
       buttonText: 'Proceed to FinOps Diagnosis',
-      color: '#00E5FF'
+      color: '#059669'
     },
     docker: {
       title: 'Docker Generation Setup',
       description: 'Select a repository to generate optimal container configurations.',
       buttonText: 'Proceed to Docker Generation',
-      color: '#5865F2'
+      color: '#34d399'
     },
     terraform: {
       title: 'Terraform Script Setup',
@@ -154,7 +154,7 @@ function ServiceSetup() {
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '2rem' }}>
         <button 
           onClick={() => navigate('/services')}
-          style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)', color: '#a2a2b5', padding: '0.5rem 1rem', borderRadius: '10px', cursor: 'pointer', transition: 'all 0.2s' }}
+          style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', background: 'rgba(255,255,255,0.05)', border: '2px solid var(--c2c-border)', color: '#a2a2b5', padding: '0.5rem 1rem', borderRadius: '10px', cursor: 'pointer', transition: 'all 0.2s' }}
           onMouseOver={(e) => { e.currentTarget.style.color = '#fff'; e.currentTarget.style.background = 'rgba(255,255,255,0.1)'; }}
           onMouseOut={(e) => { e.currentTarget.style.color = '#a2a2b5'; e.currentTarget.style.background = 'rgba(255,255,255,0.05)'; }}
         >
@@ -177,7 +177,7 @@ function ServiceSetup() {
             <div className="loading-spinner" style={{ width: '32px', height: '32px' }}></div>
           </div>
         ) : error ? (
-          <div style={{ background: 'rgba(255, 107, 107, 0.1)', border: '1px solid rgba(255, 107, 107, 0.2)', color: '#ff6b6b', padding: '1.2rem', borderRadius: '12px', textAlign: 'center' }}>
+          <div style={{ background: 'rgba(255, 107, 107, 0.1)', border: '2px solid rgba(255, 107, 107, 0.3)', color: '#ff6b6b', padding: '1.2rem', borderRadius: '12px', textAlign: 'center' }}>
             {error}
           </div>
         ) : (
@@ -220,11 +220,11 @@ function ServiceSetup() {
                     setIsOpen(true);
                   }}
                   style={{
-                    background: 'rgba(255, 255, 255, 0.03)',
+                    background: 'var(--c2c-surface)',
                     backdropFilter: 'blur(20px)',
-                    border: '1px solid rgba(255, 255, 255, 0.1)',
+                    border: '2px solid var(--c2c-border)',
                     borderRadius: '16px',
-                    color: '#fff',
+                    color: 'var(--c2c-text-primary)',
                     padding: '1.2rem',
                     paddingRight: '3.5rem',
                     width: '100%',
@@ -265,8 +265,8 @@ function ServiceSetup() {
                     top: 'calc(100% + 0.5rem)',
                     left: 0,
                     right: 0,
-                    background: '#0c0c12',
-                    border: '1px solid rgba(255, 255, 255, 0.1)',
+                    background: 'var(--c2c-surface)',
+                    border: '2px solid var(--c2c-border)',
                     borderRadius: '16px',
                     maxHeight: '260px',
                     zIndex: 999,
@@ -305,16 +305,16 @@ function ServiceSetup() {
                                   alignItems: 'center',
                                   justifyContent: 'space-between',
                                   color: '#fff',
-                                  background: selectedRepoId === repo.id.toString() ? 'rgba(255,255,255,0.05)' : 'transparent',
+                                  background: selectedRepoId === repo.id.toString() ? 'var(--c2c-selected-bg)' : 'transparent',
                                   transition: 'background 0.2s'
                                 }}
-                                onMouseOver={(e) => { if (selectedRepoId !== repo.id.toString()) e.currentTarget.style.background = 'rgba(255,255,255,0.03)'; }}
+                                onMouseOver={(e) => { if (selectedRepoId !== repo.id.toString()) e.currentTarget.style.background = 'rgba(16, 185, 129, 0.05)'; }}
                                 onMouseOut={(e) => { if (selectedRepoId !== repo.id.toString()) e.currentTarget.style.background = 'transparent'; }}
                               >
                                 <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
                                   <span style={{ fontSize: '0.95rem' }}>{repo.full_name}</span>
                                   {isCollaborator && (
-                                    <span style={{ fontSize: '0.65rem', background: 'rgba(0,229,255,0.1)', color: '#00E5FF', padding: '0.1rem 0.35rem', borderRadius: '4px', border: '1px solid rgba(0,229,255,0.2)', fontWeight: '600' }}>Collaborated</span>
+                                    <span style={{ fontSize: '0.65rem', background: 'rgba(16, 185, 129, 0.1)', color: 'var(--c2c-green)', padding: '0.1rem 0.35rem', borderRadius: '4px', border: '2px solid rgba(16, 185, 129, 0.3)', fontWeight: '600' }}>Collaborated</span>
                                   )}
                                 </div>
                                 {repo.private ? <span style={{ color: '#ff6b6b' }}>🔒</span> : <span style={{ color: '#10B981' }}>🌐</span>}
@@ -334,7 +334,7 @@ function ServiceSetup() {
                   href="https://github.com/apps/code2cloud-dev/installations/new" 
                   target="_blank" 
                   rel="noopener noreferrer" 
-                  style={{ fontSize: '0.8rem', color: '#00E5FF', textDecoration: 'underline', cursor: 'pointer' }}
+                  style={{ fontSize: '0.8rem', color: 'var(--c2c-green)', textDecoration: 'underline', cursor: 'pointer' }}
                 >
                   Missing organization/shared repos? Grant access
                 </a>
@@ -342,7 +342,7 @@ function ServiceSetup() {
             </div>
 
             {selectedRepo && (
-              <div style={{ background: 'rgba(255, 255, 255, 0.02)', border: '1px solid rgba(255, 255, 255, 0.08)', borderRadius: '24px', padding: '2rem', display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
+              <div style={{ background: 'rgba(255, 255, 255, 0.02)', border: '2px solid var(--c2c-border)', borderRadius: '24px', padding: '2rem', display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', color: currentConfig.color }}>
                     <BookMarked size={24} />
@@ -350,7 +350,7 @@ function ServiceSetup() {
                   </div>
                 </div>
 
-                <div style={{ borderTop: '1px solid rgba(255,255,255,0.05)', paddingTop: '1.5rem' }}>
+                <div style={{ borderTop: '2px solid var(--c2c-border)', paddingTop: '1.5rem' }}>
                   <h4 style={{ color: '#fff', fontSize: '1.1rem', marginBottom: '0.75rem' }}>Tech Stack Analytics</h4>
                   
                   {loadingStack ? (
@@ -379,7 +379,7 @@ function ServiceSetup() {
                         <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
                           {techStack.components && techStack.components.length > 0 ? (
                             techStack.components.map((comp, i) => (
-                              <div key={i} style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.05)', borderRadius: '14px', padding: '1.2rem' }}>
+                              <div key={i} style={{ background: 'rgba(255,255,255,0.02)', border: '2px solid var(--c2c-border)', borderRadius: '14px', padding: '1.2rem' }}>
                                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.75rem' }}>
                                   <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
                                     <span style={{ color: currentConfig.color, fontWeight: '600' }}>{comp.name}</span>
@@ -404,7 +404,7 @@ function ServiceSetup() {
 
                 {/* Cloud Platform Selection */}
                 {serviceId !== 'docker' && (
-                  <div style={{ borderTop: '1px solid rgba(255,255,255,0.05)', paddingTop: '1.5rem', display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+                  <div style={{ borderTop: '2px solid var(--c2c-border)', paddingTop: '1.5rem', display: 'flex', flexDirection: 'column', gap: '1rem' }}>
                     <label style={{ color: '#fff', fontSize: '1.1rem', fontWeight: '600' }}>Where are you deploying this application?</label>
                     <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '1rem' }}>
                       {[{ id: 'AWS', name: 'AWS' }, { id: 'Azure', name: 'Azure' }, { id: 'GCP', name: 'Google Cloud' }].map((cloud) => (
@@ -412,8 +412,8 @@ function ServiceSetup() {
                           key={cloud.id}
                           onClick={() => setSelectedCloud(cloud.id)}
                           style={{
-                            background: selectedCloud === cloud.id ? 'rgba(0, 229, 255, 0.05)' : 'rgba(255, 255, 255, 0.02)',
-                            border: selectedCloud === cloud.id ? `2px solid ${currentConfig.color}` : '1px solid rgba(255, 255, 255, 0.08)',
+                              background: selectedCloud === cloud.id ? 'var(--c2c-selected-bg)' : 'rgba(255, 255, 255, 0.02)',
+                              border: selectedCloud === cloud.id ? `2px solid ${currentConfig.color}` : '2px solid var(--c2c-border)',
                             borderRadius: '16px', padding: '1.5rem 1rem', textAlign: 'center', cursor: 'pointer', transition: 'all 0.2s'
                           }}
                         >
@@ -426,7 +426,7 @@ function ServiceSetup() {
 
                  {/* AWS Compute & Network Configurations */}
                  {selectedCloud === 'AWS' && serviceId === 'terraform' && (
-                   <div style={{ borderTop: '1px solid rgba(255,255,255,0.05)', paddingTop: '1.5rem', display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
+                   <div style={{ borderTop: '2px solid var(--c2c-border)', paddingTop: '1.5rem', display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
                      <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
                        <label style={{ color: '#fff', fontSize: '1.1rem', fontWeight: '600' }}>AWS Compute Choice</label>
                        <span style={{ color: '#a2a2b5', fontSize: '0.8rem' }}>Choose between standard virtual machines or container orchestration.</span>
@@ -443,8 +443,8 @@ function ServiceSetup() {
                              setAwsInstanceType(target.id === 'fargate' ? '0.25 vCPU / 512 MB' : 't3.micro');
                            }}
                            style={{
-                             background: awsComputeChoice === target.id ? 'rgba(0, 229, 255, 0.05)' : 'rgba(255, 255, 255, 0.02)',
-                             border: awsComputeChoice === target.id ? `2px solid ${currentConfig.color}` : '1px solid rgba(255, 255, 255, 0.08)',
+                              background: awsComputeChoice === target.id ? 'var(--c2c-selected-bg)' : 'rgba(255, 255, 255, 0.02)',
+                              border: awsComputeChoice === target.id ? `2px solid ${currentConfig.color}` : '2px solid var(--c2c-border)',
                              borderRadius: '16px', padding: '1.25rem 1rem', cursor: 'pointer', transition: 'all 0.2s', textAlign: 'left'
                            }}
                          >
@@ -460,7 +460,7 @@ function ServiceSetup() {
                          <select
                            value={awsInstanceType}
                            onChange={(e) => setAwsInstanceType(e.target.value)}
-                           style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '12px', color: '#fff', padding: '0.75rem', fontSize: '0.85rem', outline: 'none', cursor: 'pointer' }}
+                           style={{ background: 'rgba(255,255,255,0.02)', border: '2px solid var(--c2c-border)', borderRadius: '12px', color: '#fff', padding: '0.75rem', fontSize: '0.85rem', outline: 'none', cursor: 'pointer' }}
                          >
                            {awsComputeChoice === 'fargate' ? (
                              <>
@@ -498,7 +498,7 @@ function ServiceSetup() {
 
                  {/* GCP Compute & Network Configurations */}
                  {selectedCloud === 'GCP' && serviceId === 'terraform' && (
-                   <div style={{ borderTop: '1px solid rgba(255,255,255,0.05)', paddingTop: '1.5rem', display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
+                   <div style={{ borderTop: '2px solid var(--c2c-border)', paddingTop: '1.5rem', display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
                      <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
                        <label style={{ color: '#fff', fontSize: '1.1rem', fontWeight: '600' }}>Google Cloud Compute Choice</label>
                        <span style={{ color: '#a2a2b5', fontSize: '0.8rem' }}>Choose serverless Cloud Run scaling or dedicated Compute Engine VMs.</span>
@@ -515,8 +515,8 @@ function ServiceSetup() {
                              setGcpMachineType(target.id === 'cloudrun' ? '1 vCPU / 512 MB' : 'e2-micro');
                            }}
                            style={{
-                             background: gcpComputeChoice === target.id ? 'rgba(0, 229, 255, 0.05)' : 'rgba(255, 255, 255, 0.02)',
-                             border: gcpComputeChoice === target.id ? `2px solid ${currentConfig.color}` : '1px solid rgba(255, 255, 255, 0.08)',
+                              background: gcpComputeChoice === target.id ? 'var(--c2c-selected-bg)' : 'rgba(255, 255, 255, 0.02)',
+                              border: gcpComputeChoice === target.id ? `2px solid ${currentConfig.color}` : '2px solid var(--c2c-border)',
                              borderRadius: '16px', padding: '1.25rem 1rem', cursor: 'pointer', transition: 'all 0.2s', textAlign: 'left'
                            }}
                          >
@@ -532,7 +532,7 @@ function ServiceSetup() {
                          <select
                            value={gcpMachineType}
                            onChange={(e) => setGcpMachineType(e.target.value)}
-                           style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '12px', color: '#fff', padding: '0.75rem', fontSize: '0.85rem', outline: 'none', cursor: 'pointer' }}
+                           style={{ background: 'rgba(255,255,255,0.02)', border: '2px solid var(--c2c-border)', borderRadius: '12px', color: '#fff', padding: '0.75rem', fontSize: '0.85rem', outline: 'none', cursor: 'pointer' }}
                          >
                            {gcpComputeChoice === 'cloudrun' ? (
                              <>

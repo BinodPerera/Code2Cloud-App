@@ -136,7 +136,7 @@ function SettingsPage() {
       {/* Page Header */}
       <div>
         <h2 style={{ fontSize: '2rem', fontWeight: '700', color: '#fff', margin: 0, display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
-          <Settings size={32} style={{ color: '#00E5FF' }} />
+          <Settings size={32} style={{ color: 'var(--c2c-green)' }} />
           Account Settings
         </h2>
         <p style={{ color: '#a2a2b5', fontSize: '0.95rem', margin: '0.25rem 0 0 0' }}>
@@ -148,8 +148,8 @@ function SettingsPage() {
         
         {/* 1. SCM Integration Profile Card */}
         <div style={{
-          background: 'linear-gradient(135deg, rgba(255,255,255,0.03) 0%, rgba(255,255,255,0.01) 100%)',
-          border: '1px solid rgba(255, 255, 255, 0.08)',
+          background: 'var(--c2c-surface)',
+          border: '2px solid var(--c2c-border)',
           borderRadius: '24px',
           padding: '2rem',
           display: 'flex',
@@ -159,7 +159,7 @@ function SettingsPage() {
         }}>
           <div>
             <h3 style={{ fontSize: '1.25rem', fontWeight: '600', color: '#fff', margin: 0, display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-              <Github size={20} style={{ color: '#00E5FF' }} />
+              <Github size={20} style={{ color: 'var(--c2c-green)' }} />
               SCM Integration
             </h3>
             <p style={{ color: '#a2a2b5', fontSize: '0.85rem', margin: '0.25rem 0 0 0' }}>
@@ -167,16 +167,16 @@ function SettingsPage() {
             </p>
           </div>
 
-          <div style={{ display: 'flex', alignItems: 'center', gap: '1.5rem', padding: '1.25rem', background: 'rgba(0,0,0,0.15)', borderRadius: '16px', border: '1px solid rgba(255,255,255,0.03)' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '1.5rem', padding: '1.25rem', background: 'var(--c2c-nav-bg)', borderRadius: '16px', border: '2px solid var(--c2c-border)' }}>
             <img
               src={user?.avatar_url}
               alt={user?.login}
-              style={{ width: '64px', height: '64px', borderRadius: '50%', border: '2px solid rgba(0, 229, 255, 0.3)' }}
+              style={{ width: '64px', height: '64px', borderRadius: '50%', border: '2px solid var(--c2c-green)' }}
             />
             <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
                 <span style={{ fontSize: '1.15rem', fontWeight: '600', color: '#fff' }}>{user?.name || user?.login}</span>
-                <span style={{ display: 'inline-flex', alignItems: 'center', gap: '0.25rem', background: 'rgba(16, 185, 129, 0.1)', color: '#10B981', padding: '0.2rem 0.5rem', borderRadius: '20px', fontSize: '0.75rem', fontWeight: '700', border: '1px solid rgba(16, 185, 129, 0.2)' }}>
+                <span style={{ display: 'inline-flex', alignItems: 'center', gap: '0.25rem', background: 'rgba(16, 185, 129, 0.1)', color: '#10B981', padding: '0.2rem 0.5rem', borderRadius: '20px', fontSize: '0.75rem', fontWeight: '700', border: '2px solid rgba(16, 185, 129, 0.3)' }}>
                   <ShieldCheck size={12} fill="currentColor" style={{ color: '#040407' }} />
                   Connected
                 </span>
@@ -190,7 +190,7 @@ function SettingsPage() {
         {/* 1.5 SCM Organization & Collaboration Access Card */}
         <div style={{
           background: 'linear-gradient(135deg, rgba(255,255,255,0.03) 0%, rgba(255,255,255,0.01) 100%)',
-          border: '1px solid rgba(255, 255, 255, 0.08)',
+          border: '2px solid var(--c2c-border)',
           borderRadius: '24px',
           padding: '2rem',
           display: 'flex',
@@ -208,22 +208,22 @@ function SettingsPage() {
             </p>
           </div>
 
-          <div style={{ background: 'rgba(0,0,0,0.15)', border: '1px solid rgba(255,255,255,0.03)', borderRadius: '16px', padding: '1.25rem', display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+          <div style={{ background: 'rgba(0,0,0,0.15)', border: '2px solid var(--c2c-border)', borderRadius: '16px', padding: '1.25rem', display: 'flex', flexDirection: 'column', gap: '1rem' }}>
             <p style={{ margin: 0, color: '#e2e2e9', fontSize: '0.9rem', lineHeight: '1.5' }}>
               Because Code2Cloud uses a **GitHub App integration** (`code2cloud-dev`), repositories belonging to organizations or other users are only visible if the **GitHub App is explicitly installed** on that namespace or repository.
             </p>
             <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', fontSize: '0.85rem', color: '#a2a2b5' }}>
               <span style={{ color: '#fff', fontWeight: '600' }}>💡 Missing repositories? Follow these steps:</span>
               <div style={{ display: 'flex', gap: '0.5rem' }}>
-                <span style={{ color: '#00E5FF' }}>1.</span>
+                <span style={{ color: 'var(--c2c-green)' }}>1.</span>
                 <span>Click the button below to visit the official GitHub App installation page.</span>
               </div>
               <div style={{ display: 'flex', gap: '0.5rem' }}>
-                <span style={{ color: '#00E5FF' }}>2.</span>
+                <span style={{ color: 'var(--c2c-green)' }}>2.</span>
                 <span>Select the specific organization or user namespace that owns the collaborated repositories.</span>
               </div>
               <div style={{ display: 'flex', gap: '0.5rem' }}>
-                <span style={{ color: '#00E5FF' }}>3.</span>
+                <span style={{ color: 'var(--c2c-green)' }}>3.</span>
                 <span>Choose <strong>"All repositories"</strong> or explicitly add the collaborated repositories, and click **Install / Authorize**.</span>
               </div>
             </div>
@@ -236,7 +236,7 @@ function SettingsPage() {
                 alignItems: 'center',
                 justifyContent: 'center',
                 gap: '0.5rem',
-                background: 'linear-gradient(135deg, #00E5FF, #5865F2)',
+                background: 'linear-gradient(135deg, var(--c2c-green), var(--c2c-green-hover))',
                 border: 'none',
                 color: '#05050a',
                 padding: '0.75rem 1.5rem',
@@ -256,8 +256,8 @@ function SettingsPage() {
 
         {/* 2. Developer API Token Settings Card */}
         <div style={{
-          background: 'linear-gradient(135deg, rgba(255,255,255,0.03) 0%, rgba(255,255,255,0.01) 100%)',
-          border: '1px solid rgba(255, 255, 255, 0.08)',
+          background: 'var(--c2c-surface)',
+          border: '2px solid var(--c2c-border)',
           borderRadius: '24px',
           padding: '2rem',
           display: 'flex',
@@ -267,7 +267,7 @@ function SettingsPage() {
         }}>
           <div>
             <h3 style={{ fontSize: '1.25rem', fontWeight: '600', color: '#fff', margin: 0, display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-              <Key size={20} style={{ color: '#00E5FF' }} />
+              <Key size={20} style={{ color: 'var(--c2c-green)' }} />
               Developer API Access Token
             </h3>
             <p style={{ color: '#a2a2b5', fontSize: '0.85rem', margin: '0.25rem 0 0 0' }}>
@@ -278,8 +278,8 @@ function SettingsPage() {
           {/* Masked Token Panel */}
           <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
             <div style={{
-              background: 'rgba(0,0,0,0.3)',
-              border: '1px solid rgba(255,255,255,0.05)',
+              background: 'var(--c2c-nav-bg)',
+              border: '2px solid var(--c2c-border)',
               borderRadius: '16px',
               padding: '1rem 1.25rem',
               fontFamily: 'monospace',
@@ -300,8 +300,8 @@ function SettingsPage() {
                   display: 'flex',
                   alignItems: 'center',
                   gap: '0.5rem',
-                  background: copied ? 'rgba(16, 185, 129, 0.15)' : 'linear-gradient(135deg, #00E5FF, #5865F2)',
-                  border: copied ? '1px solid #10B981' : 'none',
+                  background: copied ? 'rgba(16, 185, 129, 0.15)' : 'linear-gradient(135deg, var(--c2c-green), var(--c2c-green-hover))',
+                  border: copied ? '2px solid #10B981' : '2px solid transparent',
                   color: copied ? '#10B981' : '#05050a',
                   padding: '0.75rem 1.5rem',
                   borderRadius: '12px',
@@ -326,8 +326,8 @@ function SettingsPage() {
 
         {/* 3. Cloud & Container Registry Credentials Manager Card */}
         <div style={{
-          background: 'linear-gradient(135deg, rgba(255,255,255,0.03) 0%, rgba(255,255,255,0.01) 100%)',
-          border: '1px solid rgba(255, 255, 255, 0.08)',
+          background: 'var(--c2c-surface)',
+          border: '2px solid var(--c2c-border)',
           borderRadius: '24px',
           padding: '2rem',
           display: 'flex',
@@ -337,7 +337,7 @@ function SettingsPage() {
         }}>
           <div>
             <h3 style={{ fontSize: '1.25rem', fontWeight: '600', color: '#fff', margin: 0, display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-              <Database size={20} style={{ color: '#00E5FF' }} />
+              <Database size={20} style={{ color: 'var(--c2c-green)' }} />
               Cloud & Container Registry Credentials
             </h3>
             <p style={{ color: '#a2a2b5', fontSize: '0.85rem', margin: '0.25rem 0 0 0' }}>
@@ -351,13 +351,13 @@ function SettingsPage() {
             {loadingCreds ? (
               <div style={{ color: '#6e7191', fontSize: '0.9rem', padding: '0.5rem 0' }}>Loading saved credentials...</div>
             ) : credentials.length === 0 ? (
-              <div style={{ color: '#6e7191', fontSize: '0.9rem', padding: '1rem', background: 'rgba(255,255,255,0.02)', borderRadius: '12px', border: '1px dashed rgba(255,255,255,0.05)', textAlign: 'center' }}>
+              <div style={{ color: '#6e7191', fontSize: '0.9rem', padding: '1rem', background: 'rgba(255,255,255,0.02)', borderRadius: '12px', border: '2px dashed var(--c2c-border)', textAlign: 'center' }}>
                 No saved credentials. Add one using the form below.
               </div>
             ) : (
               <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
                 {credentials.map((cred) => {
-                  let providerColor = '#FF9900'; // AWS orange
+                  let providerColor = '#10B981'; // AWS green
                   if (cred.provider === 'gcp') providerColor = '#4285F4'; // GCP blue
                   if (cred.provider === 'dockerhub') providerColor = '#2496ED'; // DockerHub blue
 
@@ -369,9 +369,9 @@ function SettingsPage() {
                         alignItems: 'center', 
                         justifyContent: 'space-between', 
                         padding: '1rem 1.25rem', 
-                        background: 'rgba(0,0,0,0.2)', 
+                        background: 'var(--c2c-nav-bg)', 
                         borderRadius: '16px', 
-                        border: '1px solid rgba(255,255,255,0.04)' 
+                        border: '2px solid var(--c2c-border)' 
                       }}
                     >
                       <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
@@ -379,7 +379,7 @@ function SettingsPage() {
                           fontSize: '0.75rem', 
                           fontWeight: '700', 
                           color: providerColor, 
-                          background: `rgba(${cred.provider === 'aws' ? '255,153,0' : cred.provider === 'gcp' ? '66,133,244' : '36,150,237'}, 0.1)`, 
+                          background: `rgba(${cred.provider === 'aws' ? '16,185,129' : cred.provider === 'gcp' ? '66,133,244' : '36,150,237'}, 0.1)`, 
                           padding: '0.25rem 0.6rem', 
                           borderRadius: '8px',
                           textTransform: 'uppercase'
@@ -422,7 +422,7 @@ function SettingsPage() {
             )}
           </div>
 
-          <hr style={{ border: 'none', borderTop: '1px solid rgba(255,255,255,0.06)', margin: '0.5rem 0' }} />
+          <hr style={{ border: 'none', borderTop: '2px solid var(--c2c-border)', margin: '0.5rem 0' }} />
 
           {/* Add New Credential Form */}
           <div>
@@ -432,7 +432,7 @@ function SettingsPage() {
             
             <form onSubmit={handleCreateCredential} style={{ display: 'flex', flexDirection: 'column', gap: '1.2rem' }}>
               {credError && (
-                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', background: 'rgba(255, 107, 107, 0.1)', border: '1px solid rgba(255, 107, 107, 0.2)', color: '#ff6b6b', padding: '1rem', borderRadius: '12px', fontSize: '0.85rem' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', background: 'rgba(255, 107, 107, 0.1)', border: '2px solid rgba(255, 107, 107, 0.3)', color: '#ff6b6b', padding: '1rem', borderRadius: '12px', fontSize: '0.85rem' }}>
                   <AlertTriangle size={16} />
                   <span>{credError}</span>
                 </div>
@@ -447,7 +447,7 @@ function SettingsPage() {
                     value={credName}
                     onChange={(e) => setCredName(e.target.value)}
                     placeholder="e.g. Personal AWS Account"
-                    style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '12px', color: '#fff', padding: '0.8rem 1rem', outline: 'none' }}
+                    style={{ background: 'rgba(255,255,255,0.02)', border: '2px solid var(--c2c-border)', borderRadius: '12px', color: '#fff', padding: '0.8rem 1rem', outline: 'none' }}
                   />
                 </div>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
@@ -455,7 +455,7 @@ function SettingsPage() {
                   <select
                     value={credProvider}
                     onChange={(e) => setCredProvider(e.target.value)}
-                    style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '12px', color: '#fff', padding: '0.8rem 1rem', outline: 'none', cursor: 'pointer' }}
+                    style={{ background: 'rgba(255,255,255,0.02)', border: '2px solid var(--c2c-border)', borderRadius: '12px', color: '#fff', padding: '0.8rem 1rem', outline: 'none', cursor: 'pointer' }}
                   >
                     <option value="aws" style={{ background: '#0f0f15', color: '#fff' }}>Amazon Web Services (AWS)</option>
                     <option value="gcp" style={{ background: '#0f0f15', color: '#fff' }}>Google Cloud Platform (GCP)</option>
@@ -476,7 +476,7 @@ function SettingsPage() {
                         value={awsKeyId}
                         onChange={(e) => setAwsKeyId(e.target.value)}
                         placeholder="AKIA..."
-                        style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '12px', color: '#fff', padding: '0.8rem 1rem', outline: 'none' }}
+                        style={{ background: 'rgba(255,255,255,0.02)', border: '2px solid var(--c2c-border)', borderRadius: '12px', color: '#fff', padding: '0.8rem 1rem', outline: 'none' }}
                       />
                     </div>
                     <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
@@ -487,7 +487,7 @@ function SettingsPage() {
                         value={awsRegion}
                         onChange={(e) => setAwsRegion(e.target.value)}
                         placeholder="us-east-1"
-                        style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '12px', color: '#fff', padding: '0.8rem 1rem', outline: 'none' }}
+                        style={{ background: 'rgba(255,255,255,0.02)', border: '2px solid var(--c2c-border)', borderRadius: '12px', color: '#fff', padding: '0.8rem 1rem', outline: 'none' }}
                       />
                     </div>
                   </div>
@@ -499,7 +499,7 @@ function SettingsPage() {
                       value={awsSecretKey}
                       onChange={(e) => setAwsSecretKey(e.target.value)}
                       placeholder="wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY"
-                      style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '12px', color: '#fff', padding: '0.8rem 1rem', outline: 'none' }}
+                      style={{ background: 'rgba(255,255,255,0.02)', border: '2px solid var(--c2c-border)', borderRadius: '12px', color: '#fff', padding: '0.8rem 1rem', outline: 'none' }}
                     />
                   </div>
                 </div>
@@ -514,7 +514,7 @@ function SettingsPage() {
                       value={gcpProjectId}
                       onChange={(e) => setGcpProjectId(e.target.value)}
                       placeholder="Will auto-extract from JSON Key if left blank"
-                      style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '12px', color: '#fff', padding: '0.8rem 1rem', outline: 'none' }}
+                      style={{ background: 'rgba(255,255,255,0.02)', border: '2px solid var(--c2c-border)', borderRadius: '12px', color: '#fff', padding: '0.8rem 1rem', outline: 'none' }}
                     />
                   </div>
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
@@ -525,7 +525,7 @@ function SettingsPage() {
                       value={gcpKey}
                       onChange={(e) => setGcpKey(e.target.value)}
                       placeholder='{ "type": "service_account", "project_id": "...", ... }'
-                      style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '12px', color: '#fff', padding: '0.8rem 1rem', outline: 'none', fontFamily: 'monospace', resize: 'vertical' }}
+                      style={{ background: 'rgba(255,255,255,0.02)', border: '2px solid var(--c2c-border)', borderRadius: '12px', color: '#fff', padding: '0.8rem 1rem', outline: 'none', fontFamily: 'monospace', resize: 'vertical' }}
                     />
                   </div>
                 </div>
@@ -541,7 +541,7 @@ function SettingsPage() {
                       value={dockerUser}
                       onChange={(e) => setDockerUser(e.target.value)}
                       placeholder="docker_username"
-                      style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '12px', color: '#fff', padding: '0.8rem 1rem', outline: 'none' }}
+                      style={{ background: 'rgba(255,255,255,0.02)', border: '2px solid var(--c2c-border)', borderRadius: '12px', color: '#fff', padding: '0.8rem 1rem', outline: 'none' }}
                     />
                   </div>
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
@@ -552,7 +552,7 @@ function SettingsPage() {
                       value={dockerPass}
                       onChange={(e) => setDockerPass(e.target.value)}
                       placeholder="dckr_pat_..."
-                      style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '12px', color: '#fff', padding: '0.8rem 1rem', outline: 'none' }}
+                      style={{ background: 'rgba(255,255,255,0.02)', border: '2px solid var(--c2c-border)', borderRadius: '12px', color: '#fff', padding: '0.8rem 1rem', outline: 'none' }}
                     />
                   </div>
                 </div>
@@ -566,7 +566,7 @@ function SettingsPage() {
                   alignItems: 'center',
                   justifyContent: 'center',
                   gap: '0.5rem',
-                  background: submittingCred ? 'rgba(255,255,255,0.05)' : 'linear-gradient(135deg, #00E5FF, #5865F2)',
+                  background: submittingCred ? 'rgba(255,255,255,0.05)' : 'linear-gradient(135deg, var(--c2c-green), var(--c2c-green-hover))',
                   border: 'none',
                   color: submittingCred ? '#a2a2b5' : '#05050a',
                   padding: '0.8rem 1.5rem',
