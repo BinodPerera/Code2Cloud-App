@@ -14,3 +14,7 @@
 4. When we showing logs to user some phases completeness is missing. So, we need to detect way for accurately show each phases completeness.
 - Solution: Hope to create backend endpoint and call them in each phase when executing the terraform code.
 - Status: Pending
+
+5. In monorepoes, if we choose instance type or resouces, that selected instance can we enough or waste. 
+- Solution: we need to allow user to select instances each services(eg: frontend t3.micro, backend t3.small, redis t3.small).
+- Status: Pending
