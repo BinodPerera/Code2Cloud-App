@@ -21,6 +21,16 @@ function ServiceSetup() {
   const [isOpen, setIsOpen] = useState(false);
   const [generating, setGenerating] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
+  
+  // AWS target compute config states
+  const [awsComputeChoice, setAwsComputeChoice] = useState('fargate');
+  const [awsInstanceType, setAwsInstanceType] = useState('t3.micro');
+  const [awsUseEip, setAwsUseEip] = useState(false);
+  
+  // GCP target compute config states
+  const [gcpComputeChoice, setGcpComputeChoice] = useState('cloudrun');
+  const [gcpMachineType, setGcpMachineType] = useState('e2-micro');
+  const [gcpUseStaticIp, setGcpUseStaticIp] = useState(false);
 
   const serviceConfigs = {
     finops: {
@@ -117,7 +127,13 @@ function ServiceSetup() {
       const res = await apiClient.post(`/repos/${owner}/${repoName}/generate`, {
         serviceId,
         cloud: serviceId === 'docker' ? 'None' : selectedCloud,
-        techStack
+        techStack,
+        awsComputeChoice,
+        awsInstanceType,
+        awsUseEip,
+        gcpComputeChoice,
+        gcpMachineType,
+        gcpUseStaticIp
       });
       if (!res.ok) {
         throw new Error("Failed to generate deployment scripts");
@@ -406,7 +422,151 @@ function ServiceSetup() {
                       ))}
                     </div>
                   </div>
-                )}
+                 )}
+
+                 {/* AWS Compute & Network Configurations */}
+                 {selectedCloud === 'AWS' && serviceId === 'terraform' && (
+                   <div style={{ borderTop: '1px solid rgba(255,255,255,0.05)', paddingTop: '1.5rem', display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
+                     <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
+                       <label style={{ color: '#fff', fontSize: '1.1rem', fontWeight: '600' }}>AWS Compute Choice</label>
+                       <span style={{ color: '#a2a2b5', fontSize: '0.8rem' }}>Choose between standard virtual machines or container orchestration.</span>
+                     </div>
+                     <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
+                       {[
+                         { id: 'fargate', name: 'ECS Fargate (Container)', desc: 'Deploy serverless docker container stacks.' },
+                         { id: 'ec2', name: 'EC2 Instance (VM)', desc: 'Deploy app on a single AWS virtual server instance.' }
+                       ].map((target) => (
+                         <div
+                           key={target.id}
+                           onClick={() => {
+                             setAwsComputeChoice(target.id);
+                             setAwsInstanceType(target.id === 'fargate' ? '0.25 vCPU / 512 MB' : 't3.micro');
+                           }}
+                           style={{
+                             background: awsComputeChoice === target.id ? 'rgba(0, 229, 255, 0.05)' : 'rgba(255, 255, 255, 0.02)',
+                             border: awsComputeChoice === target.id ? `2px solid ${currentConfig.color}` : '1px solid rgba(255, 255, 255, 0.08)',
+                             borderRadius: '16px', padding: '1.25rem 1rem', cursor: 'pointer', transition: 'all 0.2s', textAlign: 'left'
+                           }}
+                         >
+                           <div style={{ color: awsComputeChoice === target.id ? currentConfig.color : '#fff', fontWeight: '600', marginBottom: '0.25rem', fontSize: '0.9rem' }}>{target.name}</div>
+                           <div style={{ color: '#a2a2b5', fontSize: '0.75rem', lineHeight: '1.3' }}>{target.desc}</div>
+                         </div>
+                       ))}
+                     </div>
+
+                     <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem', alignItems: 'center' }}>
+                       <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
+                         <label style={{ color: '#fff', fontSize: '0.95rem', fontWeight: '600' }}>Resource Size / Sizing</label>
+                         <select
+                           value={awsInstanceType}
+                           onChange={(e) => setAwsInstanceType(e.target.value)}
+                           style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '12px', color: '#fff', padding: '0.75rem', fontSize: '0.85rem', outline: 'none', cursor: 'pointer' }}
+                         >
+                           {awsComputeChoice === 'fargate' ? (
+                             <>
+                               <option value="0.25 vCPU / 512 MB" style={{ background: '#0f0f15' }}>0.25 vCPU / 512 MB (Default)</option>
+                               <option value="0.5 vCPU / 1 GB" style={{ background: '#0f0f15' }}>0.5 vCPU / 1 GB</option>
+                               <option value="1.0 vCPU / 2 GB" style={{ background: '#0f0f15' }}>1.0 vCPU / 2 GB</option>
+                             </>
+                           ) : (
+                             <>
+                               <option value="t3.micro" style={{ background: '#0f0f15' }}>t3.micro (1 vCPU / 1 GB - Free Tier)</option>
+                               <option value="t3.small" style={{ background: '#0f0f15' }}>t3.small (2 vCPU / 2 GB)</option>
+                               <option value="t3.medium" style={{ background: '#0f0f15' }}>t3.medium (2 vCPU / 4 GB)</option>
+                             </>
+                           )}
+                         </select>
+                       </div>
+
+                       {awsComputeChoice === 'ec2' && (
+                         <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginTop: '1.25rem' }}>
+                           <input
+                             type="checkbox"
+                             id="awsUseEip"
+                             checked={awsUseEip}
+                             onChange={(e) => setAwsUseEip(e.target.checked)}
+                             style={{ width: '16px', height: '16px', cursor: 'pointer', accentColor: currentConfig.color }}
+                           />
+                           <label htmlFor="awsUseEip" style={{ color: '#fff', fontSize: '0.85rem', cursor: 'pointer', userSelect: 'none' }}>
+                             Allocate Elastic IP (Static Public IP)
+                           </label>
+                         </div>
+                       )}
+                     </div>
+                   </div>
+                 )}
+
+                 {/* GCP Compute & Network Configurations */}
+                 {selectedCloud === 'GCP' && serviceId === 'terraform' && (
+                   <div style={{ borderTop: '1px solid rgba(255,255,255,0.05)', paddingTop: '1.5rem', display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
+                     <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
+                       <label style={{ color: '#fff', fontSize: '1.1rem', fontWeight: '600' }}>Google Cloud Compute Choice</label>
+                       <span style={{ color: '#a2a2b5', fontSize: '0.8rem' }}>Choose serverless Cloud Run scaling or dedicated Compute Engine VMs.</span>
+                     </div>
+                     <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
+                       {[
+                         { id: 'cloudrun', name: 'Cloud Run (Serverless)', desc: 'Run serverless containers scale-to-zero.' },
+                         { id: 'gce', name: 'Compute Engine (VM)', desc: 'Run containers on GCE virtual machine hosts.' }
+                       ].map((target) => (
+                         <div
+                           key={target.id}
+                           onClick={() => {
+                             setGcpComputeChoice(target.id);
+                             setGcpMachineType(target.id === 'cloudrun' ? '1 vCPU / 512 MB' : 'e2-micro');
+                           }}
+                           style={{
+                             background: gcpComputeChoice === target.id ? 'rgba(0, 229, 255, 0.05)' : 'rgba(255, 255, 255, 0.02)',
+                             border: gcpComputeChoice === target.id ? `2px solid ${currentConfig.color}` : '1px solid rgba(255, 255, 255, 0.08)',
+                             borderRadius: '16px', padding: '1.25rem 1rem', cursor: 'pointer', transition: 'all 0.2s', textAlign: 'left'
+                           }}
+                         >
+                           <div style={{ color: gcpComputeChoice === target.id ? currentConfig.color : '#fff', fontWeight: '600', marginBottom: '0.25rem', fontSize: '0.9rem' }}>{target.name}</div>
+                           <div style={{ color: '#a2a2b5', fontSize: '0.75rem', lineHeight: '1.3' }}>{target.desc}</div>
+                         </div>
+                       ))}
+                     </div>
+
+                     <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem', alignItems: 'center' }}>
+                       <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
+                         <label style={{ color: '#fff', fontSize: '0.95rem', fontWeight: '600' }}>Resource Size / Sizing</label>
+                         <select
+                           value={gcpMachineType}
+                           onChange={(e) => setGcpMachineType(e.target.value)}
+                           style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '12px', color: '#fff', padding: '0.75rem', fontSize: '0.85rem', outline: 'none', cursor: 'pointer' }}
+                         >
+                           {gcpComputeChoice === 'cloudrun' ? (
+                             <>
+                               <option value="1 vCPU / 512 MB" style={{ background: '#0f0f15' }}>1 vCPU / 512 MB (Default)</option>
+                               <option value="1 vCPU / 1 GB" style={{ background: '#0f0f15' }}>1 vCPU / 1 GB</option>
+                               <option value="2 vCPU / 2 GB" style={{ background: '#0f0f15' }}>2 vCPU / 2 GB</option>
+                             </>
+                           ) : (
+                             <>
+                               <option value="e2-micro" style={{ background: '#0f0f15' }}>e2-micro (2 vCPU / 1 GB - Free Tier)</option>
+                               <option value="e2-small" style={{ background: '#0f0f15' }}>e2-small (2 vCPU / 2 GB)</option>
+                               <option value="e2-medium" style={{ background: '#0f0f15' }}>e2-medium (2 vCPU / 4 GB)</option>
+                             </>
+                           )}
+                         </select>
+                       </div>
+
+                       {gcpComputeChoice === 'gce' && (
+                         <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginTop: '1.25rem' }}>
+                           <input
+                             type="checkbox"
+                             id="gcpUseStaticIp"
+                             checked={gcpUseStaticIp}
+                             onChange={(e) => setGcpUseStaticIp(e.target.checked)}
+                             style={{ width: '16px', height: '16px', cursor: 'pointer', accentColor: currentConfig.color }}
+                           />
+                           <label htmlFor="gcpUseStaticIp" style={{ color: '#fff', fontSize: '0.85rem', cursor: 'pointer', userSelect: 'none' }}>
+                             Reserve Static External IP Address
+                           </label>
+                         </div>
+                       )}
+                     </div>
+                   </div>
+                 )}
 
                 <button 
                   onClick={handleProceed}

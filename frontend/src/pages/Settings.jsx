@@ -1,10 +1,119 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
-import { Settings, Key, Copy, Check, ShieldCheck, Github, Info, Cpu } from 'lucide-react';
+import { Settings, Key, Copy, Check, ShieldCheck, Github, Info, Cpu, Trash2, Plus, Database, AlertTriangle } from 'lucide-react';
+import { apiClient } from '../utils/api';
 
 function SettingsPage() {
-  const { user } = useAuth();
+  const { user, token } = useAuth();
   const [copied, setCopied] = useState(false);
+
+  // Credentials State
+  const [credentials, setCredentials] = useState([]);
+  const [loadingCreds, setLoadingCreds] = useState(true);
+  const [credName, setCredName] = useState('');
+  const [credProvider, setCredProvider] = useState('aws');
+  const [awsKeyId, setAwsKeyId] = useState('');
+  const [awsSecretKey, setAwsSecretKey] = useState('');
+  const [awsRegion, setAwsRegion] = useState('us-east-1');
+  const [gcpKey, setGcpKey] = useState('');
+  const [gcpProjectId, setGcpProjectId] = useState('');
+  const [dockerUser, setDockerUser] = useState('');
+  const [dockerPass, setDockerPass] = useState('');
+  const [submittingCred, setSubmittingCred] = useState(false);
+  const [credError, setCredError] = useState('');
+
+  const fetchCredentials = async () => {
+    if (!token) return;
+    try {
+      setLoadingCreds(true);
+      const res = await apiClient.get('/credentials/');
+      if (res.ok) {
+        const data = await res.json();
+        setCredentials(data);
+      }
+    } catch (err) {
+      console.error("Failed to fetch credentials", err);
+    } finally {
+      setLoadingCreds(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchCredentials();
+  }, [token]);
+
+  const handleCreateCredential = async (e) => {
+    e.preventDefault();
+    if (!credName.trim()) return;
+    if (!token) return;
+
+    setSubmittingCred(true);
+    setCredError('');
+
+    let data = {};
+    if (credProvider === 'aws') {
+      data = {
+        aws_access_key_id: awsKeyId,
+        aws_secret_access_key: awsSecretKey,
+        aws_region: awsRegion
+      };
+    } else if (credProvider === 'gcp') {
+      data = {
+        gcp_sa_key: gcpKey,
+        gcp_project_id: gcpProjectId
+      };
+    } else if (credProvider === 'dockerhub') {
+      data = {
+        docker_username: dockerUser,
+        docker_password: dockerPass
+      };
+    }
+
+    try {
+      const res = await apiClient.post('/credentials/', {
+        name: credName,
+        provider: credProvider,
+        data: data
+      });
+
+      if (!res.ok) {
+        const errData = await res.json();
+        throw new Error(errData.detail || 'Failed to save credential');
+      }
+
+      // Reset Form
+      setCredName('');
+      setAwsKeyId('');
+      setAwsSecretKey('');
+      setAwsRegion('us-east-1');
+      setGcpKey('');
+      setGcpProjectId('');
+      setDockerUser('');
+      setDockerPass('');
+      
+      // Refresh list
+      await fetchCredentials();
+    } catch (err) {
+      setCredError(err.message || 'An error occurred while saving credential.');
+    } finally {
+      setSubmittingCred(false);
+    }
+  };
+
+  const handleDeleteCredential = async (id) => {
+    if (!window.confirm("Are you sure you want to delete this credential?")) return;
+    try {
+      const res = await apiClient.delete(`/credentials/${id}`);
+      if (res.ok) {
+        await fetchCredentials();
+      } else {
+        const errData = await res.json();
+        alert(errData.detail || "Failed to delete credential");
+      }
+    } catch (err) {
+      alert("Error deleting credential: " + err.message);
+    }
+  };
 
   const copyToken = () => {
     const token = localStorage.getItem('code2cloud_token');
@@ -213,15 +322,266 @@ function SettingsPage() {
             </div>
           </div>
 
-          {/* Integration Advise Card */}
-          <div style={{ display: 'flex', gap: '0.75rem', padding: '1rem', background: 'rgba(0, 229, 255, 0.03)', border: '1px solid rgba(0, 229, 255, 0.1)', borderRadius: '12px' }}>
-            <Cpu size={18} style={{ color: '#00E5FF', flexShrink: 0, marginTop: '0.1rem' }} />
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.2rem' }}>
-              <span style={{ fontSize: '0.85rem', fontWeight: '600', color: '#fff' }}>Swagger / OpenAPI Manual Testing</span>
-              <p style={{ margin: 0, color: '#a2a2b5', fontSize: '0.8rem', lineHeight: '1.4' }}>
-                Open the interactive Swagger UI boundary at <code style={{ color: '#00E5FF' }}>http://localhost:8000/docs</code>, click **Authorize** in the top right, and paste this JWT token directly inside the input box to manually trigger deployment generations or tech stack queries!
-              </p>
-            </div>
+        </div>
+
+        {/* 3. Cloud & Container Registry Credentials Manager Card */}
+        <div style={{
+          background: 'linear-gradient(135deg, rgba(255,255,255,0.03) 0%, rgba(255,255,255,0.01) 100%)',
+          border: '1px solid rgba(255, 255, 255, 0.08)',
+          borderRadius: '24px',
+          padding: '2rem',
+          display: 'flex',
+          flexDirection: 'column',
+          gap: '1.5rem',
+          backdropFilter: 'blur(20px)'
+        }}>
+          <div>
+            <h3 style={{ fontSize: '1.25rem', fontWeight: '600', color: '#fff', margin: 0, display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+              <Database size={20} style={{ color: '#00E5FF' }} />
+              Cloud & Container Registry Credentials
+            </h3>
+            <p style={{ color: '#a2a2b5', fontSize: '0.85rem', margin: '0.25rem 0 0 0' }}>
+              Securely store credentials to automatically link and configure GitHub Action secrets during pipeline setup.
+            </p>
+          </div>
+
+          {/* Existing Credentials List */}
+          <div>
+            <h4 style={{ fontSize: '0.9rem', fontWeight: '700', color: '#a2a2b5', margin: '0 0 0.75rem 0', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Saved Profiles</h4>
+            {loadingCreds ? (
+              <div style={{ color: '#6e7191', fontSize: '0.9rem', padding: '0.5rem 0' }}>Loading saved credentials...</div>
+            ) : credentials.length === 0 ? (
+              <div style={{ color: '#6e7191', fontSize: '0.9rem', padding: '1rem', background: 'rgba(255,255,255,0.02)', borderRadius: '12px', border: '1px dashed rgba(255,255,255,0.05)', textAlign: 'center' }}>
+                No saved credentials. Add one using the form below.
+              </div>
+            ) : (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+                {credentials.map((cred) => {
+                  let providerColor = '#FF9900'; // AWS orange
+                  if (cred.provider === 'gcp') providerColor = '#4285F4'; // GCP blue
+                  if (cred.provider === 'dockerhub') providerColor = '#2496ED'; // DockerHub blue
+
+                  return (
+                    <div 
+                      key={cred.credential_id} 
+                      style={{ 
+                        display: 'flex', 
+                        alignItems: 'center', 
+                        justifyContent: 'space-between', 
+                        padding: '1rem 1.25rem', 
+                        background: 'rgba(0,0,0,0.2)', 
+                        borderRadius: '16px', 
+                        border: '1px solid rgba(255,255,255,0.04)' 
+                      }}
+                    >
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
+                        <span style={{ 
+                          fontSize: '0.75rem', 
+                          fontWeight: '700', 
+                          color: providerColor, 
+                          background: `rgba(${cred.provider === 'aws' ? '255,153,0' : cred.provider === 'gcp' ? '66,133,244' : '36,150,237'}, 0.1)`, 
+                          padding: '0.25rem 0.6rem', 
+                          borderRadius: '8px',
+                          textTransform: 'uppercase'
+                        }}>
+                          {cred.provider === 'dockerhub' ? 'Docker Hub' : cred.provider}
+                        </span>
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.15rem' }}>
+                          <span style={{ color: '#fff', fontWeight: '600', fontSize: '0.95rem' }}>{cred.name}</span>
+                          <span style={{ color: '#6e7191', fontSize: '0.75rem' }}>
+                            {cred.provider === 'aws' && `Key ID: ${cred.data.aws_access_key_id}`}
+                            {cred.provider === 'gcp' && `Project ID: ${cred.data.gcp_project_id}`}
+                            {cred.provider === 'dockerhub' && `User: ${cred.data.docker_username}`}
+                          </span>
+                        </div>
+                      </div>
+                      <button
+                        onClick={() => handleDeleteCredential(cred.credential_id)}
+                        style={{ 
+                          background: 'transparent', 
+                          border: 'none', 
+                          color: '#ff6b6b', 
+                          cursor: 'pointer', 
+                          padding: '0.5rem', 
+                          borderRadius: '8px',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          transition: 'all 0.2s'
+                        }}
+                        onMouseOver={(e) => { e.currentTarget.style.background = 'rgba(255, 107, 107, 0.1)'; }}
+                        onMouseOut={(e) => { e.currentTarget.style.background = 'transparent'; }}
+                        title="Delete Profile"
+                      >
+                        <Trash2 size={16} />
+                      </button>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+
+          <hr style={{ border: 'none', borderTop: '1px solid rgba(255,255,255,0.06)', margin: '0.5rem 0' }} />
+
+          {/* Add New Credential Form */}
+          <div>
+            <h4 style={{ fontSize: '0.9rem', fontWeight: '700', color: '#a2a2b5', margin: '0 0 1rem 0', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+              Add Credential Profile
+            </h4>
+            
+            <form onSubmit={handleCreateCredential} style={{ display: 'flex', flexDirection: 'column', gap: '1.2rem' }}>
+              {credError && (
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', background: 'rgba(255, 107, 107, 0.1)', border: '1px solid rgba(255, 107, 107, 0.2)', color: '#ff6b6b', padding: '1rem', borderRadius: '12px', fontSize: '0.85rem' }}>
+                  <AlertTriangle size={16} />
+                  <span>{credError}</span>
+                </div>
+              )}
+
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
+                  <label style={{ fontSize: '0.8rem', fontWeight: '600', color: '#a2a2b5' }}>PROFILE NAME</label>
+                  <input
+                    type="text"
+                    required
+                    value={credName}
+                    onChange={(e) => setCredName(e.target.value)}
+                    placeholder="e.g. Personal AWS Account"
+                    style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '12px', color: '#fff', padding: '0.8rem 1rem', outline: 'none' }}
+                  />
+                </div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
+                  <label style={{ fontSize: '0.8rem', fontWeight: '600', color: '#a2a2b5' }}>PROVIDER</label>
+                  <select
+                    value={credProvider}
+                    onChange={(e) => setCredProvider(e.target.value)}
+                    style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '12px', color: '#fff', padding: '0.8rem 1rem', outline: 'none', cursor: 'pointer' }}
+                  >
+                    <option value="aws" style={{ background: '#0f0f15', color: '#fff' }}>Amazon Web Services (AWS)</option>
+                    <option value="gcp" style={{ background: '#0f0f15', color: '#fff' }}>Google Cloud Platform (GCP)</option>
+                    <option value="dockerhub" style={{ background: '#0f0f15', color: '#fff' }}>Docker Hub</option>
+                  </select>
+                </div>
+              </div>
+
+              {/* Conditional Provider inputs */}
+              {credProvider === 'aws' && (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
+                      <label style={{ fontSize: '0.8rem', fontWeight: '600', color: '#a2a2b5' }}>AWS ACCESS KEY ID</label>
+                      <input
+                        type="text"
+                        required
+                        value={awsKeyId}
+                        onChange={(e) => setAwsKeyId(e.target.value)}
+                        placeholder="AKIA..."
+                        style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '12px', color: '#fff', padding: '0.8rem 1rem', outline: 'none' }}
+                      />
+                    </div>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
+                      <label style={{ fontSize: '0.8rem', fontWeight: '600', color: '#a2a2b5' }}>AWS REGION (DEFAULT)</label>
+                      <input
+                        type="text"
+                        required
+                        value={awsRegion}
+                        onChange={(e) => setAwsRegion(e.target.value)}
+                        placeholder="us-east-1"
+                        style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '12px', color: '#fff', padding: '0.8rem 1rem', outline: 'none' }}
+                      />
+                    </div>
+                  </div>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
+                    <label style={{ fontSize: '0.8rem', fontWeight: '600', color: '#a2a2b5' }}>AWS SECRET ACCESS KEY</label>
+                    <input
+                      type="password"
+                      required
+                      value={awsSecretKey}
+                      onChange={(e) => setAwsSecretKey(e.target.value)}
+                      placeholder="wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY"
+                      style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '12px', color: '#fff', padding: '0.8rem 1rem', outline: 'none' }}
+                    />
+                  </div>
+                </div>
+              )}
+
+              {credProvider === 'gcp' && (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
+                    <label style={{ fontSize: '0.8rem', fontWeight: '600', color: '#a2a2b5' }}>GCP PROJECT ID (OPTIONAL)</label>
+                    <input
+                      type="text"
+                      value={gcpProjectId}
+                      onChange={(e) => setGcpProjectId(e.target.value)}
+                      placeholder="Will auto-extract from JSON Key if left blank"
+                      style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '12px', color: '#fff', padding: '0.8rem 1rem', outline: 'none' }}
+                    />
+                  </div>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
+                    <label style={{ fontSize: '0.8rem', fontWeight: '600', color: '#a2a2b5' }}>GCP SERVICE ACCOUNT KEY (JSON)</label>
+                    <textarea
+                      required
+                      rows={5}
+                      value={gcpKey}
+                      onChange={(e) => setGcpKey(e.target.value)}
+                      placeholder='{ "type": "service_account", "project_id": "...", ... }'
+                      style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '12px', color: '#fff', padding: '0.8rem 1rem', outline: 'none', fontFamily: 'monospace', resize: 'vertical' }}
+                    />
+                  </div>
+                </div>
+              )}
+
+              {credProvider === 'dockerhub' && (
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
+                    <label style={{ fontSize: '0.8rem', fontWeight: '600', color: '#a2a2b5' }}>DOCKER HUB USERNAME</label>
+                    <input
+                      type="text"
+                      required
+                      value={dockerUser}
+                      onChange={(e) => setDockerUser(e.target.value)}
+                      placeholder="docker_username"
+                      style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '12px', color: '#fff', padding: '0.8rem 1rem', outline: 'none' }}
+                    />
+                  </div>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
+                    <label style={{ fontSize: '0.8rem', fontWeight: '600', color: '#a2a2b5' }}>DOCKER HUB ACCESS TOKEN / PASSWORD</label>
+                    <input
+                      type="password"
+                      required
+                      value={dockerPass}
+                      onChange={(e) => setDockerPass(e.target.value)}
+                      placeholder="dckr_pat_..."
+                      style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '12px', color: '#fff', padding: '0.8rem 1rem', outline: 'none' }}
+                    />
+                  </div>
+                </div>
+              )}
+
+              <button
+                type="submit"
+                disabled={submittingCred}
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  gap: '0.5rem',
+                  background: submittingCred ? 'rgba(255,255,255,0.05)' : 'linear-gradient(135deg, #00E5FF, #5865F2)',
+                  border: 'none',
+                  color: submittingCred ? '#a2a2b5' : '#05050a',
+                  padding: '0.8rem 1.5rem',
+                  borderRadius: '12px',
+                  fontWeight: '700',
+                  cursor: submittingCred ? 'not-allowed' : 'pointer',
+                  transition: 'all 0.2s',
+                  marginTop: '0.5rem'
+                }}
+              >
+                <Plus size={16} />
+                {submittingCred ? 'Saving...' : 'Save Credential'}
+              </button>
+
+            </form>
           </div>
 
         </div>

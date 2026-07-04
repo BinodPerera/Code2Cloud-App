@@ -11,3 +11,4 @@ motor
 jinja2
 boto3
 cloudinary
+pynacl

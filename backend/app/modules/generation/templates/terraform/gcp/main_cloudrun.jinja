@@ -1,0 +1,55 @@
+# --- Cloud Run Services & Container Repositories ---
+{% for comp in components %}
+resource "google_artifact_registry_repository" "{{ comp.name }}" {
+  location      = "{{ gcp_region | default('us-central1') }}"
+  repository_id = "${lower(var.project_name)}-{{ comp.name }}"
+  description   = "Docker repository for {{ comp.name }}"
+  format        = "DOCKER"
+}
+
+resource "google_cloud_run_v2_service" "{{ comp.name }}" {
+  name     = "${var.project_name}-{{ comp.name }}"
+  location = "{{ gcp_region | default('us-central1') }}"
+  ingress  = "INGRESS_TRAFFIC_ALL"
+
+  template {
+    containers {
+      image = "{{ gcp_region | default('us-central1') }}-docker.pkg.dev/\${var.project_id}/\${google_artifact_registry_repository.{{ comp.name }}.repository_id}/{{ comp.name }}:latest"
+      
+      resources {
+        limits = {
+          cpu    = "{{ cpu | default('1') }}"
+          memory = "{{ memory | default('512Mi') }}"
+        }
+      }
+      
+      ports {
+        container_port = {{ comp.port | default(3000) }}
+      }
+
+      env {
+        name  = "PORT"
+        value = "{{ comp.port | default(3000) }}"
+      }
+      {%- if comp.depends_on %}
+      {%- for dep in comp.depends_on %}
+      env {
+        name  = "{{ dep | upper }}_URL"
+        value = "http://localhost:{{ comp.port | default(3000) }}"
+      }
+      {%- endfor %}
+      {%- endif %}
+    }
+  }
+
+  depends_on = [google_artifact_registry_repository.{{ comp.name }}]
+}
+
+# Allow public unauthenticated access to the Cloud Run service
+resource "google_cloud_run_v2_service_iam_member" "noauth_{{ comp.name }}" {
+  location = google_cloud_run_v2_service.{{ comp.name }}.location
+  name     = google_cloud_run_v2_service.{{ comp.name }}.name
+  role     = "roles/run.invoker"
+  member   = "allUsers"
+}
+{% endfor %}

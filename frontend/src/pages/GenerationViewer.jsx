@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { FileCode, Folder, Download, Save, ArrowLeft, Check, AlertCircle, RefreshCw, Layers, GitCommit, GitBranch } from 'lucide-react';
+import { FileCode, Folder, Download, Save, ArrowLeft, Check, AlertCircle, RefreshCw, Layers, GitCommit, GitBranch, Database, ShieldCheck, Play, Lock, ExternalLink, CloudLightning } from 'lucide-react';
 import { apiClient } from '../utils/api';
 
 function GenerationViewer() {
@@ -22,6 +22,35 @@ function GenerationViewer() {
   // Track changes locally to show "unsaved" status per file
   const [initialCodeMap, setInitialCodeMap] = useState({});
 
+  // Generation details
+  const [repoUrl, setRepoUrl] = useState('');
+  const [cloud, setCloud] = useState('');
+  const [serviceId, setServiceId] = useState('');
+
+  // GHA Secrets & Saved Credentials state
+  const [savedCredentials, setSavedCredentials] = useState([]);
+  const [selectedCloudCred, setSelectedCloudCred] = useState('');
+  const [selectedDockerCred, setSelectedDockerCred] = useState('');
+  const [registryType, setRegistryType] = useState('native');
+  
+  // AWS target compute config states
+  const [awsComputeChoice, setAwsComputeChoice] = useState('fargate');
+  const [awsInstanceType, setAwsInstanceType] = useState('t3.micro');
+  const [awsUseEip, setAwsUseEip] = useState(false);
+  
+  // GCP target compute config states
+  const [gcpComputeChoice, setGcpComputeChoice] = useState('cloudrun');
+  const [gcpMachineType, setGcpMachineType] = useState('e2-micro');
+  const [gcpUseStaticIp, setGcpUseStaticIp] = useState(false);
+
+  const [pushingSecrets, setPushingSecrets] = useState(false);
+  const [pushSuccess, setPushSuccess] = useState(false);
+  const [pushError, setPushError] = useState('');
+
+  // Workflow Run Monitoring state
+  const [latestRun, setLatestRun] = useState(null);
+  const [polling, setPolling] = useState(false);
+
   // Direct SCM commit states
   const [commitModalOpen, setCommitModalOpen] = useState(false);
   const [commitBranch, setCommitBranch] = useState('code2cloud-setup');
@@ -29,6 +58,16 @@ function GenerationViewer() {
   const [committing, setCommitting] = useState(false);
   const [commitResult, setCommitResult] = useState(null);
   const [commitError, setCommitError] = useState('');
+
+  const getOwnerAndRepo = () => {
+    if (!repoUrl) return { owner: '', repo: '' };
+    const cleanUrl = repoUrl.replace("https://github.com/", "").replace("http://github.com/", "");
+    const parts = cleanUrl.split("/").filter(p => p);
+    return {
+      owner: parts[0] || '',
+      repo: parts[1] || ''
+    };
+  };
 
   const handleCommit = async (e) => {
     e.preventDefault();
@@ -49,12 +88,121 @@ function GenerationViewer() {
       
       const data = await res.json();
       setCommitResult(data);
+      // Start polling GHA workflow status immediately after successful commit
+      setPolling(true);
+      setTimeout(() => {
+        fetchWorkflowStatus();
+      }, 2000);
     } catch (err) {
       setCommitError(err.message || 'An unexpected error occurred while committing.');
     } finally {
       setCommitting(false);
     }
   };
+
+  const fetchWorkflowStatus = async () => {
+    const { owner, repo } = getOwnerAndRepo();
+    if (!owner || !repo) return;
+    try {
+      const res = await apiClient.get(`/repos/${owner}/${repo}/actions/runs?branch=${commitBranch}`);
+      if (res.ok) {
+        const data = await res.json();
+        if (data.status === 'success' && data.latest_run) {
+          setLatestRun(data.latest_run);
+          if (data.latest_run.status === 'queued' || data.latest_run.status === 'in_progress') {
+            setPolling(true);
+          } else {
+            setPolling(false);
+          }
+        }
+      }
+    } catch (err) {
+      console.error("Failed to fetch workflow runs", err);
+    }
+  };
+
+  const handlePushSecrets = async () => {
+    const { owner, repo } = getOwnerAndRepo();
+    if (!owner || !repo) return;
+
+    setPushingSecrets(true);
+    setPushError('');
+    setPushSuccess(false);
+
+    const credentialIds = [];
+    if (selectedCloudCred) credentialIds.push(selectedCloudCred);
+    if (registryType === 'dockerhub' && selectedDockerCred) credentialIds.push(selectedDockerCred);
+
+    if (credentialIds.length === 0) {
+      setPushError("Please select at least one credential profile to push.");
+      setPushingSecrets(false);
+      return;
+    }
+
+    try {
+      const res = await apiClient.post(`/repos/${owner}/${repo}/secrets/push-saved`, {
+        credential_ids: credentialIds
+      });
+
+      if (!res.ok) {
+        const errData = await res.json();
+        throw new Error(errData.detail || "Failed to configure secrets.");
+      }
+
+      setPushSuccess(true);
+    } catch (err) {
+      setPushError(err.message || "An error occurred while pushing secrets.");
+    } finally {
+      setPushingSecrets(false);
+    }
+  };
+
+  const handleRegenerate = async (regType) => {
+    const { owner, repo } = getOwnerAndRepo();
+    if (!owner || !repo) return;
+
+    try {
+      setSaving(true);
+      const res = await apiClient.post(`/repos/${owner}/${repo}/generate`, {
+        serviceId,
+        cloud,
+        techStack: null,
+        registryType: regType,
+        awsComputeChoice,
+        awsInstanceType,
+        awsUseEip,
+        gcpComputeChoice,
+        gcpMachineType,
+        gcpUseStaticIp
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setCodeMap(data.generated_code || {});
+        setInitialCodeMap(JSON.parse(JSON.stringify(data.generated_code || {})));
+        const files = Object.keys(data.generated_code || {});
+        if (files.length > 0) {
+          setSelectedFile(files[0]);
+        }
+      }
+    } catch (err) {
+      console.error("Failed to regenerate configurations", err);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  // Poll workflow status when polling state changes
+  useEffect(() => {
+    let intervalId;
+    if (polling) {
+      intervalId = setInterval(() => {
+        fetchWorkflowStatus();
+      }, 7000);
+    }
+    return () => {
+      if (intervalId) clearInterval(intervalId);
+    };
+  }, [polling, repoUrl, commitBranch]);
 
   useEffect(() => {
     const fetchGeneration = async () => {
@@ -69,6 +217,20 @@ function GenerationViewer() {
         setInitialCodeMap(JSON.parse(JSON.stringify(data.generated_code || {})));
         setProjectName(data.project_name || 'Project');
         setUrl(data.url || '');
+        setRepoUrl(data.repo_url || '');
+        setCloud(data.cloud || '');
+        setServiceId(data.service_id || '');
+        setRegistryType(data.registry_type || 'native');
+        setAwsComputeChoice(data.aws_compute_choice || 'fargate');
+        setAwsInstanceType(data.aws_instance_type || 't3.micro');
+        setAwsUseEip(data.aws_use_eip || false);
+        setGcpComputeChoice(data.gcp_compute_choice || 'cloudrun');
+        setGcpMachineType(data.gcp_machine_type || 'e2-micro');
+        setGcpUseStaticIp(data.gcp_use_static_ip || false);
+
+        if (data.committed) {
+          setPolling(true);
+        }
         
         // Pick first file as active by default
         const files = Object.keys(data.generated_code || {});
@@ -76,6 +238,26 @@ function GenerationViewer() {
           setSelectedFile(files[0]);
           setActiveTabs([files[0]]);
         }
+
+        // Load user's saved credentials
+        try {
+          const credRes = await apiClient.get('/credentials/');
+          if (credRes.ok) {
+            const credData = await credRes.json();
+            setSavedCredentials(credData);
+            
+            // Auto-select first matching credential if available
+            const cloudProv = (data.cloud || '').toLowerCase();
+            const matchingCloud = credData.find(c => c.provider === cloudProv);
+            if (matchingCloud) setSelectedCloudCred(matchingCloud.credential_id);
+
+            const matchingDocker = credData.find(c => c.provider === 'dockerhub');
+            if (matchingDocker) setSelectedDockerCred(matchingDocker.credential_id);
+          }
+        } catch (cErr) {
+          console.error("Error loading saved credentials", cErr);
+        }
+
       } catch (err) {
         setError(err.message || 'Failed to fetch generated configurations.');
         console.error(err);
@@ -561,6 +743,233 @@ function GenerationViewer() {
             </div>
           )}
         </div>
+
+        {/* Right Sidebar Deployment & Secrets Panel */}
+        {serviceId === 'terraform' && (cloud.toLowerCase() === 'aws' || cloud.toLowerCase() === 'gcp') && (
+          <div style={{
+            width: '340px',
+            flexShrink: 0,
+            borderLeft: '1px solid rgba(255, 255, 255, 0.08)',
+            padding: '1.5rem',
+            display: 'flex',
+            flexDirection: 'column',
+            gap: '1.5rem',
+            background: 'rgba(0,0,0,0.15)',
+            overflowY: 'auto'
+          }}>
+            <div>
+              <h3 style={{ margin: 0, fontSize: '1.1rem', fontWeight: '600', color: '#fff', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                <CloudLightning size={16} style={{ color: '#00E5FF' }} />
+                GHA Deployment
+              </h3>
+              <p style={{ margin: '0.2rem 0 0 0', color: '#a2a2b5', fontSize: '0.75rem', lineHeight: '1.3' }}>
+                Automatically containerize and deploy this service into the cloud.
+              </p>
+            </div>
+
+            <hr style={{ border: 'none', borderTop: '1px solid rgba(255,255,255,0.06)', margin: 0 }} />
+
+            {/* Registry Selection */}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
+              <label style={{ fontSize: '0.75rem', fontWeight: '600', color: '#a2a2b5' }}>CONTAINER REGISTRY</label>
+              <select
+                value={registryType}
+                onChange={(e) => {
+                  const val = e.target.value;
+                  setRegistryType(val);
+                  handleRegenerate(val);
+                }}
+                style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '10px', color: '#fff', padding: '0.6rem', fontSize: '0.8rem', outline: 'none', cursor: 'pointer' }}
+              >
+                <option value="native" style={{ background: '#0f0f15', color: '#fff' }}>
+                  {cloud.toLowerCase() === 'aws' ? 'Amazon ECR (Native)' : 'Google Artifact Registry (GAR)'}
+                </option>
+                <option value="dockerhub" style={{ background: '#0f0f15', color: '#fff' }}>Docker Hub</option>
+              </select>
+            </div>
+
+            {/* Secrets Config Form */}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.8rem', background: 'rgba(0,0,0,0.15)', padding: '1rem', borderRadius: '16px', border: '1px solid rgba(255,255,255,0.02)' }}>
+              <span style={{ fontSize: '0.75rem', fontWeight: '700', color: '#fff', display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
+                <Lock size={12} style={{ color: '#00E5FF' }} />
+                Link Secret Profiles
+              </span>
+
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
+                <label style={{ fontSize: '0.7rem', fontWeight: '600', color: '#a2a2b5' }}>{cloud.toUpperCase()} PROFILE</label>
+                <select
+                  value={selectedCloudCred}
+                  onChange={(e) => setSelectedCloudCred(e.target.value)}
+                  style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '10px', color: '#fff', padding: '0.5rem', fontSize: '0.75rem', outline: 'none', cursor: 'pointer' }}
+                >
+                  <option value="" style={{ background: '#0f0f15', color: '#fff' }}>-- Select Credentials --</option>
+                  {savedCredentials
+                    .filter((c) => c.provider === cloud.toLowerCase())
+                    .map((c) => (
+                      <option key={c.credential_id} value={c.credential_id} style={{ background: '#0f0f15', color: '#fff' }}>
+                        {c.name}
+                      </option>
+                    ))}
+                </select>
+              </div>
+
+              {registryType === 'dockerhub' && (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
+                  <label style={{ fontSize: '0.7rem', fontWeight: '600', color: '#a2a2b5' }}>DOCKER HUB PROFILE</label>
+                  <select
+                    value={selectedDockerCred}
+                    onChange={(e) => setSelectedDockerCred(e.target.value)}
+                    style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '10px', color: '#fff', padding: '0.5rem', fontSize: '0.75rem', outline: 'none', cursor: 'pointer' }}
+                  >
+                    <option value="" style={{ background: '#0f0f15', color: '#fff' }}>-- Select Credentials --</option>
+                    {savedCredentials
+                      .filter((c) => c.provider === 'dockerhub')
+                      .map((c) => (
+                        <option key={c.credential_id} value={c.credential_id} style={{ background: '#0f0f15', color: '#fff' }}>
+                          {c.name}
+                        </option>
+                      ))}
+                  </select>
+                </div>
+              )}
+
+              {savedCredentials.filter(c => c.provider === cloud.toLowerCase()).length === 0 && (
+                <span style={{ fontSize: '0.7rem', color: '#6e7191', marginTop: '0.2rem' }}>
+                  💡 No credential profiles found. Create them in the <a href="/settings" style={{ color: '#00E5FF', textDecoration: 'underline' }}>Settings Page</a> first.
+                </span>
+              )}
+
+              {pushError && (
+                <span style={{ fontSize: '0.7rem', color: '#ff6b6b' }}>⚠️ {pushError}</span>
+              )}
+
+              {pushSuccess && (
+                <span style={{ fontSize: '0.7rem', color: '#10B981', display: 'flex', alignItems: 'center', gap: '0.2rem' }}>
+                  <Check size={12} /> Secrets updated on GitHub!
+                </span>
+              )}
+
+              <button
+                onClick={handlePushSecrets}
+                disabled={pushingSecrets}
+                style={{
+                  background: pushingSecrets ? 'rgba(255,255,255,0.05)' : 'linear-gradient(135deg, #00E5FF, #5865F2)',
+                  border: 'none',
+                  color: pushingSecrets ? '#a2a2b5' : '#05050a',
+                  padding: '0.5rem 1rem',
+                  borderRadius: '8px',
+                  fontWeight: '700',
+                  fontSize: '0.75rem',
+                  cursor: pushingSecrets ? 'not-allowed' : 'pointer',
+                  transition: 'all 0.2s',
+                  marginTop: '0.3rem'
+                }}
+              >
+                {pushingSecrets ? 'Pushing Secrets...' : 'Push Secrets to GHA'}
+              </button>
+            </div>
+
+            <hr style={{ border: 'none', borderTop: '1px solid rgba(255,255,255,0.06)', margin: 0 }} />
+
+            {/* Pipeline Tracker */}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+              <span style={{ fontSize: '0.75rem', fontWeight: '700', color: '#a2a2b5', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                Deployment Pipeline
+              </span>
+
+              {polling || latestRun ? (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem', background: 'rgba(255,255,255,0.01)', border: '1px solid rgba(255,255,255,0.05)', padding: '1rem', borderRadius: '16px' }}>
+                  
+                  {/* Status Bar */}
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+                      <span style={{ 
+                        width: '8px', 
+                        height: '8px', 
+                        borderRadius: '50%', 
+                        background: latestRun?.status === 'completed' 
+                          ? (latestRun?.conclusion === 'success' ? '#10B981' : '#ff6b6b') 
+                          : '#00E5FF',
+                        animation: latestRun?.status !== 'completed' ? 'pulse 1.5s infinite' : 'none'
+                      }}></span>
+                      <span style={{ fontSize: '0.8rem', fontWeight: '600', color: '#fff', textTransform: 'capitalize' }}>
+                        {latestRun ? `${latestRun.status} (${latestRun.conclusion || 'running'})` : 'Triggering GHA...'}
+                      </span>
+                    </div>
+                    
+                    {latestRun?.html_url && (
+                      <a 
+                        href={latestRun.html_url} 
+                        target="_blank" 
+                        rel="noopener noreferrer" 
+                        style={{ color: '#00E5FF', fontSize: '0.75rem', display: 'flex', alignItems: 'center', gap: '0.2rem', textDecoration: 'none' }}
+                      >
+                        Logs <ExternalLink size={10} />
+                      </a>
+                    )}
+                  </div>
+
+                  {/* Progress Steps Visualizer */}
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '0.8rem', paddingLeft: '0.5rem', borderLeft: '2px solid rgba(255,255,255,0.05)', marginLeft: '0.25rem' }}>
+                    
+                    {/* Step 1 */}
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', position: 'relative' }}>
+                      <span style={{ 
+                        position: 'absolute', 
+                        left: '-13px', 
+                        width: '8px', 
+                        height: '8px', 
+                        borderRadius: '50%', 
+                        background: '#10B981'
+                      }}></span>
+                      <span style={{ fontSize: '0.75rem', color: '#fff' }}>Commit configurations (Committed ✅)</span>
+                    </div>
+
+                    {/* Step 2 */}
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', position: 'relative' }}>
+                      <span style={{ 
+                        position: 'absolute', 
+                        left: '-13px', 
+                        width: '8px', 
+                        height: '8px', 
+                        borderRadius: '50%', 
+                        background: latestRun?.status === 'completed' 
+                          ? '#10B981' 
+                          : (latestRun?.status === 'in_progress' ? '#00E5FF' : '#6e7191')
+                      }}></span>
+                      <span style={{ fontSize: '0.75rem', color: latestRun?.status === 'in_progress' ? '#00E5FF' : '#a2a2b5' }}>
+                        Build & Push Container ({latestRun?.status === 'completed' ? 'Success' : latestRun?.status === 'in_progress' ? 'Running' : 'Pending'})
+                      </span>
+                    </div>
+
+                    {/* Step 3 */}
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', position: 'relative' }}>
+                      <span style={{ 
+                        position: 'absolute', 
+                        left: '-13px', 
+                        width: '8px', 
+                        height: '8px', 
+                        borderRadius: '50%', 
+                        background: latestRun?.status === 'completed' && latestRun?.conclusion === 'success'
+                          ? '#10B981' 
+                          : (latestRun?.status === 'completed' && latestRun?.conclusion !== 'success' ? '#ff6b6b' : '#6e7191')
+                      }}></span>
+                      <span style={{ fontSize: '0.75rem', color: latestRun?.status === 'completed' ? '#fff' : '#a2a2b5' }}>
+                        Terraform Infrastructure Apply ({latestRun?.status === 'completed' ? (latestRun?.conclusion === 'success' ? 'Success' : 'Failed') : 'Pending'})
+                      </span>
+                    </div>
+
+                  </div>
+
+                </div>
+              ) : (
+                <div style={{ padding: '1rem', background: 'rgba(255,255,255,0.01)', border: '1px dashed rgba(255,255,255,0.08)', borderRadius: '16px', textAlign: 'center', color: '#6e7191', fontSize: '0.8rem' }}>
+                  Pipeline will start automatically once you commit configurations to GitHub.
+                </div>
+              )}
+            </div>
+          </div>
+        )}
       </div>
       
       {/* Premium Glassmorphic Commit Modal */}

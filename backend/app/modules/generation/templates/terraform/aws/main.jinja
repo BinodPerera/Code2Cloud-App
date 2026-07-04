@@ -1,3 +1,6 @@
+data "aws_caller_identity" "current" {}
+data "aws_region" "current" {}
+
 # --- Networking (VPC Setup) ---
 resource "aws_vpc" "main" {
   cidr_block           = "10.0.0.0/16"
@@ -69,7 +72,7 @@ resource "aws_ecs_cluster" "main" {
 
 # --- IAM Roles for ECS ---
 resource "aws_iam_role" "ecs_execution_role" {
-  name = "${var.project_name}-ecs-execution-role"
+  name_prefix = "${lower(var.project_name)}-ecs-execution-role-"
 
   assume_role_policy = jsonencode({
     Version = "2012-10-17"
@@ -111,25 +114,19 @@ resource "aws_security_group" "ecs_tasks" {
   }
 }
 
-# --- Elastic Container Registry (ECR) & ECS Task Definitions for each Component ---
+# --- ECS Task Definitions for each Component ---
 {% for comp in components %}
-resource "aws_ecr_repository" "{{ comp.name }}" {
-  name                 = "${var.project_name}-{{ comp.name }}"
-  image_tag_mutability = "MUTABLE"
-  force_destroy        = true
-}
-
 resource "aws_ecs_task_definition" "{{ comp.name }}" {
-  family                   = "${var.project_name}-{{ comp.name }}-task"
+  family                   = "${lower(var.project_name)}-{{ comp.name }}-task"
   network_mode             = "awsvpc"
   requires_compatibilities = ["FARGATE"]
-  cpu                      = "256"
-  memory                   = "512"
+  cpu                      = "{{ cpu | default('256') }}"
+  memory                   = "{{ memory | default('512') }}"
   execution_role_arn       = aws_iam_role.ecs_execution_role.arn
 
   container_definitions = jsonencode([{
     name      = "{{ comp.name }}"
-    image     = "${aws_ecr_repository.{{ comp.name }}.repository_url}:latest"
+    image     = "${data.aws_caller_identity.current.account_id}.dkr.ecr.${data.aws_region.current.name}.amazonaws.com/${lower(var.project_name)}-{{ comp.name }}:latest"
     essential = true
     portMappings = [{
       containerPort = {{ comp.port | default(80) }}

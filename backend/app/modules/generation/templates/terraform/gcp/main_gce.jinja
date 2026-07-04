@@ -1,0 +1,97 @@
+# --- Networking (VPC Setup) ---
+resource "google_compute_network" "vpc" {
+  name                    = "${var.project_name}-vpc"
+  auto_create_subnetworks = false
+}
+
+resource "google_compute_subnetwork" "subnet" {
+  name          = "${var.project_name}-subnet"
+  ip_cidr_range = "10.0.1.0/24"
+  region        = "{{ gcp_region | default('us-central1') }}"
+  network       = google_compute_network.vpc.id
+}
+
+# --- Firewall Rule for Public Access ---
+resource "google_compute_firewall" "allow_http" {
+  name    = "${var.project_name}-allow-http"
+  network = google_compute_network.vpc.name
+
+  allow {
+    protocol = "tcp"
+    ports    = ["22", "80", {% for comp in components %}"{{ comp.port | default(3000) }}"{% if not loop.last %}, {% endif %}{% endfor %}]
+  }
+
+  source_ranges = ["0.0.0.0/0"]
+  target_tags   = ["web-server"]
+}
+
+# --- Static IP Allocation (Conditional) ---
+{% if use_static_ip %}
+resource "google_compute_address" "static_ip" {
+  name   = "${var.project_name}-static-ip"
+  region = "{{ gcp_region | default('us-central1') }}"
+}
+{% endif %}
+
+# --- Compute Engine Instances & Container Repositories ---
+{% for comp in components %}
+resource "google_artifact_registry_repository" "{{ comp.name }}" {
+  location      = "{{ gcp_region | default('us-central1') }}"
+  repository_id = "${lower(var.project_name)}-{{ comp.name }}"
+  description   = "Docker repository for {{ comp.name }}"
+  format        = "DOCKER"
+}
+
+resource "google_compute_instance" "{{ comp.name }}" {
+  name         = "${var.project_name}-{{ comp.name }}-vm"
+  machine_type = "{{ machine_type | default('e2-micro') }}"
+  zone         = "{{ gcp_region | default('us-central1') }}-a"
+  tags         = ["web-server"]
+
+  boot_disk {
+    initialize_params {
+      image = "debian-cloud/debian-11"
+      size  = 20
+    }
+  }
+
+  network_interface {
+    subnetwork = google_compute_subnetwork.subnet.id
+    access_config {
+      {% if use_static_ip %}
+      nat_ip = google_compute_address.static_ip.address
+      {% endif %}
+    }
+  }
+
+  # Service Account with Artifact Registry read access
+  service_account {
+    scopes = ["https://www.googleapis.com/auth/devstorage.read_only", "https://www.googleapis.com/auth/logging.write", "https://www.googleapis.com/auth/monitoring.write"]
+  }
+
+  metadata_startup_script = <<-EOT
+    #!/bin/bash
+    apt-get update
+    apt-get install -y apt-transport-https ca-certificates curl gnupg lsb-release
+    curl -fsSL https://download.docker.com/linux/debian/gpg | gpg --dearmor -o /usr/share/keyrings/docker-archive-keyring.gpg
+    echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/docker-archive-keyring.gpg] https://download.docker.com/linux/debian $(lsb_release -cs) stable" | tee /etc/apt/sources.list.d/docker.list > /dev/null
+    apt-get update
+    apt-get install -y docker-ce docker-ce-cli containerd.io
+    
+    # Authenticate Docker to Artifact Registry
+    gcloud auth configure-docker {{ gcp_region | default('us-central1') }}-docker.pkg.dev --quiet
+    
+    # Run the container mapping host port 80 to container port
+    docker run -d -p 80:{{ comp.port | default(3000) }} \
+      --name {{ comp.name }} \
+      --restart always \
+      -e PORT={{ comp.port | default(3000) }} \
+      {%- if comp.depends_on %}
+      {%- for dep in comp.depends_on %}
+      -e {{ dep | upper }}_URL=http://localhost:{{ comp.port | default(3000) }} \
+      {%- endfor %}
+      {%- endif %}
+      {{ gcp_region | default('us-central1') }}-docker.pkg.dev/\${var.project_id}/\${google_artifact_registry_repository.{{ comp.name }}.repository_id}/{{ comp.name }}:latest
+  EOT
+}
+{% endfor %}

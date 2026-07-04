@@ -32,6 +32,9 @@ class Settings(BaseSettings):
     CLOUDINARY_API_KEY: Optional[str] = None
     CLOUDINARY_API_SECRET: Optional[str] = None
 
+    # Credentials Encryption
+    CREDENTIALS_ENCRYPTION_KEY: Optional[str] = None
+
 
     model_config = SettingsConfigDict(
         env_file=".env",

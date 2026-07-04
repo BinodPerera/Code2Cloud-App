@@ -3,7 +3,11 @@ from app.modules.auth.schemas import UserBase
 from app.modules.auth.deps import get_current_user, get_user_repository
 from app.modules.auth.repository import UserRepository
 from app.modules.generation.repository import GenerationRepository
-from app.modules.generation.schemas import GenerateRequest, UpdateCodeRequest, CommitRequest
+from app.modules.generation.schemas import GenerateRequest, UpdateCodeRequest, CommitRequest, PushSecretsRequest
+from app.modules.credentials.repository import CredentialRepository
+from app.modules.credentials.router import get_credential_repository
+from app.modules.generation.secrets_handler import GitHubSecretsManager
+
 from app.modules.generation.service_analyzer import TechStackAnalyzer
 from app.modules.generation.service_generator import CodeGenerator
 from app.db.mongodb import get_database
@@ -81,7 +85,14 @@ async def generate_deployment_code(
         cloud=request.cloud,
         tech_stack=tech_stack,
         current_user_login=current_user.login,
-        generation_repo=generation_repo
+        generation_repo=generation_repo,
+        registry_type=request.registryType,
+        aws_compute_choice=request.awsComputeChoice,
+        aws_instance_type=request.awsInstanceType,
+        aws_use_eip=request.awsUseEip,
+        gcp_compute_choice=request.gcpComputeChoice,
+        gcp_machine_type=request.gcpMachineType,
+        gcp_use_static_ip=request.gcpUseStaticIp
     )
 
 @router.get("/generations/history")
@@ -254,10 +265,8 @@ async def commit_generation_code(
                 raise HTTPException(
                     status_code=403,
                     detail=(
-                        "GitHub API returned 403 (Resource not accessible). This means your GitHub OAuth App or GitHub App "
-                        "integration lacks write access (Repository Permissions > 'Contents' must be set to 'Read & write'). "
-                        "Please go to your GitHub developer settings, upgrade permissions for your App, and accept the "
-                        "updated permission consent on your repository settings page."
+                        f"GitHub API returned 403 in Step 1 (Create Branch Ref): {create_res.text}. "
+                        "This means your GitHub OAuth App or GitHub App integration lacks write access (Repository Permissions > 'Contents' must be set to 'Read & write')."
                       )
                 )
             if create_res.status_code not in (200, 201):
@@ -285,10 +294,8 @@ async def commit_generation_code(
             raise HTTPException(
                 status_code=403,
                 detail=(
-                    "GitHub API returned 403 (Resource not accessible). This means your GitHub OAuth App or GitHub App "
-                    "integration lacks write access (Repository Permissions > 'Contents' must be set to 'Read & write'). "
-                    "Please go to your GitHub developer settings, upgrade permissions for your App, and accept the "
-                    "updated permission consent on your repository settings page."
+                    f"GitHub API returned 403 in Step 2 (Create Tree): {tree_res.text}. "
+                    "This means your GitHub OAuth App or GitHub App integration lacks write access or Workflows permissions (if editing files under .github/workflows)."
                 )
             )
         if tree_res.status_code not in (200, 201):
@@ -307,10 +314,8 @@ async def commit_generation_code(
             raise HTTPException(
                 status_code=403,
                 detail=(
-                    "GitHub API returned 403 (Resource not accessible). This means your GitHub OAuth App or GitHub App "
-                    "integration lacks write access (Repository Permissions > 'Contents' must be set to 'Read & write'). "
-                    "Please go to your GitHub developer settings, upgrade permissions for your App, and accept the "
-                    "updated permission consent on your repository settings page."
+                    f"GitHub API returned 403 in Step 3 (Create Commit): {commit_res.text}. "
+                    "This means your GitHub OAuth App or GitHub App integration lacks write access."
                 )
             )
         if commit_res.status_code not in (200, 201):
@@ -328,10 +333,8 @@ async def commit_generation_code(
             raise HTTPException(
                 status_code=403,
                 detail=(
-                    "GitHub API returned 403 (Resource not accessible). This means your GitHub OAuth App or GitHub App "
-                    "integration lacks write access (Repository Permissions > 'Contents' must be set to 'Read & write'). "
-                    "Please go to your GitHub developer settings, upgrade permissions for your App, and accept the "
-                    "updated permission consent on your repository settings page."
+                    f"GitHub API returned 403 in Step 4 (Update Ref): {update_res.text}. "
+                    "This means your GitHub OAuth App or GitHub App integration lacks write access."
                 )
             )
         if update_res.status_code != 200:
@@ -348,3 +351,129 @@ async def commit_generation_code(
             "commit_sha": new_commit_sha,
             "commit_url": commit_web_url
         }
+
+@router.post("/{owner}/{repo}/secrets/push-saved")
+async def push_saved_credentials_to_github(
+    owner: str,
+    repo: str,
+    payload: PushSecretsRequest,
+    current_user: UserBase = Depends(get_current_user),
+    user_repo: UserRepository = Depends(get_user_repository),
+    cred_repo: CredentialRepository = Depends(get_credential_repository)
+):
+    """
+    Load saved credentials from MongoDB, decrypt them, encrypt them using the repository's
+    public key, and push them to GitHub repository secrets.
+    """
+    user_data = await user_repo.get_by_login(current_user.login)
+    if not user_data or not user_data.get("github_access_token"):
+        raise HTTPException(status_code=401, detail="GitHub access token not found. Please log in again.")
+    github_access_token = user_data["github_access_token"]
+
+    pushed_secrets = []
+    
+    for cred_id in payload.credential_ids:
+        cred = await cred_repo.get_by_id(cred_id, current_user.login)
+        if not cred:
+            raise HTTPException(
+                status_code=404, 
+                detail=f"Saved credential '{cred_id}' not found or unauthorized"
+            )
+            
+        provider = cred.get("provider")
+        data = cred.get("data", {})
+        
+        try:
+            if provider == "aws":
+                await GitHubSecretsManager.push_secret(
+                    owner, repo, "AWS_ACCESS_KEY_ID", data.get("aws_access_key_id", ""), github_access_token
+                )
+                await GitHubSecretsManager.push_secret(
+                    owner, repo, "AWS_SECRET_ACCESS_KEY", data.get("aws_secret_access_key", ""), github_access_token
+                )
+                await GitHubSecretsManager.push_secret(
+                    owner, repo, "AWS_REGION", data.get("aws_region", "us-east-1"), github_access_token
+                )
+                pushed_secrets.extend(["AWS_ACCESS_KEY_ID", "AWS_SECRET_ACCESS_KEY", "AWS_REGION"])
+                
+            elif provider == "gcp":
+                await GitHubSecretsManager.push_secret(
+                    owner, repo, "GCP_SA_KEY", data.get("gcp_sa_key", ""), github_access_token
+                )
+                await GitHubSecretsManager.push_secret(
+                    owner, repo, "GCP_PROJECT_ID", data.get("gcp_project_id", ""), github_access_token
+                )
+                pushed_secrets.extend(["GCP_SA_KEY", "GCP_PROJECT_ID"])
+                
+            elif provider == "dockerhub":
+                await GitHubSecretsManager.push_secret(
+                    owner, repo, "DOCKER_USERNAME", data.get("docker_username", ""), github_access_token
+                )
+                await GitHubSecretsManager.push_secret(
+                    owner, repo, "DOCKER_PASSWORD", data.get("docker_password", ""), github_access_token
+                )
+                pushed_secrets.extend(["DOCKER_USERNAME", "DOCKER_PASSWORD"])
+        except HTTPException as e:
+            raise e
+        except Exception as err:
+            raise HTTPException(
+                status_code=500,
+                detail=f"Failed to push secret for provider '{provider}': {str(err)}"
+            )
+            
+    return {"status": "success", "pushed": pushed_secrets}
+
+@router.get("/{owner}/{repo}/actions/runs")
+async def get_github_workflow_runs(
+    owner: str,
+    repo: str,
+    branch: Optional[str] = None,
+    current_user: UserBase = Depends(get_current_user),
+    user_repo: UserRepository = Depends(get_user_repository)
+):
+    """
+    Fetch the latest GitHub Actions workflow run for this repository and branch.
+    """
+    user_data = await user_repo.get_by_login(current_user.login)
+    if not user_data or not user_data.get("github_access_token"):
+        raise HTTPException(status_code=401, detail="GitHub access token not found.")
+    github_access_token = user_data["github_access_token"]
+
+    headers = {
+        "Authorization": f"token {github_access_token}",
+        "Accept": "application/vnd.github.v3+json"
+    }
+    
+    url = f"https://api.github.com/repos/{owner}/{repo}/actions/runs"
+    params = {}
+    if branch:
+        params["branch"] = branch
+        
+    async with httpx.AsyncClient(timeout=15.0) as client:
+        res = await client.get(url, headers=headers, params=params)
+        if res.status_code != 200:
+            raise HTTPException(
+                status_code=res.status_code, 
+                detail=f"Failed to fetch workflow runs from GitHub: {res.text}"
+            )
+            
+        data = res.json()
+        runs = data.get("workflow_runs", [])
+        
+        if not runs:
+            return {"status": "no_runs", "latest_run": None}
+            
+        latest = runs[0]
+        return {
+            "status": "success",
+            "latest_run": {
+                "id": latest.get("id"),
+                "name": latest.get("name"),
+                "status": latest.get("status"),
+                "conclusion": latest.get("conclusion"),
+                "html_url": latest.get("html_url"),
+                "created_at": latest.get("created_at"),
+                "updated_at": latest.get("updated_at")
+            }
+        }
+
