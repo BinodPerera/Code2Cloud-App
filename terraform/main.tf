@@ -114,24 +114,6 @@ resource "aws_security_group" "web_sg" {
 
 # --- Elastic IP (Conditional) ---
 
-resource "aws_eip" "web_eip" {
-  domain = "vpc"
-  tags = {
-    Name = "${var.project_name}-eip"
-  }
-}
-
-resource "aws_eip_association" "eip_assoc" {
-  
-  
-  instance_id   = aws_instance.backend.id
-  allocation_id = aws_eip.web_eip.id
-  
-  
-  
-  
-}
-
 
 # --- EC2 Instances ---
 
@@ -146,10 +128,19 @@ resource "aws_instance" "backend" {
 
   user_data = <<-EOF
     #!/bin/bash
-    dnf update -y
-    dnf install -y docker
-    systemctl start docker
-    systemctl enable docker
+    if command -v apt-get &>/dev/null; then
+      apt-get update -y
+      apt-get install -y docker.io awscli
+      systemctl start docker
+      systemctl enable docker
+      usermod -aG docker ubuntu || true
+    elif command -v dnf &>/dev/null; then
+      dnf update -y
+      dnf install -y docker
+      systemctl start docker
+      systemctl enable docker
+      usermod -aG docker ec2-user || true
+    fi
     
     # Authenticate Docker against ECR
     aws ecr get-login-password --region \${var.aws_region} | docker login --username AWS --password-stdin \${data.aws_caller_identity.current.account_id}.dkr.ecr.\${data.aws_region.current.name}.amazonaws.com/\${lower(var.project_name)}-backend
@@ -178,10 +169,19 @@ resource "aws_instance" "frontend" {
 
   user_data = <<-EOF
     #!/bin/bash
-    dnf update -y
-    dnf install -y docker
-    systemctl start docker
-    systemctl enable docker
+    if command -v apt-get &>/dev/null; then
+      apt-get update -y
+      apt-get install -y docker.io awscli
+      systemctl start docker
+      systemctl enable docker
+      usermod -aG docker ubuntu || true
+    elif command -v dnf &>/dev/null; then
+      dnf update -y
+      dnf install -y docker
+      systemctl start docker
+      systemctl enable docker
+      usermod -aG docker ec2-user || true
+    fi
     
     # Authenticate Docker against ECR
     aws ecr get-login-password --region \${var.aws_region} | docker login --username AWS --password-stdin \${data.aws_caller_identity.current.account_id}.dkr.ecr.\${data.aws_region.current.name}.amazonaws.com/\${lower(var.project_name)}-frontend

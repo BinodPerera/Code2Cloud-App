@@ -36,7 +36,7 @@ jobs:
           IMAGE_TAG: ${{ github.sha }}
         run: |
           # Create repository if it doesn't exist
-          aws ecr describe-repositories --repository-names $ECR_REPOSITORY || aws ecr create-repository --repository-name $ECR_REPOSITORY
+          aws ecr describe-repositories --repository-names $ECR_REPOSITORY 2>/dev/null || aws ecr create-repository --repository-name $ECR_REPOSITORY
           
           docker build -t $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG -t $ECR_REGISTRY/$ECR_REPOSITORY:latest backend
           docker push $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
@@ -49,7 +49,7 @@ jobs:
           IMAGE_TAG: ${{ github.sha }}
         run: |
           # Create repository if it doesn't exist
-          aws ecr describe-repositories --repository-names $ECR_REPOSITORY || aws ecr create-repository --repository-name $ECR_REPOSITORY
+          aws ecr describe-repositories --repository-names $ECR_REPOSITORY 2>/dev/null || aws ecr create-repository --repository-name $ECR_REPOSITORY
           
           docker build -t $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG -t $ECR_REGISTRY/$ECR_REPOSITORY:latest frontend
           docker push $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
