@@ -132,9 +132,12 @@ resource "aws_ecs_task_definition" "backend" {
       containerPort = 8000
       hostPort      = 8000
     }]
-    environment = [
-      { name = "PORT", value = "8000" }
-    ]
+    environment = concat(
+      [
+        { name = "PORT", value = "8000" }
+      ],
+      [for k, v in var.app_env_vars : { name = k, value = v }]
+    )
   }])
 }
 
@@ -168,11 +171,13 @@ resource "aws_ecs_task_definition" "frontend" {
       containerPort = 3000
       hostPort      = 3000
     }]
-    environment = [
-      { name = "PORT", value = "3000" }
-      # Monorepo Auto-wired Links
-      , { name = "BACKEND_URL", value = "http://${var.project_name}-backend.local:3000" }
-    ]
+    environment = concat(
+      [
+        { name = "PORT", value = "3000" }
+        , { name = "BACKEND_URL", value = "http://${var.project_name}-backend.local:3000" }
+      ],
+      [for k, v in var.app_env_vars : { name = k, value = v }]
+    )
   }])
 }
 

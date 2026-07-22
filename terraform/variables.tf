@@ -15,3 +15,9 @@ variable "environment" {
   type        = string
   default     = "production"
 }
+
+variable "app_env_vars" {
+  description = "Application environment variables passed from GitHub Secrets"
+  type        = map(string)
+  default     = {}
+}
