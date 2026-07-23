@@ -78,3 +78,20 @@ class GitHubSecretsManager:
                     status_code=res.status_code,
                     detail=f"Failed to write repository secret '{secret_name}' to GitHub: {res.text}"
                 )
+
+    @staticmethod
+    async def list_secrets(owner: str, repo: str, token: str) -> list:
+        """
+        Fetch existing secret names from GitHub repository secrets without exposing secret values.
+        """
+        headers = {
+            "Authorization": f"token {token}",
+            "Accept": "application/vnd.github.v3+json"
+        }
+        url = f"https://api.github.com/repos/{owner}/{repo}/actions/secrets"
+        async with httpx.AsyncClient(timeout=15.0) as client:
+            res = await client.get(url, headers=headers)
+            if res.status_code == 200:
+                data = res.json()
+                return [s["name"] for s in data.get("secrets", [])]
+            return []

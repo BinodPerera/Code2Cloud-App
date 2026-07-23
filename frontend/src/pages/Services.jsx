@@ -1,11 +1,21 @@
 import React from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Calculator, Code2, Cpu } from 'lucide-react';
+import { Calculator, Code2, Cpu, CloudLightning } from 'lucide-react';
 
 function Services() {
   const navigate = useNavigate();
 
   const services = [
+    {
+      id: 'direct-deploy',
+      title: 'Direct Cloud Deploy Wizard',
+      description: 'End-to-end direct deployment wizard: select repo, configure compute sizing, env secrets, and trigger automated GitHub Actions deployment.',
+      icon: CloudLightning,
+      color: '#10B981',
+      bgHover: 'rgba(16, 185, 129, 0.12)',
+      borderHover: '#10B981',
+      isDirect: true
+    },
     {
       id: 'finops',
       title: 'Cost Analysis (FinOps)',
@@ -35,8 +45,12 @@ function Services() {
     }
   ];
 
-  const handleServiceSelect = (serviceId) => {
-    navigate(`/services/${serviceId}`);
+  const handleServiceSelect = (service) => {
+    if (service.isDirect) {
+      navigate('/deploy/direct');
+    } else {
+      navigate(`/services/${service.id}`);
+    }
   };
 
   return (
@@ -54,7 +68,7 @@ function Services() {
         {services.map((service) => (
           <div
             key={service.id}
-            onClick={() => handleServiceSelect(service.id)}
+            onClick={() => handleServiceSelect(service)}
             style={{
               display: 'flex',
               flexDirection: 'column',

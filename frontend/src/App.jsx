@@ -7,6 +7,7 @@ import ServiceSetup from './pages/ServiceSetup';
 import GenerationViewer from './pages/GenerationViewer';
 import HistoryPage from './pages/History';
 import SettingsPage from './pages/Settings';
+import DirectDeployWizard from './pages/DirectDeployWizard';
 import PrivateRoute from './components/PrivateRoute';
 import DashboardLayout from './components/DashboardLayout';
 import './App.css';
@@ -23,6 +24,7 @@ function App() {
           <Route path="/" element={<Navigate to="/services" replace />} />
           <Route path="/services" element={<Services />} />
           <Route path="/services/:serviceId" element={<ServiceSetup />} />
+          <Route path="/deploy/direct" element={<DirectDeployWizard />} />
           <Route path="/generation/:generationId" element={<GenerationViewer />} />
           <Route path="/chat" element={
             <div style={{ textAlign: 'center', paddingTop: '10vh' }}>

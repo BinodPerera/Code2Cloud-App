@@ -4,6 +4,24 @@ import re
 import httpx
 from typing import Dict, Any, List, Optional
 
+def parse_env_file_keys(content: str) -> List[str]:
+    """
+    Extract variable key names from .env, .env.example, or .env.template contents.
+    """
+    keys = []
+    for line in content.splitlines():
+        line = line.strip()
+        if not line or line.startswith("#"):
+            continue
+        if line.startswith("export "):
+            line = line[7:].strip()
+        if "=" in line:
+            key = line.split("=", 1)[0].strip()
+            if key and re.match(r'^[A-Za-z_][A-Za-z0-9_]*$', key):
+                if key not in keys:
+                    keys.append(key)
+    return keys
+
 def parse_spring_port(content: str, filename: str) -> Optional[int]:
     if filename.endswith(".properties"):
         match = re.search(r'server\.port\s*=\s*(\d+)', content)
@@ -151,6 +169,56 @@ class TechStackAnalyzer:
                         deep_components = await TechStackAnalyzer.deep_analyze(client, tree_items, owner, repo, headers)
                         if deep_components:
                             components.extend(deep_components)
+                    
+                    # Post-process components to check Dockerfile presence and .env keys
+                    for comp in components:
+                        comp_dir = comp.get("path", ".")
+                        if comp_dir in [".", ""]:
+                            comp_prefix = ""
+                        else:
+                            comp_prefix = comp_dir.rstrip("/") + "/"
+                        
+                        has_dockerfile = False
+                        env_keys = []
+                        env_files_to_check = []
+
+                        for t_item in tree_items:
+                            t_path = t_item.get("path", "")
+                            t_path_lower = t_path.lower()
+                            
+                            # Check Dockerfile
+                            if t_path_lower == f"{comp_prefix}dockerfile" or t_path_lower == "dockerfile" or t_path_lower.endswith("/dockerfile"):
+                                has_dockerfile = True
+                            
+                            # Check env template files
+                            t_name = t_path.split("/")[-1].lower()
+                            if t_name in [".env.example", ".env.template", ".env.sample", ".env"]:
+                                if not comp_prefix or t_path.startswith(comp_prefix) or ("/" not in t_path):
+                                    env_files_to_check.append(t_path)
+                        
+                        # Fetch and parse env files
+                        for env_f_path in env_files_to_check:
+                            try:
+                                env_res = await client.get(f"https://api.github.com/repos/{owner}/{repo}/contents/{env_f_path}", headers=headers)
+                                if env_res.status_code == 200:
+                                    env_data = env_res.json()
+                                    env_content = base64.b64decode(env_data.get("content", "")).decode("utf-8")
+                                    extracted = parse_env_file_keys(env_content)
+                                    for k in extracted:
+                                        if k not in env_keys:
+                                            env_keys.append(k)
+                            except Exception:
+                                pass
+                        
+                        comp["has_dockerfile"] = has_dockerfile
+                        comp["env_keys"] = env_keys
+
+                    # In monorepos with multiple components, filter out root-level wrapper manifests (e.g., root package.json)
+                    if len(components) > 1:
+                        subfolder_components = [c for c in components if "/" in c.get("path", "")]
+                        if subfolder_components:
+                            components = subfolder_components
+
             except Exception:
                 pass
 

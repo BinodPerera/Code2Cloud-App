@@ -55,7 +55,7 @@ jobs:
           IMAGE_TAG: {% raw %}${{ github.sha }}{% endraw %}
         run: |
           # Create repository if it doesn't exist
-          gcloud artifacts repositories describe {{ repo_name | lower }}-repo --location=us-central1 || gcloud artifacts repositories create {{ repo_name | lower }}-repo --repository-format=docker --location=us-central1
+          gcloud artifacts repositories describe {{ repo_name | lower }}-repo --location=us-central1 2>/dev/null || gcloud artifacts repositories create {{ repo_name | lower }}-repo --repository-format=docker --location=us-central1
           
           docker build -t $IMAGE_NAME:$IMAGE_TAG -t $IMAGE_NAME:latest {{ comp.path }}
           docker push $IMAGE_NAME:$IMAGE_TAG

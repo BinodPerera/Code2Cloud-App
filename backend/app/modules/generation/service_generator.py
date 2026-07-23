@@ -147,8 +147,8 @@ class CodeGenerator:
                 except Exception as e:
                     generated_code["README.md"] = f"# Error generating Docker README: {str(e)}"
 
-        # Terraform Configurations
-        elif service_id == "terraform":
+        # Terraform / Direct Deploy Configurations
+        elif service_id in ["terraform", "direct_deploy"]:
             tf_components = []
             for comp in components_list:
                 raw_name = comp.get("name", "app")
@@ -160,13 +160,38 @@ class CodeGenerator:
                 elif "Java" in comp_type and "Javascript" not in comp_type:
                     port = comp.get("port") or 8080
                 
+                comp_instance_type = comp.get("instance_type") or (aws_instance_type if cloud.lower() == "aws" else gcp_machine_type)
+                
                 tf_components.append({
                     "name": comp_name,
                     "port": port,
                     "path": comp.get("path", "."),
                     "type": comp_type,
+                    "instance_type": comp_instance_type,
                     "depends_on": [] if comp_name == "backend" else ["backend"] if any(c.get("name", "").lower().replace("/", "-").replace("\\", "-") == "backend" for c in components_list) else []
                 })
+                
+                # Check user Dockerfile choice (reuse existing vs generate new)
+                user_dockerfile_choice = comp.get("user_dockerfile_choice", "generate")
+                has_existing_df = comp.get("has_dockerfile", False)
+                
+                # Only generate Dockerfile if user chose to generate/overwrite, or if no Dockerfile exists
+                if not (has_existing_df and user_dockerfile_choice == "reuse"):
+                    template_name = "docker/express.jinja"
+                    if "Python" in comp_type:
+                        template_name = "docker/fastapi.jinja"
+                    elif "Java" in comp_type and "Javascript" not in comp_type:
+                        template_name = "docker/springboot.jinja"
+                    
+                    try:
+                        tmpl = env.get_template(template_name)
+                        df_content = tmpl.render(port=port)
+                    except Exception as e:
+                        df_content = f"# Fallback Dockerfile\nFROM node:18-alpine\nWORKDIR /app\nCOPY . .\nRUN npm install\nCMD [\"npm\", \"start\"]\n# error: {str(e)}"
+                    
+                    c_path = comp.get("path", ".")
+                    df_key = "Dockerfile" if c_path in (".", "") else f"{c_path}/Dockerfile"
+                    generated_code[df_key] = df_content
                 
             if cloud.lower() == "aws":
                 try:

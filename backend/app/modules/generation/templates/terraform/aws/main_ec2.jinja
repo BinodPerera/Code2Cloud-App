@@ -171,6 +171,9 @@ resource "aws_instance" "{{ comp.name }}" {
       -e {{ dep | upper }}_URL=http://localhost:{{ comp.port | default(3000) }} \
       {%- endfor %}
       {%- endif %}
+      %{ for k, v in var.app_env_vars ~}
+      -e ${k}="${v}" \
+      %{ endfor ~}
       \${data.aws_caller_identity.current.account_id}.dkr.ecr.\${data.aws_region.current.name}.amazonaws.com/\${lower(var.project_name)}-{{ comp.name }}:latest
   EOF
 

@@ -132,15 +132,17 @@ resource "aws_ecs_task_definition" "{{ comp.name }}" {
       containerPort = {{ comp.port | default(80) }}
       hostPort      = {{ comp.port | default(80) }}
     }]
-    environment = [
-      { name = "PORT", value = "{{ comp.port | default(80) }}" }
-      {%- if comp.depends_on %}
-      # Monorepo Auto-wired Links
-      {%- for dep in comp.depends_on %}
-      , { name = "{{ dep | upper }}_URL", value = "http://${var.project_name}-{{ dep }}.local:{{ comp.port | default(80) }}" }
-      {%- endfor %}
-      {%- endif %}
-    ]
+    environment = concat(
+      [
+        { name = "PORT", value = "{{ comp.port | default(80) }}" }
+        {%- if comp.depends_on %}
+        {%- for dep in comp.depends_on %}
+        , { name = "{{ dep | upper }}_URL", value = "http://${var.project_name}-{{ dep }}.local:{{ comp.port | default(80) }}" }
+        {%- endfor %}
+        {%- endif %}
+      ],
+      [for k, v in var.app_env_vars : { name = k, value = v }]
+    )
   }])
 }
 

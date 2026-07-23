@@ -477,3 +477,45 @@ async def get_github_workflow_runs(
             }
         }
 
+@router.get("/{owner}/{repo}/secrets-keys")
+async def get_repository_secret_keys(
+    owner: str,
+    repo: str,
+    current_user: UserBase = Depends(get_current_user),
+    user_repo: UserRepository = Depends(get_user_repository)
+):
+    """
+    Fetch existing GitHub Action secret names for the repository (no values exposed).
+    """
+    user_data = await user_repo.get_by_login(current_user.login)
+    if not user_data or not user_data.get("github_access_token"):
+        raise HTTPException(status_code=401, detail="GitHub access token missing")
+    
+    secret_names = await GitHubSecretsManager.list_secrets(owner, repo, user_data["github_access_token"])
+    return {"secrets": secret_names}
+
+@router.post("/{owner}/{repo}/push-custom-secrets")
+async def push_custom_env_secrets(
+    owner: str,
+    repo: str,
+    secrets_dict: Dict[str, str],
+    current_user: UserBase = Depends(get_current_user),
+    user_repo: UserRepository = Depends(get_user_repository)
+):
+    """
+    Push custom environment variables/secrets to GitHub repository secrets.
+    """
+    user_data = await user_repo.get_by_login(current_user.login)
+    if not user_data or not user_data.get("github_access_token"):
+        raise HTTPException(status_code=401, detail="GitHub access token missing")
+    
+    pushed = []
+    token = user_data["github_access_token"]
+    for key_name, value in secrets_dict.items():
+        if key_name and value is not None:
+            await GitHubSecretsManager.push_secret(owner, repo, key_name, str(value), token)
+            pushed.append(key_name)
+            
+    return {"status": "success", "pushed": pushed}
+
+
