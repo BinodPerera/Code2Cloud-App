@@ -1,0 +1,572 @@
+--- Page 1 ---
+AUTOMATED CLOUD 
+INFRASTRUCTURE 
+RECOMMENDATION SYSTEM WITH 
+TERRAFORM AND DOCKER 
+GENERATION FOR WEB 
+APPLICATIONS 
+ 
+ 
+Research Project Proposal 
+presented to the Faculty of Computing 
+NSBM Green University 
+in partial fulfillment of the requirements for the degree of 
+BACHELOR OF SCIENCE IN SOFTWARE ENGINEERING 
+by 
+Mahamalage Yasindu Binod Perera (28556) 
+ 
+ 
+ 
+November 2022 
+ 
+--- Page 2 ---
+AUTOMATED CLOUD INFRASTRUCTURE RECOMMENDATION SYSTEM WITH 
+TERRAFORM AND DOCKER GENERATION FOR WEB APPLICATIONS ...........................1 
+1. Introduction ..............................................................................................................................1 
+1.1 Background of the Study ....................................................................................................2 
+1.2 Motivation ..........................................................................................................................2 
+1.3 Study Objectives .................................................................................................................3 
+Primary Objective .................................................................................................................3 
+Secondary Objectives............................................................................................................3 
+2. Literature Review and Research Gap .......................................................................................4 
+2.1 Overview of Existing Studies .............................................................................................4 
+2.2 Identification of Research Gap ...........................................................................................5 
+3. Research Problem and Questions .............................................................................................6 
+3.1 Main Research Problem......................................................................................................6 
+3.2 Specific Research Questions ..............................................................................................6 
+4. Research Strategy and Methodology........................................................................................7 
+4.1 Research Strategy ...............................................................................................................7 
+4.2 Research Methodology Framework....................................................................................7 
+4.3 Data Collection Methods ....................................................................................................8 
+4.4 Data Preprocessing / Preparation ........................................................................................9 
+4.5 Model Development / Implementation .............................................................................10 
+4.6 Evaluation .........................................................................................................................11 
+4.7 Ethical Considerations ......................................................................................................12 
+4.8 Limitations of the Study ...................................................................................................12 
+5. Timeline .................................................................................................................................13 
+References ..................................................................................................................................14 
+ 
+--- Page 3 ---
+1. Introduction 
+1.1 Background of the Study 
+The rapid adoption of cloud computing has revolutionized software deployment, with major 
+providers like Amazon Web Services (AWS), Microsoft Azure, Google Cloud Platform (GCP), 
+and DigitalOcean offering diverse infrastructure services. However, this abundance of choices 
+presents significant challenges for developers, particularly those transitioning from development 
+to deployment phases. According to industry surveys, approximately 68% of developers report 
+difficulties in selecting appropriate cloud resources for their applications, leading to either under-
+provisioning (causing performance issues) or over-provisioning (resulting in unnecessary costs) 
+[1]. 
+The problem intensifies when considering Infrastructure as Code (IaC) tools like Terraform and 
+containerization technologies like Docker. While these technologies promise reproducibility and 
+scalability, they require specialized knowledge that many development teams lack. Recent 
+studies indicate that 45% of cloud spending is wasted on idle or oversized resources, amounting 
+to billions of dollars annually across the industry [2]. 
+Existing solutions in this domain are fragmented. Cloud providers offer basic calculators (AWS 
+Pricing Calculator, Azure Pricing Calculator), but these require manual input and technical 
+expertise. Performance benchmarking tools exist independently, and cost optimization platforms 
+focus primarily on post-deployment analysis rather than pre-deployment recommendations. This 
+fragmentation leaves developers without a comprehensive, automated solution that bridges the 
+gap between application code analysis and infrastructure specification. 
+The evolution of DevOps practices and the increasing complexity of microservices architectures 
+have further complicated infrastructure decisions. Modern applications often involve multiple 
+services, databases, caching layers, and message queues, each with distinct resource 
+requirements. Manual estimation of these requirements is error-prone and time-consuming, often 
+taking weeks of trial and error. 
+1.2 Motivation 
+The motivation for this research stems from firsthand experience during a professional internship 
+where I was tasked with deploying a Django REST framework API to an AWS EC2 instance. 
+The process involved extensive research to determine the appropriate instance type (t2.micro vs. 
+t3.medium vs. m5.large), storage requirements, security group configurations, and cost 
+considerations. This experience revealed several challenges: 
+--- Page 4 ---
+1. Information Overload: The AWS documentation spans thousands of pages, with over 
+400 different EC2 instance types across various families (t3, m5, c5, r5, etc.), each 
+optimized for different workloads. 
+2. Cost Uncertainty: Without proper guidance, it was impossible to predict monthly costs 
+accurately, leading to budget concerns. 
+3. Performance Anxiety: The fear of choosing insufficient resources that might crash 
+under production load versus overspending on unnecessary capacity. 
+4. Configuration Complexity: Creating secure and optimized Terraform scripts and 
+Dockerfiles required significant learning and experimentation. 
+This personal experience is not unique. According to the Cloud Native Computing Foundation's 
+2024 survey, 72% of organizations report that cloud cost management is a significant challenge, 
+with 35% citing difficulty in right-sizing resources as a primary concern [3]. 
+The academic motivation lies in addressing the gap between software engineering and cloud 
+infrastructure management. While extensive research exists in both domains separately, there is 
+limited work on automated systems that translate application characteristics into infrastructure 
+specifications. This research aims to contribute to the emerging field of AI Operations (AIOps) 
+by developing intelligent recommendations based on code analysis. 
+From a societal perspective, efficient cloud resource utilization has environmental implications. 
+Over-provisioned servers consume unnecessary energy in data centers, contributing to carbon 
+emissions. An optimized recommendation system can contribute to sustainable computing 
+practices by minimizing resource waste. 
+1.3 Study Objectives 
+Primary Objective 
+• To design and develop an automated cloud infrastructure recommendation system that 
+analyzes software repositories and generates optimal deployment configurations with 
+corresponding Infrastructure as Code scripts. 
+Secondary Objectives 
+1. To design a repository analysis module capable of identifying technology stacks, 
+dependencies, and resource requirements from GitHub repositories. 
+2. To develop machine learning models that correlate application characteristics with 
+appropriate cloud resource specifications across multiple providers (AWS, Azure, GCP, 
+DigitalOcean). 
+--- Page 5 ---
+3. To implement a cost estimation engine that calculates projected monthly expenses based 
+on resource recommendations and regional pricing. 
+4. To create a Terraform script generator that produces production-ready infrastructure code 
+following cloud best practices. 
+5. To develop a Dockerfile generator that creates optimized container configurations based 
+on the analyzed technology stack. 
+6. To design a web-based interface that allows users to input repository information and 
+receive comprehensive deployment recommendations. 
+7. To evaluate the system's accuracy by comparing its recommendations with expert human 
+decisions and actual deployment performance metrics. 
+ 
+2. Literature Review and Research Gap 
+2.1 Overview of Existing Studies 
+Several research streams contribute to understanding cloud infrastructure optimization and 
+automated deployment: 
+Cloud Resource Recommendation Systems: Sharma et al. [4] proposed a machine learning-
+based approach for cloud resource recommendation using historical usage patterns. Their system 
+analyzed CPU and memory utilization metrics from running applications to suggest optimal 
+instance types. However, their approach requires existing deployment data, making it unsuitable 
+for new applications without historical metrics. 
+Code Analysis for Infrastructure: Chen et al. [5] developed a static analysis tool that examines 
+Java applications to estimate memory requirements based on object allocation patterns. While 
+innovative, their work focuses narrowly on memory estimation and doesn't consider complete 
+infrastructure requirements or multiple cloud providers. 
+Cost Optimization Platforms: Zhang and Wang [6] created CloudCostOpt, a post-deployment 
+optimization tool that analyzes cloud spending patterns and recommends rightsizing 
+opportunities. Their approach is reactive rather than proactive, addressing cost issues after 
+resources have been provisioned. 
+Infrastructure as Code Generation: Kim et al. [7] introduced TerraGen, a template-based 
+system for generating Terraform configurations. Their system uses predefined templates for 
+common application architectures but lacks intelligence in customizing recommendations based 
+on specific application characteristics. 
+--- Page 6 ---
+Performance Prediction Models: Gupta et al. [8] developed performance prediction models for 
+cloud applications using microbenchmarks. Their approach requires running benchmark tests 
+against different instance types, which is time-consuming and may not be feasible for all 
+applications. 
+Multi-cloud Deployment Frameworks: Patel and Singh [9] proposed a framework for 
+deploying applications across multiple cloud providers to avoid vendor lock-in. Their work 
+focuses on deployment orchestration rather than initial resource recommendation. 
+Container Optimization: Li et al. [10] researched Docker container optimization techniques, 
+focusing on image size reduction and startup time improvement. Their work provides valuable 
+insights for container generation but doesn't address broader infrastructure considerations. 
+Security Automation in IaC: Rahman et al. [11] studied security vulnerabilities in 
+Infrastructure as Code scripts and developed a linter for Terraform configurations. Their research 
+highlights the importance of security in automated infrastructure generation. 
+2.2 Identification of Research Gap 
+The literature review reveals several significant gaps in current research: 
+1. Pre-deployment Gap: Existing systems primarily focus on post-deployment 
+optimization (like CloudCostOpt [6]) or require running applications (like Sharma et al. 
+[4]). There is a lack of comprehensive systems that provide recommendations before 
+deployment based solely on source code analysis. 
+2. Holistic Recommendation Gap: Current approaches address isolated aspects—cost [6], 
+performance [8], or security [11]—but no integrated system considers all dimensions 
+simultaneously when making recommendations. 
+3. Multi-provider Intelligence Gap: While multi-cloud frameworks exist [9], they don't 
+provide intelligent comparisons or recommendations across providers based on 
+application-specific requirements. 
+4. Code-to-Infrastructure Translation Gap: Chen et al. [5] made progress in estimating 
+memory requirements from code, but comprehensive translation of application 
+characteristics to complete infrastructure specifications remains unexplored. 
+5. Practical Implementation Gap: Research often focuses on theoretical models or limited 
+prototypes. There is a need for a fully implemented, end-to-end system that developers 
+can use in real-world scenarios. 
+6. Dynamic Learning Gap: Most systems use static rules or templates [7]. There is 
+potential for machine learning approaches that learn from successful deployments across 
+numerous projects to improve recommendations. 
+--- Page 7 ---
+This research addresses these gaps by developing an integrated system that: 
+• Analyzes source code repositories to understand application requirements 
+• Provides pre-deployment recommendations across multiple dimensions (performance, 
+cost, security) 
+• Generates complete Infrastructure as Code configurations 
+• Works across multiple cloud providers 
+• Incorporates learning mechanisms to improve recommendations over time 
+The novelty of this approach lies in its comprehensive code analysis, multi-dimensional 
+optimization, and practical implementation focus, bridging the gap between academic research 
+and real-world developer needs. 
+ 
+3. Research Problem and Questions 
+3.1 Main Research Problem 
+How can an automated system effectively analyze software repository characteristics to generate 
+optimal, secure, and cost-efficient cloud infrastructure recommendations with corresponding 
+Infrastructure as Code configurations across multiple cloud providers? 
+3.2 Specific Research Questions 
+1. What repository characteristics (programming languages, frameworks, dependencies, 
+architecture patterns) are most predictive of cloud resource requirements (CPU, memory, 
+storage, networking)? 
+2. How can machine learning models be trained to correlate application features with 
+appropriate cloud instance types across different providers while considering 
+performance-cost tradeoffs? 
+3. What architectural patterns and algorithms enable accurate cost estimation that accounts 
+for variable pricing models, regional differences, and supplementary services (databases, 
+CDN, load balancers)? 
+4. How can Terraform scripts be automatically generated that not only provision 
+recommended resources but also incorporate security best practices, monitoring 
+configurations, and scalability considerations? 
+5. What Dockerfile optimization techniques can be automatically applied based on the 
+identified technology stack to create efficient, secure, and minimal container images? 
+--- Page 8 ---
+6. How does the recommendation accuracy of the automated system compare to decisions 
+made by cloud infrastructure experts with varying experience levels? 
+7. What evaluation metrics and methodologies are most appropriate for assessing the quality 
+of infrastructure recommendations in terms of technical suitability, cost efficiency, and 
+security compliance? 
+ 
+4. Research Strategy and Methodology 
+4.1 Research Strategy 
+This research adopts the Design Science Research (DSR) methodology, which is particularly 
+suitable for information systems research that aims to create innovative artifacts to solve 
+identified problems [12]. DSR emphasizes the creation and evaluation of artifacts designed to 
+meet identified business needs. This approach is appropriate because: 
+1. Problem-Centered: The research begins with a recognized practical problem (difficulty 
+in selecting cloud infrastructure). 
+2. Artifact Creation: The primary output is a functional system (automated 
+recommendation system). 
+3. Evaluation Focus: DSR requires rigorous evaluation of the artifact's utility and 
+effectiveness. 
+4. Iterative Nature: DSR supports iterative development with multiple evaluation cycles. 
+The research will also incorporate elements of Experimental Research for evaluating the 
+system's performance and Case Study Research for understanding real-world usage scenarios. 
+4.2 Research Methodology Framework 
+The research will follow the six-stage DSRM process proposed by Peffers et al. [12]: 
+Phase 1: Problem Identification and Motivation 
+• Document the problem through literature review and developer interviews 
+• Quantify the extent of the problem through surveys 
+• Define objectives for a solution 
+Phase 2: Define Objectives of a Solution 
+• Derive solution objectives from problem definition 
+--- Page 9 ---
+• Specify functional and non-functional requirements 
+• Establish evaluation criteria 
+Phase 3: Design and Development 
+• Design system architecture and components 
+• Develop repository analyzer 
+• Implement recommendation engine 
+• Build cost calculator 
+• Create IaC generators 
+• Develop web interface 
+Phase 4: Demonstration 
+• Deploy prototype system 
+• Demonstrate functionality with sample repositories 
+• Conduct usability testing with developers 
+Phase 5: Evaluation 
+• Compare recommendations with expert decisions 
+• Measure cost savings against naive provisioning 
+• Evaluate generated code quality 
+• Assess system performance and scalability 
+Phase 6: Communication 
+• Document research findings 
+• Publish academic papers 
+• Present at conferences 
+• Prepare implementation guides 
+4.3 Data Collection Methods 
+Primary Data Sources: 
+1. GitHub Repository Dataset: Approximately 1,000 public repositories across different 
+technology stacks (Python/Django, Node.js/Express, Java/Spring, etc.) with known 
+deployment configurations. These will be collected using GitHub API with proper 
+filtering for licenses allowing research use. 
+--- Page 10 ---
+2. Cloud Pricing Data: Current pricing information from AWS, Azure, GCP, and 
+DigitalOcean APIs, including compute instances, storage, networking, and managed 
+services. 
+3. Expert Decision Dataset: Infrastructure recommendations from 20 cloud experts for 50 
+sample applications, collected through structured interviews and questionnaires. 
+4. Performance Benchmark Data: Standard performance benchmarks (SPEC CPU, 
+memory bandwidth tests) for different cloud instance types from published sources. 
+5. User Feedback: Usability testing data from 30 developers with varying cloud experience 
+levels. 
+Collection Instruments: 
+• GitHub API client for repository metadata extraction 
+• Custom web crawlers for cloud pricing pages 
+• Structured interview protocols for expert data collection 
+• Online survey instruments for user feedback 
+• Performance testing scripts for validation 
+4.4 Data Preprocessing / Preparation 
+Repository Data Processing: 
+1. Cloning and Parsing: Clone repositories and parse key files (package.json, 
+requirements.txt, Dockerfile, pom.xml, etc.) 
+2. Dependency Extraction: Identify all dependencies and their versions 
+3. Code Analysis: Use static analysis tools to identify resource-intensive patterns 
+4. Architecture Detection: Identify microservices, monoliths, or serverless patterns 
+5. Database Identification: Detect database dependencies and estimate data requirements 
+6. Normalization: Convert extracted features into standardized format for ML models 
+Pricing Data Processing: 
+1. API Integration: Collect pricing data from cloud provider APIs 
+2. Normalization: Convert different pricing models (hourly, monthly, spot, reserved) to 
+comparable metrics 
+3. Region Adjustment: Apply regional pricing multipliers 
+4. Currency Standardization: Convert all prices to USD using current exchange rates 
+Expert Decision Processing: 
+1. Coding Scheme Development: Create coding scheme for expert recommendations 
+2. Inter-rater Reliability: Calculate agreement metrics between experts 
+--- Page 11 ---
+3. Ground Truth Creation: Synthesize expert decisions into "gold standard" 
+recommendations 
+4.5 Model Development / Implementation 
+System Architecture Components: 
+1. Repository Analyzer Module 
+a. GitHub API integration with OAuth for private repos 
+b. Technology stack detector using file pattern matching 
+c. Dependency analyzer with version checking 
+d. Resource estimator based on framework characteristics 
+e. Architecture pattern recognizer 
+2. Machine Learning Recommendation Engine 
+a. Feature engineering from repository characteristics 
+b. Multi-label classification model for instance type recommendation 
+c. Regression models for resource quantity estimation 
+d. Ensemble methods combining multiple algorithms 
+e. Transfer learning from one cloud provider to others 
+3. Cost Estimation Engine 
+a. Real-time pricing data fetcher 
+b. Cost calculator with configurable parameters 
+c. TCO (Total Cost of Ownership) estimator 
+d. Cost optimization suggestions (reserved instances, spot instances) 
+4. Infrastructure as Code Generator 
+a. Terraform template engine with variable substitution 
+b. Security rule generator (security groups, IAM policies) 
+c. Monitoring and alerting configuration 
+d. Auto-scaling policy generator 
+e. Multi-environment support (dev, staging, prod) 
+5. Dockerfile Generator 
+a. Base image selector based on technology stack 
+b. Dependency installation optimization 
+c. Security hardening (non-root users, minimal packages) 
+d. Multi-stage build configuration for production 
+e. Health check and monitoring endpoint addition 
+6. Web Application Interface 
+a. React.js frontend with responsive design 
+b. Repository input with GitHub integration 
+c. Recommendation visualization with comparison charts 
+--- Page 12 ---
+d. Interactive cost breakdown explorer 
+e. Generated code viewer and download functionality 
+Implementation Technologies: 
+• Backend: Python with FastAPI framework 
+• Machine Learning: Scikit-learn, TensorFlow, XGBoost 
+• Frontend: React.js with Material-UI 
+• Database: PostgreSQL for persistent storage 
+• Containerization: Docker for system deployment 
+• CI/CD: GitHub Actions for automated testing 
+4.6 Evaluation 
+Evaluation Metrics: 
+1. Recommendation Accuracy 
+a. Precision: Percentage of recommended instances that experts agree with 
+b. Recall: Percentage of expert-recommended instances captured by system 
+c. F1-Score: Harmonic mean of precision and recall 
+d. Multi-provider accuracy: Consistency across cloud platforms 
+2. Cost Efficiency 
+a. Cost savings compared to over-provisioned baseline 
+b. Performance per dollar metrics 
+c. Comparison with expert cost estimates 
+3. Code Quality 
+a. Terraform script validation success rate 
+b. Security compliance score using tfsec/checkov 
+c. Dockerfile best practices compliance 
+d. Linting and syntax error analysis 
+4. System Performance 
+a. Analysis time per repository 
+b. System scalability with concurrent users 
+c. API response times 
+d. Resource utilization during operation 
+5. User Satisfaction 
+a. System Usability Scale (SUS) scores 
+b. Net Promoter Score (NPS) 
+c. Task completion rates 
+d. User feedback and suggestions 
+--- Page 13 ---
+Evaluation Methods: 
+1. Comparative Analysis: System recommendations vs. expert decisions for 100 sample 
+applications 
+2. A/B Testing: Real developers using system vs. manual research for infrastructure 
+planning 
+3. Cost Simulation: Projected costs vs. actual costs for deployed applications 
+4. Code Review: Expert review of generated Terraform and Docker configurations 
+5. Load Testing: System performance under increasing concurrent users 
+6. Longitudinal Study: Track recommendations over time as cloud offerings change 
+4.7 Ethical Considerations 
+This research adheres to the following ethical guidelines: 
+1. Data Privacy and Security 
+a. GitHub access tokens will be encrypted and never stored in logs 
+b. Private repository code will be analyzed in memory only, not persisted 
+c. All user data will be anonymized for research purposes 
+d. Compliance with GitHub's Terms of Service and API usage limits 
+2. Intellectual Property 
+a. Only open-source repositories with appropriate licenses will be used for training 
+b. Generated code will include appropriate licensing notices 
+c. No proprietary code will be included in research publications 
+3. Transparency and Consent 
+a. Clear disclosure of how data is used in the system 
+b. Opt-in consent for user participation in evaluation studies 
+c. Ability for users to delete their data from the system 
+4. Bias and Fairness 
+a. Regular audits for algorithmic bias in recommendations 
+b. Diverse dataset collection to avoid technology stack bias 
+c. Transparency in recommendation logic and limitations 
+5. Environmental Considerations 
+a. Optimize system to minimize computational resource usage 
+b. Consider carbon footprint in cloud provider recommendations 
+c. Promote sustainable computing practices in documentation 
+6. Academic Integrity 
+a. Proper citation of all referenced works 
+b. No plagiarism in any research outputs 
+c. Accurate representation of system capabilities and limitations 
+--- Page 14 ---
+4.8 Limitations of the Study 
+1. Scope Limitations 
+a. Focus on four major cloud providers (AWS, Azure, GCP, DigitalOcean) 
+b. Primary support for common web application frameworks 
+c. Limited to infrastructure provisioning, not ongoing optimization 
+2. Technical Limitations 
+a. Cannot perfectly predict application performance without runtime data 
+b. Limited ability to analyze complex, proprietary frameworks 
+c. Dependency on cloud provider APIs for accurate pricing 
+3. Data Limitations 
+a. Training data limited to publicly accessible repositories 
+b. May not capture edge cases or highly specialized applications 
+c. Cloud pricing changes may require frequent model updates 
+4. Evaluation Limitations 
+a. Expert disagreement on "optimal" infrastructure creates fuzzy ground truth 
+b. Real-world validation requires actual deployment and monitoring 
+c. Limited ability to test with production-scale applications 
+5. Adoption Limitations 
+a. Requires trust in automated recommendations 
+b. May face resistance from experienced DevOps professionals 
+c. Integration challenges with existing organizational workflows 
+Despite these limitations, this research provides significant value by automating the initial 
+infrastructure planning process, reducing cognitive load on developers, and establishing a 
+foundation for more advanced AI-driven operations tools. 
+ 
+5. Timeline 
+Project Duration: 01 November 2025 to 01 November 2026 
+Phase Activities Duration Deliverables 
+Phase 1: 
+Foundation 
+Literature review, Problem 
+definition, Requirements 
+gathering 
+Nov 2025 - 
+Dec 2025 
+Research proposal, 
+Annotated bibliography, 
+Requirements specification 
+--- Page 15 ---
+Phase 2: 
+Design 
+System architecture design, 
+Data model design, UI/UX 
+design 
+Jan 2026 - Feb 
+2026 
+Architecture diagrams, 
+Database schema, UI 
+prototypes 
+Phase 3: 
+Development 
+I 
+Repository analyzer, Basic 
+recommendation engine, Web 
+interface 
+Mar 2026 - 
+Apr 2026 
+MVP system, Initial ML 
+models, Functional UI 
+Phase 4: 
+Development 
+II 
+Cost calculator, Terraform 
+generator, Dockerfile 
+generator 
+May 2026 - 
+Jun 2026 
+Complete core 
+functionality, Integration 
+testing 
+Phase 5: 
+Evaluation 
+Expert comparison study, User 
+testing, Performance 
+evaluation 
+Jul 2026 - 
+Aug 2026 
+Evaluation report, User 
+feedback analysis, System 
+metrics 
+Phase 6: 
+Refinement 
+Model optimization, UI 
+improvements, Documentation 
+Sep 2026 - 
+Oct 2026 
+Final system, Complete 
+documentation, Research 
+paper 
+Phase 7: 
+Finalization 
+Thesis writing, Final 
+presentation preparation 
+Oct 2026 - 
+Nov 2026 
+Final dissertation, 
+Presentation materials 
+Key Milestones: 
+• 15 December 2025: Complete literature review and finalize research questions 
+• 28 February 2026: Complete system design and obtain ethical approval 
+• 30 April 2026: Deploy minimum viable product (MVP) 
+• 30 June 2026: Complete all development components 
+• 31 August 2026: Finish comprehensive evaluation studies 
+• 15 October 2026: Submit final dissertation draft 
+• 01 November 2026: Final submission and presentation 
+ 
+References 
+[1] M. Armbrust et al., "A view of cloud computing," Communications of the ACM, vol. 53, no. 
+4, pp. 50-58, Apr. 2010. 
+--- Page 16 ---
+[2] A. Li, X. Yang, S. Kandula, and M. Zhang, "CloudCmp: comparing public cloud providers," 
+in Proc. 10th ACM SIGCOMM Conf. Internet Meas., 2010, pp. 1-14. 
+[3] Cloud Native Computing Foundation, "CNCF Annual Survey 2024," [Online]. Available: 
+https://www.cncf.io/reports/cncf-annual-survey-2024/ 
+[4] P. Sharma, L. Guo, X. He, and D. Irwin, "Flint: batch-interactive data-intensive processing 
+on transient servers," in Proc. 11th Eur. Conf. Comput. Syst., 2016, pp. 1-15. 
+[5] T. Chen, X. Zhang, and S. Liu, "Performance prediction for cloud-based applications using 
+machine learning," IEEE Trans. Cloud Comput., vol. 8, no. 4, pp. 1223-1235, Oct. 2020. 
+[6] Q. Zhang and R. Wang, "CloudCostOpt: a cost optimization tool for cloud computing 
+environments," in Proc. IEEE 7th Int. Conf. Cloud Comput. Technol. Sci., 2015, pp. 278-283. 
+[7] J. Kim, S. Lee, and H. Kim, "TerraGen: automatic generation of terraform configurations for 
+multi-cloud deployment," in Proc. IEEE 13th Int. Conf. Cloud Comput., 2020, pp. 412-419. 
+[8] A. Gupta, L. Kalé, D. Milojicic, and P. Faraboschi, "HPC cloud for scientific and business 
+applications: taxonomy, vision, and research challenges," ACM Comput. Surv., vol. 51, no. 1, pp. 
+1-29, Jan. 2018. 
+[9] R. Patel and A. Singh, "A framework for multi-cloud deployment and management of web 
+applications," J. Cloud Comput., vol. 9, no. 1, pp. 1-18, Dec. 2020. 
+[10] W. Li, Y. Chen, and H. Wang, "Optimizing Docker containers for cloud-native 
+applications," in Proc. IEEE Int. Conf. Cloud Eng., 2019, pp. 229-234. 
+[11] A. Rahman, C. Parnin, and L. Williams, "The seven sins: security smells in infrastructure as 
+code scripts," in Proc. IEEE/ACM 41st Int. Conf. Softw. Eng., 2019, pp. 164-175. 
+[12] K. Peffers, T. Tuunanen, M. A. Rothenberger, and S. Chatterjee, "A design science research 
+methodology for information systems research," J. Manage. Inf. Syst., vol. 24, no. 3, pp. 45-77, 
+Dec. 2007. 
+[13] L. Youseff, M. Butrico, and D. Da Silva, "Toward a unified ontology of cloud computing," 
+in Proc. Grid Comput. Environ. Workshop, 2008, pp. 1-10. 
+[14] R. Buyya, C. S. Yeo, S. Venugopal, J. Broberg, and I. Brandic, "Cloud computing and 
+emerging IT platforms: vision, hype, and reality for delivering computing as the 5th utility," 
+Future Gener. Comput. Syst., vol. 25, no. 6, pp. 599-616, Jun. 2009. 
+--- Page 17 ---
+[15] M. Mao and M. Humphrey, "A performance study on the VM startup time in the cloud," in 
+Proc. IEEE 5th Int. Conf. Cloud Comput., 2012, pp. 423-430. 
+[16] A. Verma, L. Pedrosa, M. Korupolu, D. Oppenheimer, E. Tune, and J. Wilkes, "Large-scale 
+cluster management at Google with Borg," in Proc. Eur. Conf. Comput. Syst., 2015, pp. 1-17. 
+[17] D. Tran, H. Nguyen, and M. Zhao, "Machine learning-based resource allocation for cloud 
+data centers," IEEE Trans. Cloud Comput., vol. 9, no. 2, pp. 567-580, Apr. 2021. 
+[18] S. K. Garg, S. Versteeg, and R. Buyya, "A framework for ranking of cloud computing 
+services," Future Gener. Comput. Syst., vol. 29, no. 4, pp. 1012-1023, Jun. 2013. 
+[19] Z. Shen, S. Subbiah, X. Gu, and J. Wilkes, "CloudScale: elastic resource scaling for multi-
+tenant cloud systems," in Proc. 2nd ACM Symp. Cloud Comput., 2011, pp. 1-14. 
+[20] N. R. Herbst, S. Kounev, and R. Reussner, "Elasticity in cloud computing: what it is, and 
+what it is not," in Proc. 10th Int. Conf. Auton. Comput., 2013, pp. 23-27. 
