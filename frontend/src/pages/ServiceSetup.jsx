@@ -23,7 +23,7 @@ function ServiceSetup() {
   const [searchQuery, setSearchQuery] = useState('');
   
   // AWS target compute config states
-  const [awsComputeChoice, setAwsComputeChoice] = useState('fargate');
+  const [awsComputeChoice, setAwsComputeChoice] = useState('ec2');
   const [awsInstanceType, setAwsInstanceType] = useState('t3.micro');
   const [awsUseEip, setAwsUseEip] = useState(false);
   
@@ -31,6 +31,14 @@ function ServiceSetup() {
   const [gcpComputeChoice, setGcpComputeChoice] = useState('cloudrun');
   const [gcpMachineType, setGcpMachineType] = useState('e2-micro');
   const [gcpUseStaticIp, setGcpUseStaticIp] = useState(false);
+
+  // Monorepo component-specific configurations: { [compName]: { awsComputeChoice, awsInstanceType, gcpComputeChoice, gcpMachineType } }
+  const [componentConfigs, setComponentConfigs] = useState({});
+
+  // Gemini AI Recommendation states
+  const [recommendLoading, setRecommendLoading] = useState({});
+  const [aiReasons, setAiReasons] = useState({});
+  const [aiSources, setAiSources] = useState({});
 
   const serviceConfigs = {
     finops: {
@@ -109,6 +117,128 @@ function ServiceSetup() {
     fetchTechStack();
   }, [selectedRepo, token]);
 
+  // Sync componentConfigs state whenever techStack changes
+  useEffect(() => {
+    if (techStack?.components && techStack.components.length > 0) {
+      const initialConfigs = {};
+      techStack.components.forEach((comp) => {
+        const compName = comp.name.toLowerCase().replace('/', '-').replace('\\', '-');
+        initialConfigs[compName] = componentConfigs[compName] || {
+          awsComputeChoice: awsComputeChoice,
+          awsInstanceType: awsComputeChoice === 'fargate' ? '0.25 vCPU / 512 MB' : 't3.micro',
+          gcpComputeChoice: gcpComputeChoice,
+          gcpMachineType: gcpComputeChoice === 'cloudrun' ? '1 vCPU / 512 MB' : 'e2-micro'
+        };
+      });
+      setComponentConfigs(initialConfigs);
+    }
+  }, [techStack]);
+
+  const fetchAiRecommendation = async (targetCloud, computeChoice, compName = 'global', compType = null) => {
+    if (!targetCloud || !['AWS', 'GCP'].includes(targetCloud)) return;
+
+    setRecommendLoading((prev) => ({ ...prev, [compName]: true }));
+
+    try {
+      const res = await apiClient.post('/repos/recommend-instance', {
+        cloud: targetCloud,
+        computeChoice: computeChoice,
+        techStack: techStack,
+        componentName: compName === 'global' ? null : compName,
+        componentType: compType
+      });
+
+      if (res.ok) {
+        const data = await res.json();
+        const recommendedInstance = data.recommended_instance;
+        const reasoning = data.reasoning;
+
+        setAiReasons((prev) => ({ ...prev, [compName]: reasoning }));
+        setAiSources((prev) => ({ ...prev, [compName]: data.source }));
+
+        if (compName === 'global') {
+          if (targetCloud === 'AWS') setAwsInstanceType(recommendedInstance);
+          if (targetCloud === 'GCP') setGcpMachineType(recommendedInstance);
+        } else {
+          setComponentConfigs((prev) => {
+            const current = prev[compName] || {};
+            return {
+              ...prev,
+              [compName]: {
+                ...current,
+                ...(targetCloud === 'AWS' ? { awsInstanceType: recommendedInstance } : { gcpMachineType: recommendedInstance })
+              }
+            };
+          });
+        }
+      }
+    } catch (err) {
+      console.error("Failed to fetch AI instance recommendation:", err);
+    } finally {
+      setRecommendLoading((prev) => ({ ...prev, [compName]: false }));
+    }
+  };
+
+  useEffect(() => {
+    if (!selectedCloud || !['AWS', 'GCP'].includes(selectedCloud) || !techStack) return;
+
+    if (techStack.components && techStack.components.length > 1) {
+      techStack.components.forEach((comp) => {
+        const compName = comp.name.toLowerCase().replace('/', '-').replace('\\', '-');
+        const currentChoice = selectedCloud === 'AWS' 
+          ? (componentConfigs[compName]?.awsComputeChoice || awsComputeChoice)
+          : (componentConfigs[compName]?.gcpComputeChoice || gcpComputeChoice);
+        fetchAiRecommendation(selectedCloud, currentChoice, compName, comp.type);
+      });
+    } else {
+      const currentChoice = selectedCloud === 'AWS' ? awsComputeChoice : gcpComputeChoice;
+      fetchAiRecommendation(selectedCloud, currentChoice, 'global', techStack.primary_language);
+    }
+  }, [selectedCloud, techStack]);
+
+  const renderAiReasoning = (compKey = 'global') => {
+    const isLoading = recommendLoading[compKey];
+    const reasoning = aiReasons[compKey];
+    const source = aiSources[compKey];
+
+    if (isLoading) {
+      return (
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginTop: '0.6rem', color: '#10B981', fontSize: '0.8rem', width: '100%' }}>
+          <div className="loading-spinner" style={{ width: '14px', height: '14px', borderWidth: '2px', borderTopColor: '#10B981' }}></div>
+          <span>Gemini AI selecting best instance...</span>
+        </div>
+      );
+    }
+
+    if (reasoning) {
+      return (
+        <div style={{
+          marginTop: '0.75rem',
+          background: 'rgba(16, 185, 129, 0.06)',
+          border: '1px solid rgba(16, 185, 129, 0.25)',
+          borderRadius: '12px',
+          padding: '0.75rem 1rem',
+          fontSize: '0.82rem',
+          color: '#e2e2e9',
+          lineHeight: '1.45',
+          width: '100%',
+          boxSizing: 'border-box'
+        }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', color: '#10B981', fontWeight: '600', marginBottom: '0.3rem' }}>
+            <span>✨ AI Recommendation</span>
+            {source === 'gemini' && (
+              <span style={{ fontSize: '0.65rem', background: 'rgba(16, 185, 129, 0.2)', padding: '0.1rem 0.4rem', borderRadius: '4px' }}>Gemini AI</span>
+            )}
+          </div>
+          <div>{reasoning}</div>
+        </div>
+      );
+    }
+
+    return null;
+  };
+
+
   const calculateLanguagePercentages = (langs) => {
     if (!langs || Object.keys(langs).length === 0) return [];
     const total = Object.values(langs).reduce((a, b) => a + b, 0);
@@ -133,7 +263,8 @@ function ServiceSetup() {
         awsUseEip,
         gcpComputeChoice,
         gcpMachineType,
-        gcpUseStaticIp
+        gcpUseStaticIp,
+        componentConfigs
       });
       if (!res.ok) {
         throw new Error("Failed to generate deployment scripts");
@@ -424,8 +555,188 @@ function ServiceSetup() {
                   </div>
                  )}
 
-                 {/* AWS Compute & Network Configurations */}
-                 {selectedCloud === 'AWS' && serviceId === 'terraform' && (
+                 {/* Monorepo Per-Component Sizing & Resource Selection */}
+                 {serviceId === 'terraform' && selectedCloud && techStack?.components && techStack.components.length > 1 && (
+                   <div style={{ borderTop: '2px solid var(--c2c-border)', paddingTop: '1.5rem', display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
+                     <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
+                       <label style={{ color: '#fff', fontSize: '1.1rem', fontWeight: '600' }}>Monorepo Component Sizing & Resource Selection</label>
+                       <span style={{ color: '#a2a2b5', fontSize: '0.8rem' }}>
+                         Multiple components detected ({techStack.components.map(c => c.name).join(', ')}). Select instance or resource sizing individually for each component.
+                       </span>
+                     </div>
+
+                     <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+                       {techStack.components.map((comp) => {
+                         const rawName = comp.name || 'app';
+                         const compName = rawName.toLowerCase().replace('/', '-').replace('\\', '-');
+                         const compCfg = componentConfigs[compName] || {
+                           awsComputeChoice: awsComputeChoice,
+                           awsInstanceType: awsComputeChoice === 'fargate' ? '0.25 vCPU / 512 MB' : 't3.micro',
+                           gcpComputeChoice: gcpComputeChoice,
+                           gcpMachineType: gcpComputeChoice === 'cloudrun' ? '1 vCPU / 512 MB' : 'e2-micro'
+                         };
+
+                          const updateCompCfg = (key, val) => {
+                            setComponentConfigs((prev) => {
+                              const current = prev[compName] || compCfg;
+                              return {
+                                ...prev,
+                                [compName]: {
+                                  ...current,
+                                  [key]: val
+                                }
+                              };
+                            });
+                          };
+
+                         return (
+                           <div key={compName} style={{ background: 'rgba(255, 255, 255, 0.02)', border: '1.5px solid var(--c2c-border)', borderRadius: '16px', padding: '1.25rem' }}>
+                             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
+                               <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
+                                 <span style={{ color: currentConfig.color, fontWeight: '700', fontSize: '1rem', textTransform: 'capitalize' }}>{comp.name} Component</span>
+                                 <span style={{ background: 'rgba(255, 255, 255, 0.08)', padding: '0.2rem 0.6rem', borderRadius: '8px', color: '#a2a2b5', fontSize: '0.75rem' }}>{comp.type}</span>
+                               </div>
+                               <span style={{ color: '#6b7280', fontSize: '0.75rem', fontFamily: 'monospace' }}>path: {comp.path}</span>
+                             </div>
+
+                             {/* AWS Per-Component Configs */}
+                             {selectedCloud === 'AWS' && (
+                               <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
+                                   <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
+                                     <label style={{ color: '#fff', fontSize: '0.85rem', fontWeight: '600' }}>Compute Target</label>
+                                     <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.5rem' }}>
+                                       {[
+                                         { id: 'fargate', name: 'ECS Fargate' },
+                                         { id: 'ec2', name: 'EC2 Instance' }
+                                       ].map((target) => (
+                                         <div
+                                           key={target.id}
+                                           onClick={() => {
+                                             updateCompCfg('awsComputeChoice', target.id);
+                                             updateCompCfg('awsInstanceType', target.id === 'fargate' ? '0.25 vCPU / 512 MB' : 't3.micro');
+                                             fetchAiRecommendation('AWS', target.id, compName, comp.type);
+                                           }}
+                                           style={{
+                                             background: compCfg.awsComputeChoice === target.id ? 'var(--c2c-selected-bg)' : 'rgba(255, 255, 255, 0.02)',
+                                             border: compCfg.awsComputeChoice === target.id ? `2px solid ${currentConfig.color}` : '1.5px solid var(--c2c-border)',
+                                             borderRadius: '10px',
+                                             padding: '0.65rem 0.5rem',
+                                             textAlign: 'center',
+                                             cursor: 'pointer',
+                                             fontWeight: '600',
+                                             fontSize: '0.85rem',
+                                             color: compCfg.awsComputeChoice === target.id ? currentConfig.color : '#fff',
+                                             transition: 'all 0.2s',
+                                             userSelect: 'none'
+                                           }}
+                                         >
+                                           {target.name}
+                                         </div>
+                                       ))}
+                                     </div>
+                                   </div>
+
+                                   <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
+                                     <label style={{ color: '#fff', fontSize: '0.85rem', fontWeight: '600' }}>Instance / Resource Size</label>
+                                     <select
+                                       value={compCfg.awsInstanceType}
+                                       onChange={(e) => updateCompCfg('awsInstanceType', e.target.value)}
+                                       style={{ background: '#0f0f15', border: '1.5px solid var(--c2c-border)', borderRadius: '10px', color: '#fff', padding: '0.65rem', fontSize: '0.85rem', outline: 'none', cursor: 'pointer' }}
+                                     >
+                                       {compCfg.awsComputeChoice === 'fargate' ? (
+                                         <>
+                                           <option value="0.25 vCPU / 512 MB" style={{ background: '#0f0f15', color: '#fff' }}>0.25 vCPU / 512 MB (Default)</option>
+                                           <option value="0.5 vCPU / 1 GB" style={{ background: '#0f0f15', color: '#fff' }}>0.5 vCPU / 1 GB</option>
+                                           <option value="1.0 vCPU / 2 GB" style={{ background: '#0f0f15', color: '#fff' }}>1.0 vCPU / 2 GB</option>
+                                         </>
+                                       ) : (
+                                         <>
+                                           <option value="t3.micro" style={{ background: '#0f0f15', color: '#fff' }}>t3.micro (1 vCPU / 1 GB - Free Tier)</option>
+                                           <option value="t3.small" style={{ background: '#0f0f15', color: '#fff' }}>t3.small (2 vCPU / 2 GB)</option>
+                                           <option value="t3.medium" style={{ background: '#0f0f15', color: '#fff' }}>t3.medium (2 vCPU / 4 GB)</option>
+                                         </>
+                                       )}
+                                     </select>
+                                   </div>
+                                 </div>
+                                 {renderAiReasoning(compName)}
+                               </div>
+                             )}
+
+                             {/* GCP Per-Component Configs */}
+                             {selectedCloud === 'GCP' && (
+                               <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
+                                   <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
+                                     <label style={{ color: '#fff', fontSize: '0.85rem', fontWeight: '600' }}>Compute Target</label>
+                                     <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.5rem' }}>
+                                       {[
+                                         { id: 'cloudrun', name: 'Cloud Run' },
+                                         { id: 'gce', name: 'Compute Engine' }
+                                       ].map((target) => (
+                                         <div
+                                           key={target.id}
+                                           onClick={() => {
+                                             updateCompCfg('gcpComputeChoice', target.id);
+                                             updateCompCfg('gcpMachineType', target.id === 'cloudrun' ? '1 vCPU / 512 MB' : 'e2-micro');
+                                             fetchAiRecommendation('GCP', target.id, compName, comp.type);
+                                           }}
+                                           style={{
+                                             background: compCfg.gcpComputeChoice === target.id ? 'var(--c2c-selected-bg)' : 'rgba(255, 255, 255, 0.02)',
+                                             border: compCfg.gcpComputeChoice === target.id ? `2px solid ${currentConfig.color}` : '1.5px solid var(--c2c-border)',
+                                             borderRadius: '10px',
+                                             padding: '0.65rem 0.5rem',
+                                             textAlign: 'center',
+                                             cursor: 'pointer',
+                                             fontWeight: '600',
+                                             fontSize: '0.85rem',
+                                             color: compCfg.gcpComputeChoice === target.id ? currentConfig.color : '#fff',
+                                             transition: 'all 0.2s',
+                                             userSelect: 'none'
+                                           }}
+                                         >
+                                           {target.name}
+                                         </div>
+                                       ))}
+                                     </div>
+                                   </div>
+
+                                   <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
+                                     <label style={{ color: '#fff', fontSize: '0.85rem', fontWeight: '600' }}>Instance / Machine Type</label>
+                                     <select
+                                       value={compCfg.gcpMachineType}
+                                       onChange={(e) => updateCompCfg('gcpMachineType', e.target.value)}
+                                       style={{ background: '#0f0f15', border: '1.5px solid var(--c2c-border)', borderRadius: '10px', color: '#fff', padding: '0.65rem', fontSize: '0.85rem', outline: 'none', cursor: 'pointer' }}
+                                     >
+                                       {compCfg.gcpComputeChoice === 'cloudrun' ? (
+                                         <>
+                                           <option value="1 vCPU / 512 MB" style={{ background: '#0f0f15', color: '#fff' }}>1 vCPU / 512 MB (Default)</option>
+                                           <option value="1 vCPU / 1 GB" style={{ background: '#0f0f15', color: '#fff' }}>1 vCPU / 1 GB</option>
+                                           <option value="2 vCPU / 2 GB" style={{ background: '#0f0f15', color: '#fff' }}>2 vCPU / 2 GB</option>
+                                         </>
+                                       ) : (
+                                         <>
+                                           <option value="e2-micro" style={{ background: '#0f0f15', color: '#fff' }}>e2-micro (2 vCPU / 1 GB - Free Tier)</option>
+                                           <option value="e2-small" style={{ background: '#0f0f15', color: '#fff' }}>e2-small (2 vCPU / 2 GB)</option>
+                                           <option value="e2-medium" style={{ background: '#0f0f15', color: '#fff' }}>e2-medium (2 vCPU / 4 GB)</option>
+                                         </>
+                                       )}
+                                     </select>
+                                   </div>
+                                 </div>
+                                 {renderAiReasoning(compName)}
+                               </div>
+                             )}
+                           </div>
+                         );
+                       })}
+                     </div>
+                   </div>
+                 )}
+
+                 {/* Single Component AWS Compute & Network Configurations */}
+                 {selectedCloud === 'AWS' && serviceId === 'terraform' && (!techStack?.components || techStack.components.length <= 1) && (
                    <div style={{ borderTop: '2px solid var(--c2c-border)', paddingTop: '1.5rem', display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
                      <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
                        <label style={{ color: '#fff', fontSize: '1.1rem', fontWeight: '600' }}>AWS Compute Choice</label>
@@ -441,6 +752,7 @@ function ServiceSetup() {
                            onClick={() => {
                              setAwsComputeChoice(target.id);
                              setAwsInstanceType(target.id === 'fargate' ? '0.25 vCPU / 512 MB' : 't3.micro');
+                             fetchAiRecommendation('AWS', target.id, 'global');
                            }}
                            style={{
                               background: awsComputeChoice === target.id ? 'var(--c2c-selected-bg)' : 'rgba(255, 255, 255, 0.02)',
@@ -453,7 +765,7 @@ function ServiceSetup() {
                          </div>
                        ))}
                      </div>
-
+                     
                      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem', alignItems: 'center' }}>
                        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
                          <label style={{ color: '#fff', fontSize: '0.95rem', fontWeight: '600' }}>Resource Size / Sizing</label>
@@ -493,11 +805,12 @@ function ServiceSetup() {
                          </div>
                        )}
                      </div>
+                     {renderAiReasoning('global')}
                    </div>
                  )}
 
-                 {/* GCP Compute & Network Configurations */}
-                 {selectedCloud === 'GCP' && serviceId === 'terraform' && (
+                 {/* Single Component GCP Compute & Network Configurations */}
+                 {selectedCloud === 'GCP' && serviceId === 'terraform' && (!techStack?.components || techStack.components.length <= 1) && (
                    <div style={{ borderTop: '2px solid var(--c2c-border)', paddingTop: '1.5rem', display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
                      <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
                        <label style={{ color: '#fff', fontSize: '1.1rem', fontWeight: '600' }}>Google Cloud Compute Choice</label>
@@ -513,6 +826,7 @@ function ServiceSetup() {
                            onClick={() => {
                              setGcpComputeChoice(target.id);
                              setGcpMachineType(target.id === 'cloudrun' ? '1 vCPU / 512 MB' : 'e2-micro');
+                             fetchAiRecommendation('GCP', target.id, 'global');
                            }}
                            style={{
                               background: gcpComputeChoice === target.id ? 'var(--c2c-selected-bg)' : 'rgba(255, 255, 255, 0.02)',
@@ -565,6 +879,7 @@ function ServiceSetup() {
                          </div>
                        )}
                      </div>
+                     {renderAiReasoning('global')}
                    </div>
                  )}
 

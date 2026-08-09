@@ -22,12 +22,13 @@ class CodeGenerator:
         current_user_login: str,
         generation_repo: GenerationRepository,
         registry_type: str = "native",
-        aws_compute_choice: str = "fargate",
+        aws_compute_choice: str = "ec2",
         aws_instance_type: str = "t3.micro",
         aws_use_eip: bool = False,
         gcp_compute_choice: str = "cloudrun",
         gcp_machine_type: str = "e2-micro",
-        gcp_use_static_ip: bool = False
+        gcp_use_static_ip: bool = False,
+        component_configs: Optional[Dict[str, Dict[str, Any]]] = None
     ) -> Dict[str, Any]:
         components_list = []
         if tech_stack and "components" in tech_stack and tech_stack["components"]:
@@ -160,12 +161,42 @@ class CodeGenerator:
                 elif "Java" in comp_type and "Javascript" not in comp_type:
                     port = comp.get("port") or 8080
                 
+                comp_cfg = {}
+                if component_configs and isinstance(component_configs, dict):
+                    comp_cfg = component_configs.get(comp_name) or component_configs.get(raw_name) or {}
+
+                comp_aws_compute = comp_cfg.get("awsComputeChoice", aws_compute_choice)
+                comp_aws_instance = comp_cfg.get("awsInstanceType", aws_instance_type)
+
+                comp_aws_cpu, comp_aws_mem = "256", "512"
+                if comp_aws_instance == "0.5 vCPU / 1 GB":
+                    comp_aws_cpu, comp_aws_mem = "512", "1024"
+                elif comp_aws_instance == "1.0 vCPU / 2 GB":
+                    comp_aws_cpu, comp_aws_mem = "1024", "2048"
+
+                comp_gcp_compute = comp_cfg.get("gcpComputeChoice", gcp_compute_choice)
+                comp_gcp_machine = comp_cfg.get("gcpMachineType", gcp_machine_type)
+
+                comp_gcp_cpu, comp_gcp_mem = "1", "512Mi"
+                if comp_gcp_machine == "1 vCPU / 1 GB":
+                    comp_gcp_cpu, comp_gcp_mem = "1", "1024Mi"
+                elif comp_gcp_machine == "2 vCPU / 2 GB":
+                    comp_gcp_cpu, comp_gcp_mem = "2", "2048Mi"
+
                 tf_components.append({
                     "name": comp_name,
                     "port": port,
                     "path": comp.get("path", "."),
                     "type": comp_type,
-                    "depends_on": [] if comp_name == "backend" else ["backend"] if any(c.get("name", "").lower().replace("/", "-").replace("\\", "-") == "backend" for c in components_list) else []
+                    "depends_on": [] if comp_name == "backend" else ["backend"] if any(c.get("name", "").lower().replace("/", "-").replace("\\", "-") == "backend" for c in components_list) else [],
+                    "aws_compute_choice": comp_aws_compute,
+                    "aws_instance_type": comp_aws_instance,
+                    "gcp_compute_choice": comp_gcp_compute,
+                    "gcp_machine_type": comp_gcp_machine,
+                    "cpu": comp_aws_cpu if cloud.lower() == "aws" else comp_gcp_cpu,
+                    "memory": comp_aws_mem if cloud.lower() == "aws" else comp_gcp_mem,
+                    "instance_type": comp_aws_instance,
+                    "machine_type": comp_gcp_machine
                 })
                 
             if cloud.lower() == "aws":
@@ -334,6 +365,7 @@ class CodeGenerator:
             "gcp_compute_choice": gcp_compute_choice,
             "gcp_machine_type": gcp_machine_type,
             "gcp_use_static_ip": gcp_use_static_ip,
+            "component_configs": component_configs,
             "committed": False
         }
         

@@ -120,8 +120,8 @@ resource "aws_ecs_task_definition" "{{ comp.name }}" {
   family                   = "${lower(var.project_name)}-{{ comp.name }}-task"
   network_mode             = "awsvpc"
   requires_compatibilities = ["FARGATE"]
-  cpu                      = "{{ cpu | default('256') }}"
-  memory                   = "{{ memory | default('512') }}"
+  cpu                      = "{{ comp.cpu | default(cpu | default('256')) }}"
+  memory                   = "{{ comp.memory | default(memory | default('512')) }}"
   execution_role_arn       = aws_iam_role.ecs_execution_role.arn
 
   container_definitions = jsonencode([{

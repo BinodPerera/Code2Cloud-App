@@ -44,7 +44,7 @@ resource "google_artifact_registry_repository" "{{ comp.name }}" {
 
 resource "google_compute_instance" "{{ comp.name }}" {
   name         = "${var.project_name}-{{ comp.name }}-vm"
-  machine_type = "{{ machine_type | default('e2-micro') }}"
+  machine_type = "{{ comp.machine_type | default(machine_type | default('e2-micro')) }}"
   zone         = "{{ gcp_region | default('us-central1') }}-a"
   tags         = ["web-server"]
 

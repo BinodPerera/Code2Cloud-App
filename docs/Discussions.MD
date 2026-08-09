@@ -9,3 +9,4 @@ Day 02 (31-07-2026)
 - Direct deployment issues, (.env variables setting)
 - The supervisor told me to focus main objectives like instance recommendation.
 - Temporary stop the cloud deployment developments until finished the instance recommendation.
+- For the instance recommendation he allow me to use Ai(Gemini API's)

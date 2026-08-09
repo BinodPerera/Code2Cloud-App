@@ -18,8 +18,8 @@ resource "google_cloud_run_v2_service" "{{ comp.name }}" {
       
       resources {
         limits = {
-          cpu    = "{{ cpu | default('1') }}"
-          memory = "{{ memory | default('512Mi') }}"
+          cpu    = "{{ comp.cpu | default(cpu | default('1')) }}"
+          memory = "{{ comp.memory | default(memory | default('512Mi')) }}"
         }
       }
       

@@ -135,7 +135,7 @@ resource "aws_eip_association" "eip_assoc" {
 {% for comp in components %}
 resource "aws_instance" "{{ comp.name }}" {
   ami                  = "{{ ami_id | default('ami-0c7217cdde317cfec') }}"
-  instance_type        = "{{ instance_type | default('t3.micro') }}"
+  instance_type        = "{{ comp.instance_type | default(instance_type | default('t3.micro')) }}"
   subnet_id            = aws_subnet.public_1.id
   vpc_security_group_ids = [aws_security_group.web_sg.id]
   iam_instance_profile = aws_iam_instance_profile.ec2_profile.name

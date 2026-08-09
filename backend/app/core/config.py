@@ -1,5 +1,8 @@
+from pathlib import Path
 from pydantic_settings import BaseSettings, SettingsConfigDict
 from typing import Optional
+
+BASE_DIR = Path(__file__).resolve().parent.parent.parent
 
 class Settings(BaseSettings):
     PROJECT_NAME: str = "code2cloud API"
@@ -35,11 +38,16 @@ class Settings(BaseSettings):
     # Credentials Encryption
     CREDENTIALS_ENCRYPTION_KEY: Optional[str] = None
 
+    # Gemini AI
+    GEMINI_API_KEY: Optional[str] = None
+    GEMINI_MODEL: str = "gemini-flash-latest"
+
 
     model_config = SettingsConfigDict(
-        env_file=".env",
+        env_file=(BASE_DIR / ".env", ".env"),
         case_sensitive=True,
         extra="ignore"
     )
 
 settings = Settings()
+

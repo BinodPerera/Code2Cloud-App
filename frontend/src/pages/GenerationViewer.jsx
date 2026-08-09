@@ -34,7 +34,7 @@ function GenerationViewer() {
   const [registryType, setRegistryType] = useState('native');
   
   // AWS target compute config states
-  const [awsComputeChoice, setAwsComputeChoice] = useState('fargate');
+  const [awsComputeChoice, setAwsComputeChoice] = useState('ec2');
   const [awsInstanceType, setAwsInstanceType] = useState('t3.micro');
   const [awsUseEip, setAwsUseEip] = useState(false);
   
@@ -42,6 +42,7 @@ function GenerationViewer() {
   const [gcpComputeChoice, setGcpComputeChoice] = useState('cloudrun');
   const [gcpMachineType, setGcpMachineType] = useState('e2-micro');
   const [gcpUseStaticIp, setGcpUseStaticIp] = useState(false);
+  const [componentConfigs, setComponentConfigs] = useState({});
 
   const [pushingSecrets, setPushingSecrets] = useState(false);
   const [pushSuccess, setPushSuccess] = useState(false);
@@ -173,7 +174,8 @@ function GenerationViewer() {
         awsUseEip,
         gcpComputeChoice,
         gcpMachineType,
-        gcpUseStaticIp
+        gcpUseStaticIp,
+        componentConfigs
       });
       if (res.ok) {
         const data = await res.json();
@@ -221,12 +223,13 @@ function GenerationViewer() {
         setCloud(data.cloud || '');
         setServiceId(data.service_id || '');
         setRegistryType(data.registry_type || 'native');
-        setAwsComputeChoice(data.aws_compute_choice || 'fargate');
+        setAwsComputeChoice(data.aws_compute_choice || 'ec2');
         setAwsInstanceType(data.aws_instance_type || 't3.micro');
         setAwsUseEip(data.aws_use_eip || false);
         setGcpComputeChoice(data.gcp_compute_choice || 'cloudrun');
         setGcpMachineType(data.gcp_machine_type || 'e2-micro');
         setGcpUseStaticIp(data.gcp_use_static_ip || false);
+        setComponentConfigs(data.component_configs || {});
 
         if (data.committed) {
           setPolling(true);

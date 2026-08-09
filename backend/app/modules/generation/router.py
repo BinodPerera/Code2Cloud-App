@@ -3,13 +3,14 @@ from app.modules.auth.schemas import UserBase
 from app.modules.auth.deps import get_current_user, get_user_repository
 from app.modules.auth.repository import UserRepository
 from app.modules.generation.repository import GenerationRepository
-from app.modules.generation.schemas import GenerateRequest, UpdateCodeRequest, CommitRequest, PushSecretsRequest
+from app.modules.generation.schemas import GenerateRequest, UpdateCodeRequest, CommitRequest, PushSecretsRequest, InstanceRecommendationRequest
 from app.modules.credentials.repository import CredentialRepository
 from app.modules.credentials.router import get_credential_repository
 from app.modules.generation.secrets_handler import GitHubSecretsManager
 
 from app.modules.generation.service_analyzer import TechStackAnalyzer
 from app.modules.generation.service_generator import CodeGenerator
+from app.modules.generation.recommendation_service import RecommendationService
 from app.db.mongodb import get_database
 from app.core.config import settings
 import httpx
@@ -46,6 +47,22 @@ async def get_repository_tech_stack(
         raise HTTPException(status_code=400, detail="GitHub access token missing")
 
     return await TechStackAnalyzer.analyze(owner, repo, github_access_token)
+
+@router.post("/recommend-instance")
+async def recommend_instance(
+    request: InstanceRecommendationRequest,
+    current_user: UserBase = Depends(get_current_user)
+):
+    """
+    Recommend the optimal cloud instance/machine type size using Gemini AI.
+    """
+    return await RecommendationService.recommend_instance(
+        cloud=request.cloud,
+        compute_choice=request.computeChoice,
+        tech_stack=request.techStack,
+        component_name=request.componentName,
+        component_type=request.componentType
+    )
 
 @router.post("/{owner}/{repo}/generate")
 async def generate_deployment_code(
@@ -92,7 +109,8 @@ async def generate_deployment_code(
         aws_use_eip=request.awsUseEip,
         gcp_compute_choice=request.gcpComputeChoice,
         gcp_machine_type=request.gcpMachineType,
-        gcp_use_static_ip=request.gcpUseStaticIp
+        gcp_use_static_ip=request.gcpUseStaticIp,
+        component_configs=request.componentConfigs
     )
 
 @router.get("/generations/history")
