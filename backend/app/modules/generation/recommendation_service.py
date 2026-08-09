@@ -79,9 +79,9 @@ Output strictly valid JSON in the following format:
 }}
 """
 
-        configured_model = getattr(settings, "GEMINI_MODEL", "gemini-flash-latest") or "gemini-flash-latest"
+        configured_model = getattr(settings, "GEMINI_MODEL", "gemini-3.5-flash-lite") or "gemini-3.5-flash-lite"
         models_to_try = [configured_model]
-        for m in ["gemini-flash-latest", "gemini-2.0-flash-lite", "gemini-2.0-flash"]:
+        for m in ["gemini-3.5-flash-lite", "gemini-flash-latest", "gemini-2.0-flash"]:
             if m not in models_to_try:
                 models_to_try.append(m)
         last_error_reason = None
