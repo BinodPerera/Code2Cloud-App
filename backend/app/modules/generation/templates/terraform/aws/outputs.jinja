@@ -1,6 +1,13 @@
 {% for comp in components %}
 output "{{ comp.name }}_ecr_repository_url" {
   description = "Registry URL for {{ comp.name }} container builds"
-  value       = aws_ecr_repository.{{ comp.name }}.repository_url
+  value       = "${data.aws_caller_identity.current.account_id}.dkr.ecr.${data.aws_region.current.name}.amazonaws.com/${lower(var.project_name)}-{{ comp.name }}"
 }
+
+{% if compute_choice == 'ec2' %}
+output "{{ comp.name }}_public_ip" {
+  description = "Public IP address of the {{ comp.name }} virtual machine"
+  value       = {% if use_eip and loop.first %}aws_eip.web_eip.public_ip{% else %}aws_instance.{{ comp.name }}.public_ip{% endif %}
+}
+{% endif %}
 {% endfor %}

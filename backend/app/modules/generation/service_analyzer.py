@@ -82,7 +82,7 @@ class TechStackAnalyzer:
                                 content_data = file_res.json()
                                 content = base64.b64decode(content_data["content"]).decode("utf-8")
                                 
-                                component_name = path.rsplit("/", 1)[0] if "/" in path else "Root"
+                                component_name = path.rsplit("/", 1)[0] if "/" in path else "app"
                                 component_libraries = []
                                 
                                 if path.endswith("package.json"):

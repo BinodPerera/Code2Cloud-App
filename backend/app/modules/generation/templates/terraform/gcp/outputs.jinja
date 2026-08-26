@@ -1,0 +1,13 @@
+{% for comp in components %}
+{% if compute_choice == 'gce' %}
+output "{{ comp.name }}_public_ip" {
+  description = "Public IP address of the {{ comp.name }} virtual machine"
+  value       = {% if use_static_ip and loop.first %}google_compute_address.static_ip.address{% else %}google_compute_instance.{{ comp.name }}.network_interface[0].access_config[0].nat_ip{% endif %}
+}
+{% else %}
+output "{{ comp.name }}_service_url" {
+  description = "Web URL for the {{ comp.name }} Cloud Run service"
+  value       = google_cloud_run_v2_service.{{ comp.name }}.uri
+}
+{% endif %}
+{% endfor %}

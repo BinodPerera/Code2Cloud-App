@@ -85,8 +85,8 @@ function Callback() {
         
         {isProcessingCode ? (
           <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', margin: '3rem 0' }}>
-            <div className="loading-spinner" style={{ width: '40px', height: '40px', borderColor: 'rgba(255,255,255,0.1)', borderTopColor: '#5865F2', borderWidth: '3px', marginBottom: '1.5rem' }}></div>
-            <p style={{ color: '#a2a2b5' }}>Authenticating with GitHub...</p>
+            <div className="loading-spinner" style={{ width: '40px', height: '40px', borderColor: 'rgba(255,255,255,0.1)', borderTopColor: 'var(--c2c-green)', borderWidth: '3px', marginBottom: '1.5rem' }}></div>
+            <p style={{ color: 'var(--c2c-text-secondary)' }}>Authenticating with GitHub...</p>
           </div>
         ) : (
           <>
@@ -104,9 +104,9 @@ function Callback() {
                   width: '100%',
                   padding: '1rem',
                   borderRadius: '12px',
-                  background: 'rgba(0,0,0,0.2)',
-                  border: '1px solid rgba(255,255,255,0.1)',
-                  color: '#fff',
+                  background: 'var(--c2c-surface)',
+                  border: '1px solid var(--c2c-border)',
+                  color: 'var(--c2c-text-primary)',
                   fontFamily: 'monospace',
                   fontSize: '0.9rem',
                   marginBottom: '1rem',

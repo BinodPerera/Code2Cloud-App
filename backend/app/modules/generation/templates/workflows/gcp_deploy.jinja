@@ -1,0 +1,82 @@
+name: Deploy to GCP (Code2Cloud)
+
+on:
+  push:
+    branches:
+      - {{ branch }}
+
+jobs:
+  deploy:
+    name: Build & Deploy to GCP
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      # Authenticate to Google Cloud
+      - name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@v2
+        with:
+          credentials_json: {% raw %}${{ secrets.GCP_SA_KEY }}{% endraw %}
+
+      - name: Set up Cloud SDK
+        uses: google-github-actions/setup-gcloud@v2
+
+      {% if registry_type == 'dockerhub' %}
+      # Log in to Docker Hub
+      - name: Log in to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: {% raw %}${{ secrets.DOCKER_USERNAME }}{% endraw %}
+          password: {% raw %}${{ secrets.DOCKER_PASSWORD }}{% endraw %}
+
+      {% for comp in components %}
+      - name: Build, tag, and push {{ comp.name }} to Docker Hub
+        env:
+          DOCKER_USERNAME: {% raw %}${{ secrets.DOCKER_USERNAME }}{% endraw %}
+          IMAGE_NAME: {{ repo_name | lower }}-{{ comp.name }}
+          IMAGE_TAG: {% raw %}${{ github.sha }}{% endraw %}
+        run: |
+          docker build -t $DOCKER_USERNAME/$IMAGE_NAME:$IMAGE_TAG -t $DOCKER_USERNAME/$IMAGE_NAME:latest {{ comp.path }}
+          docker push $DOCKER_USERNAME/$IMAGE_NAME:$IMAGE_TAG
+          docker push $DOCKER_USERNAME/$IMAGE_NAME:latest
+      {% endfor %}
+      {% else %}
+      # Log in and push to Google Artifact Registry (GAR) (Default)
+      - name: Configure Docker for Google Artifact Registry
+        run: |
+          gcloud auth configure-docker us-central1-docker.pkg.dev --quiet
+
+      {% for comp in components %}
+      - name: Build and Push {{ comp.name }} to Google Artifact Registry
+        env:
+          IMAGE_NAME: us-central1-docker.pkg.dev/{% raw %}${{ secrets.GCP_PROJECT_ID }}{% endraw %}/{{ repo_name | lower }}-repo/{{ repo_name | lower }}-{{ comp.name }}
+          IMAGE_TAG: {% raw %}${{ github.sha }}{% endraw %}
+        run: |
+          # Create repository if it doesn't exist
+          gcloud artifacts repositories describe {{ repo_name | lower }}-repo --location=us-central1 || gcloud artifacts repositories create {{ repo_name | lower }}-repo --repository-format=docker --location=us-central1
+          
+          docker build -t $IMAGE_NAME:$IMAGE_TAG -t $IMAGE_NAME:latest {{ comp.path }}
+          docker push $IMAGE_NAME:$IMAGE_TAG
+          docker push $IMAGE_NAME:latest
+      {% endfor %}
+      {% endif %}
+
+      # Setup Terraform and Apply
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: 1.7.0
+
+      - name: Terraform Init
+        working-directory: ./terraform
+        run: terraform init
+
+      - name: Terraform Plan
+        working-directory: ./terraform
+        run: terraform plan -no-color
+
+      - name: Terraform Apply
+        working-directory: ./terraform
+        run: terraform apply -auto-approve -no-color

@@ -5,6 +5,15 @@ class GenerateRequest(BaseModel):
     serviceId: str
     cloud: str
     techStack: Optional[Dict[str, Any]] = None
+    registryType: Optional[str] = 'native'
+    awsComputeChoice: Optional[str] = 'ec2'
+    awsInstanceType: Optional[str] = 't3.micro'
+    awsUseEip: Optional[bool] = False
+    gcpComputeChoice: Optional[str] = 'cloudrun'
+    gcpMachineType: Optional[str] = 'e2-micro'
+    gcpUseStaticIp: Optional[bool] = False
+    componentConfigs: Optional[Dict[str, Dict[str, Any]]] = None
+
 
 class UpdateCodeRequest(BaseModel):
     generated_code: Dict[str, str]
@@ -12,3 +21,15 @@ class UpdateCodeRequest(BaseModel):
 class CommitRequest(BaseModel):
     branch: Optional[str] = None
     commit_message: Optional[str] = None
+
+class PushSecretsRequest(BaseModel):
+    credential_ids: list[str]
+
+
+class InstanceRecommendationRequest(BaseModel):
+    cloud: str
+    computeChoice: str
+    techStack: Optional[Dict[str, Any]] = None
+    componentName: Optional[str] = None
+    componentType: Optional[str] = None
+
