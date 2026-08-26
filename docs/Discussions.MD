@@ -10,3 +10,7 @@ Day 02 (31-07-2026)
 - The supervisor told me to focus main objectives like instance recommendation.
 - Temporary stop the cloud deployment developments until finished the instance recommendation.
 - For the instance recommendation he allow me to use Ai(Gemini API's)
+
+Day 03 (10-08-2026)
+- Mainly talk about the project status
+- Discussion about research paper submission and Interim 2 submission

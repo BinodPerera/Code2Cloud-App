@@ -14,3 +14,4 @@
 4. When we showing logs to user some phases completeness is missing. So, we need to detect way for accurately show each phases completeness.
 - Solution: Hope to create backend endpoint and call them in each phase when executing the terraform code.
 - Status: Pending
+
