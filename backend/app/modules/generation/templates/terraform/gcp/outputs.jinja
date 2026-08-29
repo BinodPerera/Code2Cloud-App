@@ -1,8 +1,8 @@
 {% for comp in components %}
-{% if compute_choice == 'gce' %}
+{% if comp.gcp_compute_choice == 'gce' or (compute_choice == 'gce' and not comp.gcp_compute_choice) %}
 output "{{ comp.name }}_public_ip" {
   description = "Public IP address of the {{ comp.name }} virtual machine"
-  value       = {% if use_static_ip and loop.first %}google_compute_address.static_ip.address{% else %}google_compute_instance.{{ comp.name }}.network_interface[0].access_config[0].nat_ip{% endif %}
+  value       = {% if comp.use_static_ip or (use_static_ip and loop.first) %}google_compute_address.{{ comp.name }}_static_ip.address{% else %}google_compute_instance.{{ comp.name }}.network_interface[0].access_config[0].nat_ip{% endif %}
 }
 {% else %}
 output "{{ comp.name }}_service_url" {

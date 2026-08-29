@@ -113,23 +113,21 @@ resource "aws_security_group" "web_sg" {
 }
 
 # --- Elastic IP (Conditional) ---
-{% if use_eip %}
-resource "aws_eip" "web_eip" {
+{% for comp in components %}
+{% if comp.use_eip or (use_eip and loop.first) %}
+resource "aws_eip" "{{ comp.name }}_eip" {
   domain = "vpc"
   tags = {
-    Name = "${var.project_name}-eip"
+    Name = "${var.project_name}-{{ comp.name }}-eip"
   }
 }
 
-resource "aws_eip_association" "eip_assoc" {
-  {% for comp in components %}
-  {% if loop.first %}
+resource "aws_eip_association" "{{ comp.name }}_eip_assoc" {
   instance_id   = aws_instance.{{ comp.name }}.id
-  allocation_id = aws_eip.web_eip.id
-  {% endif %}
-  {% endfor %}
+  allocation_id = aws_eip.{{ comp.name }}_eip.id
 }
 {% endif %}
+{% endfor %}
 
 # --- EC2 Instances ---
 {% for comp in components %}

@@ -26,12 +26,14 @@ resource "google_compute_firewall" "allow_http" {
 }
 
 # --- Static IP Allocation (Conditional) ---
-{% if use_static_ip %}
-resource "google_compute_address" "static_ip" {
-  name   = "${var.project_name}-static-ip"
+{% for comp in components %}
+{% if comp.use_static_ip or (use_static_ip and loop.first) %}
+resource "google_compute_address" "{{ comp.name }}_static_ip" {
+  name   = "${var.project_name}-{{ comp.name }}-static-ip"
   region = "{{ gcp_region | default('us-central1') }}"
 }
 {% endif %}
+{% endfor %}
 
 # --- Compute Engine Instances & Container Repositories ---
 {% for comp in components %}
@@ -58,8 +60,8 @@ resource "google_compute_instance" "{{ comp.name }}" {
   network_interface {
     subnetwork = google_compute_subnetwork.subnet.id
     access_config {
-      {% if use_static_ip %}
-      nat_ip = google_compute_address.static_ip.address
+      {% if comp.use_static_ip or (use_static_ip and loop.first) %}
+      nat_ip = google_compute_address.{{ comp.name }}_static_ip.address
       {% endif %}
     }
   }

@@ -126,8 +126,10 @@ function ServiceSetup() {
         initialConfigs[compName] = componentConfigs[compName] || {
           awsComputeChoice: awsComputeChoice,
           awsInstanceType: awsComputeChoice === 'fargate' ? '0.25 vCPU / 512 MB' : 't3.micro',
+          awsUseEip: awsUseEip,
           gcpComputeChoice: gcpComputeChoice,
-          gcpMachineType: gcpComputeChoice === 'cloudrun' ? '1 vCPU / 512 MB' : 'e2-micro'
+          gcpMachineType: gcpComputeChoice === 'cloudrun' ? '1 vCPU / 512 MB' : 'e2-micro',
+          gcpUseStaticIp: gcpUseStaticIp
         };
       });
       setComponentConfigs(initialConfigs);
@@ -572,8 +574,10 @@ function ServiceSetup() {
                          const compCfg = componentConfigs[compName] || {
                            awsComputeChoice: awsComputeChoice,
                            awsInstanceType: awsComputeChoice === 'fargate' ? '0.25 vCPU / 512 MB' : 't3.micro',
+                           awsUseEip: awsUseEip,
                            gcpComputeChoice: gcpComputeChoice,
-                           gcpMachineType: gcpComputeChoice === 'cloudrun' ? '1 vCPU / 512 MB' : 'e2-micro'
+                           gcpMachineType: gcpComputeChoice === 'cloudrun' ? '1 vCPU / 512 MB' : 'e2-micro',
+                           gcpUseStaticIp: gcpUseStaticIp
                          };
 
                           const updateCompCfg = (key, val) => {
@@ -660,6 +664,20 @@ function ServiceSetup() {
                                      </select>
                                    </div>
                                  </div>
+                                 {compCfg.awsComputeChoice === 'ec2' && (
+                                   <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginTop: '0.5rem' }}>
+                                     <input
+                                       type="checkbox"
+                                       id={`awsUseEip-${compName}`}
+                                       checked={compCfg.awsUseEip || false}
+                                       onChange={(e) => updateCompCfg('awsUseEip', e.target.checked)}
+                                       style={{ width: '16px', height: '16px', cursor: 'pointer', accentColor: currentConfig.color }}
+                                     />
+                                     <label htmlFor={`awsUseEip-${compName}`} style={{ color: '#fff', fontSize: '0.85rem', cursor: 'pointer', userSelect: 'none' }}>
+                                       Allocate Elastic IP (Static Public IP)
+                                     </label>
+                                   </div>
+                                 )}
                                  {renderAiReasoning(compName)}
                                </div>
                              )}
@@ -725,6 +743,20 @@ function ServiceSetup() {
                                      </select>
                                    </div>
                                  </div>
+                                 {compCfg.gcpComputeChoice === 'gce' && (
+                                   <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginTop: '0.5rem' }}>
+                                     <input
+                                       type="checkbox"
+                                       id={`gcpUseStaticIp-${compName}`}
+                                       checked={compCfg.gcpUseStaticIp || false}
+                                       onChange={(e) => updateCompCfg('gcpUseStaticIp', e.target.checked)}
+                                       style={{ width: '16px', height: '16px', cursor: 'pointer', accentColor: currentConfig.color }}
+                                     />
+                                     <label htmlFor={`gcpUseStaticIp-${compName}`} style={{ color: '#fff', fontSize: '0.85rem', cursor: 'pointer', userSelect: 'none' }}>
+                                       Reserve Static External IP Address
+                                     </label>
+                                   </div>
+                                 )}
                                  {renderAiReasoning(compName)}
                                </div>
                              )}

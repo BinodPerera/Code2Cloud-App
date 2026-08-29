@@ -167,6 +167,7 @@ class CodeGenerator:
 
                 comp_aws_compute = comp_cfg.get("awsComputeChoice", aws_compute_choice)
                 comp_aws_instance = comp_cfg.get("awsInstanceType", aws_instance_type)
+                comp_aws_use_eip = comp_cfg.get("awsUseEip", aws_use_eip)
 
                 comp_aws_cpu, comp_aws_mem = "256", "512"
                 if comp_aws_instance == "0.5 vCPU / 1 GB":
@@ -176,6 +177,7 @@ class CodeGenerator:
 
                 comp_gcp_compute = comp_cfg.get("gcpComputeChoice", gcp_compute_choice)
                 comp_gcp_machine = comp_cfg.get("gcpMachineType", gcp_machine_type)
+                comp_gcp_use_static_ip = comp_cfg.get("gcpUseStaticIp", gcp_use_static_ip)
 
                 comp_gcp_cpu, comp_gcp_mem = "1", "512Mi"
                 if comp_gcp_machine == "1 vCPU / 1 GB":
@@ -191,12 +193,16 @@ class CodeGenerator:
                     "depends_on": [] if comp_name == "backend" else ["backend"] if any(c.get("name", "").lower().replace("/", "-").replace("\\", "-") == "backend" for c in components_list) else [],
                     "aws_compute_choice": comp_aws_compute,
                     "aws_instance_type": comp_aws_instance,
+                    "aws_use_eip": comp_aws_use_eip,
                     "gcp_compute_choice": comp_gcp_compute,
                     "gcp_machine_type": comp_gcp_machine,
+                    "gcp_use_static_ip": comp_gcp_use_static_ip,
                     "cpu": comp_aws_cpu if cloud.lower() == "aws" else comp_gcp_cpu,
                     "memory": comp_aws_mem if cloud.lower() == "aws" else comp_gcp_mem,
                     "instance_type": comp_aws_instance,
-                    "machine_type": comp_gcp_machine
+                    "machine_type": comp_gcp_machine,
+                    "use_eip": comp_aws_use_eip,
+                    "use_static_ip": comp_gcp_use_static_ip
                 })
                 
             if cloud.lower() == "aws":
