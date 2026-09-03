@@ -3,7 +3,45 @@ variable "project_id" {
   description = "The GCP Project ID"
 }
 
+variable "gcp_region" {
+  type        = string
+  description = "GCP region to deploy resources into"
+  default     = "{{ gcp_region | default('us-central1') }}"
+}
+
 variable "project_name" {
   type        = string
-  default     = "{{ project_name }}"
+  description = "Prefix for all resource naming"
+  default     = "{{ project_name | default('code2cloud-app') }}"
 }
+
+variable "environment" {
+  type        = string
+  description = "Target deployment environment"
+  default     = "{{ environment | default('production') }}"
+}
+
+variable "storage_size_gb" {
+  type        = number
+  description = "Persistent SSD boot disk size in GB"
+  default     = {{ storage_size_gb | default(20) }}
+}
+
+{% if db_enabled %}
+variable "db_password" {
+  type        = string
+  description = "Password for the Cloud SQL database user"
+  default     = "Code2CloudPass123!"
+  sensitive   = true
+}
+{% endif %}
+
+{% if swap_enabled %}
+variable "swap_size_gb" {
+  type        = number
+  description = "Linux swap file allocation size in GB"
+  default     = {{ swap_size_gb | default(2) }}
+}
+{% endif %}
+
+

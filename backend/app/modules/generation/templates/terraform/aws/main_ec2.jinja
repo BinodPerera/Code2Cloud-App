@@ -1,6 +1,22 @@
 data "aws_caller_identity" "current" {}
 data "aws_region" "current" {}
 
+# Dynamically lookup the latest official Ubuntu 22.04 LTS AMI for the target region
+data "aws_ami" "ubuntu" {
+  most_recent = true
+  owners      = ["099720109477"] # Canonical
+
+  filter {
+    name   = "name"
+    values = ["ubuntu/images/hvm-ssd/ubuntu-jammy-22.04-amd64-server-*"]
+  }
+
+  filter {
+    name   = "virtualization-type"
+    values = ["hvm"]
+  }
+}
+
 # --- Networking (VPC Setup) ---
 resource "aws_vpc" "main" {
   cidr_block           = "10.0.0.0/16"
@@ -8,7 +24,8 @@ resource "aws_vpc" "main" {
   enable_dns_support   = true
 
   tags = {
-    Name = "${var.project_name}-vpc"
+    Name        = "${var.project_name}-vpc"
+    Environment = var.environment
   }
 }
 
@@ -19,7 +36,20 @@ resource "aws_subnet" "public_1" {
   map_public_ip_on_launch = true
 
   tags = {
-    Name = "${var.project_name}-public-subnet-1"
+    Name        = "${var.project_name}-public-subnet-1"
+    Environment = var.environment
+  }
+}
+
+resource "aws_subnet" "public_2" {
+  vpc_id            = aws_vpc.main.id
+  cidr_block        = "10.0.2.0/24"
+  availability_zone = "${var.aws_region}b"
+  map_public_ip_on_launch = true
+
+  tags = {
+    Name        = "${var.project_name}-public-subnet-2"
+    Environment = var.environment
   }
 }
 
@@ -27,7 +57,8 @@ resource "aws_internet_gateway" "gw" {
   vpc_id = aws_vpc.main.id
 
   tags = {
-    Name = "${var.project_name}-igw"
+    Name        = "${var.project_name}-igw"
+    Environment = var.environment
   }
 }
 
@@ -40,12 +71,18 @@ resource "aws_route_table" "public" {
   }
 
   tags = {
-    Name = "${var.project_name}-public-rt"
+    Name        = "${var.project_name}-public-rt"
+    Environment = var.environment
   }
 }
 
 resource "aws_route_table_association" "a1" {
   subnet_id      = aws_subnet.public_1.id
+  route_table_id = aws_route_table.public.id
+}
+
+resource "aws_route_table_association" "a2" {
+  subnet_id      = aws_subnet.public_2.id
   route_table_id = aws_route_table.public.id
 }
 
@@ -65,6 +102,10 @@ resource "aws_iam_role" "ec2_role" {
       }
     ]
   })
+
+  tags = {
+    Environment = var.environment
+  }
 }
 
 resource "aws_iam_role_policy_attachment" "ecr_read" {
@@ -110,7 +151,72 @@ resource "aws_security_group" "web_sg" {
     protocol    = "-1"
     cidr_blocks = ["0.0.0.0/0"]
   }
+
+  tags = {
+    Name        = "${var.project_name}-web-sg"
+    Environment = var.environment
+  }
 }
+
+{% if db_enabled %}
+# --- Managed Database Security Group & Resources ---
+resource "aws_security_group" "db_sg" {
+  name_prefix = "${lower(var.project_name)}-db-sg-"
+  description = "Allow inbound database traffic from application instances"
+  vpc_id      = aws_vpc.main.id
+
+  ingress {
+    from_port       = {{ db_port | default(5432) }}
+    to_port         = {{ db_port | default(5432) }}
+    protocol        = "tcp"
+    security_groups = [aws_security_group.web_sg.id]
+  }
+
+  egress {
+    from_port   = 0
+    to_port     = 0
+    protocol    = "-1"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+
+  tags = {
+    Name        = "${var.project_name}-db-sg"
+    Environment = var.environment
+  }
+}
+
+resource "aws_db_subnet_group" "db_subnets" {
+  name        = "${lower(var.project_name)}-db-subnet-group"
+  subnet_ids  = [aws_subnet.public_1.id, aws_subnet.public_2.id]
+  description = "Subnet group for RDS instance"
+
+  tags = {
+    Name        = "${var.project_name}-db-subnets"
+    Environment = var.environment
+  }
+}
+
+resource "aws_db_instance" "db" {
+  identifier           = "${lower(var.project_name)}-db"
+  allocated_storage    = {{ db_allocated_storage | default(20) }}
+  storage_type         = "gp3"
+  engine               = "{{ 'postgres' if db_engine == 'postgres' else 'mysql' }}"
+  engine_version       = "{{ '15.4' if db_engine == 'postgres' else '8.0' }}"
+  instance_class       = "{{ db_instance_class | default('db.t3.micro') }}"
+  db_name              = "{{ db_name | default('app_db') }}"
+  username             = "{{ db_user | default('c2c_admin') }}"
+  password             = var.db_password
+  db_subnet_group_name = aws_db_subnet_group.db_subnets.name
+  vpc_security_group_ids = [aws_security_group.db_sg.id]
+  skip_final_snapshot  = true
+  publicly_accessible  = false
+
+  tags = {
+    Name        = "${var.project_name}-rds"
+    Environment = var.environment
+  }
+}
+{% endif %}
 
 # --- Elastic IP (Conditional) ---
 {% for comp in components %}
@@ -118,7 +224,8 @@ resource "aws_security_group" "web_sg" {
 resource "aws_eip" "{{ comp.name }}_eip" {
   domain = "vpc"
   tags = {
-    Name = "${var.project_name}-{{ comp.name }}-eip"
+    Name        = "${var.project_name}-{{ comp.name }}-eip"
+    Environment = var.environment
   }
 }
 
@@ -132,11 +239,21 @@ resource "aws_eip_association" "{{ comp.name }}_eip_assoc" {
 # --- EC2 Instances ---
 {% for comp in components %}
 resource "aws_instance" "{{ comp.name }}" {
-  ami                  = "{{ ami_id | default('ami-0c7217cdde317cfec') }}"
+  ami                  = {{ ('"' + ami_id + '"') if ami_id else 'data.aws_ami.ubuntu.id' }}
   instance_type        = "{{ comp.instance_type | default(instance_type | default('t3.micro')) }}"
   subnet_id            = aws_subnet.public_1.id
   vpc_security_group_ids = [aws_security_group.web_sg.id]
   iam_instance_profile = aws_iam_instance_profile.ec2_profile.name
+
+  root_block_device {
+    volume_size           = {{ comp.storage_size_gb | default('var.storage_size_gb') }}
+    volume_type           = "{{ storage_type | default('gp3') }}"
+    delete_on_termination = true
+    tags = {
+      Name        = "${var.project_name}-{{ comp.name }}-root-disk"
+      Environment = var.environment
+    }
+  }
 
   user_data_replace_on_change = true
 
@@ -155,6 +272,17 @@ resource "aws_instance" "{{ comp.name }}" {
       systemctl enable docker
       usermod -aG docker ec2-user || true
     fi
+    {%- if comp.swap_enabled or (swap_enabled and comp.swap_enabled is not defined) %}
+
+    # Configure Linux Swap Memory
+    fallocate -l {{ comp.swap_size_gb | default('var.swap_size_gb') }}G /swapfile || dd if=/dev/zero of=/swapfile bs=1M count=$(expr {{ comp.swap_size_gb | default('var.swap_size_gb') }} \* 1024)
+    chmod 600 /swapfile
+    mkswap /swapfile
+    swapon /swapfile
+    echo '/swapfile swap swap defaults 0 0' >> /etc/fstab
+    sysctl vm.swappiness=10
+    echo 'vm.swappiness=10' >> /etc/sysctl.conf
+    {%- endif %}
     
     # Authenticate Docker against ECR
     aws ecr get-login-password --region \${var.aws_region} | docker login --username AWS --password-stdin \${data.aws_caller_identity.current.account_id}.dkr.ecr.\${data.aws_region.current.name}.amazonaws.com/\${lower(var.project_name)}-{{ comp.name }}
@@ -164,6 +292,15 @@ resource "aws_instance" "{{ comp.name }}" {
       --name {{ comp.name }} \
       --restart always \
       -e PORT={{ comp.port | default(3000) }} \
+      -e ENVIRONMENT=\${var.environment} \
+      {%- if db_enabled %}
+      -e DB_HOST=\${aws_db_instance.db.address} \
+      -e DB_PORT={{ db_port | default(5432) }} \
+      -e DB_USER={{ db_user | default('c2c_admin') }} \
+      -e DB_PASSWORD=\${var.db_password} \
+      -e DB_NAME={{ db_name | default('app_db') }} \
+      -e DATABASE_URL="{{ 'postgres' if db_engine == 'postgres' else 'mysql' }}://{{ db_user | default('c2c_admin') }}:\${var.db_password}@\${aws_db_instance.db.address}:{{ db_port | default(5432) }}/{{ db_name | default('app_db') }}" \
+      {%- endif %}
       {%- if comp.depends_on %}
       {%- for dep in comp.depends_on %}
       -e {{ dep | upper }}_URL=http://localhost:{{ comp.port | default(3000) }} \
@@ -173,7 +310,9 @@ resource "aws_instance" "{{ comp.name }}" {
   EOF
 
   tags = {
-    Name = "${var.project_name}-{{ comp.name }}"
+    Name        = "${var.project_name}-{{ comp.name }}"
+    Environment = var.environment
   }
 }
 {% endfor %}
+

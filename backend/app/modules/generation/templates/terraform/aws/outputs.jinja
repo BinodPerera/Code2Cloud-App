@@ -1,3 +1,13 @@
+output "aws_region" {
+  description = "Target deployment region"
+  value       = var.aws_region
+}
+
+output "environment" {
+  description = "Deployment environment"
+  value       = var.environment
+}
+
 {% for comp in components %}
 output "{{ comp.name }}_ecr_repository_url" {
   description = "Registry URL for {{ comp.name }} container builds"
@@ -11,3 +21,16 @@ output "{{ comp.name }}_public_ip" {
 }
 {% endif %}
 {% endfor %}
+
+{% if db_enabled %}
+output "rds_endpoint" {
+  description = "Connection endpoint for the RDS database"
+  value       = aws_db_instance.db.endpoint
+}
+
+output "rds_database_name" {
+  description = "Database name"
+  value       = aws_db_instance.db.db_name
+}
+{% endif %}
+

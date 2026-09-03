@@ -4,6 +4,19 @@ import re
 import httpx
 from typing import Dict, Any, List, Optional
 
+IGNORE_DIRS = {
+    "node_modules", "venv", ".venv", "env", ".env", ".git", ".github",
+    ".idea", ".vscode", "docs", "documentation", "e2e", "tests", "test",
+    "cypress", "playwright", "scripts", "tools", "benchmarks", "examples",
+    "fixtures", "__tests__", "dist", "build", "target", "out", ".next",
+    ".nuxt", ".turbo", "coverage", ".cache"
+}
+
+def is_ignored_path(path: str) -> bool:
+    parts = path.replace("\\", "/").split("/")
+    dir_parts = parts[:-1] if len(parts) > 1 else []
+    return any(p.lower() in IGNORE_DIRS for p in dir_parts)
+
 def parse_spring_port(content: str, filename: str) -> Optional[int]:
     if filename.endswith(".properties"):
         match = re.search(r'server\.port\s*=\s*(\d+)', content)
@@ -70,10 +83,12 @@ class TechStackAnalyzer:
                     manifests = []
                     for item in tree_items:
                         path = item.get("path", "")
-                        if "node_modules" in path or "venv" in path or ".venv" in path:
+                        if is_ignored_path(path):
                             continue
                         if path.endswith("package.json") or path.endswith("requirements.txt") or path.endswith("pom.xml") or path.endswith("build.gradle") or path.endswith("build.gradle.kts"):
                             manifests.append(path)
+                    
+                    has_sub_manifests = any("/" in p for p in manifests)
                     
                     for path in manifests:
                         try:
@@ -82,11 +97,30 @@ class TechStackAnalyzer:
                                 content_data = file_res.json()
                                 content = base64.b64decode(content_data["content"]).decode("utf-8")
                                 
+                                is_root_manifest = "/" not in path
                                 component_name = path.rsplit("/", 1)[0] if "/" in path else "app"
                                 component_libraries = []
+                                cmp_type = "Generic"
                                 
                                 if path.endswith("package.json"):
                                     pkg = json.loads(content)
+                                    
+                                    # Monorepo workspace root filter:
+                                    # If subfolder components exist and root package.json is just a workspace/tooling orchestrator
+                                    if is_root_manifest and has_sub_manifests:
+                                        has_workspaces = "workspaces" in pkg
+                                        dev_deps_keys = set(pkg.get("devDependencies", {}).keys())
+                                        deps_keys = set(pkg.get("dependencies", {}).keys())
+                                        orchestration_tools = {"concurrently", "turbo", "lerna", "nx", "npm-run-all", "cross-env", "husky", "prettier", "eslint"}
+                                        is_dev_tooling_only = (dev_deps_keys.intersection(orchestration_tools) or not deps_keys) and not deps_keys.intersection({"express", "fastify", "koa", "nestjs", "next", "react", "vue", "svelte", "@angular/core"})
+                                        
+                                        scripts_text = json.dumps(pkg.get("scripts", {})).lower()
+                                        proxies_to_subdirs = "cd " in scripts_text or "--workspace" in scripts_text or "--prefix" in scripts_text or "turbo" in scripts_text or "lerna" in scripts_text
+                                        
+                                        if has_workspaces or is_dev_tooling_only or proxies_to_subdirs:
+                                            # Skip root workspace aggregator package.json
+                                            continue
+                                    
                                     deps = pkg.get("dependencies", {})
                                     dev_deps = pkg.get("devDependencies", {})
                                     component_libraries.extend(list(deps.keys()))
@@ -100,6 +134,9 @@ class TechStackAnalyzer:
                                                 component_libraries.append(name)
                                     cmp_type = "Python"
                                 elif path.endswith("pom.xml"):
+                                    # Root parent POM aggregator filter
+                                    if is_root_manifest and has_sub_manifests and "<packaging>pom</packaging>" in content and "<modules>" in content:
+                                        continue
                                     deps = re.findall(r'<dependency>[\s\S]*?<artifactId>([^<]+)</artifactId>[\s\S]*?</dependency>', content)
                                     component_libraries.extend(deps)
                                     cmp_type = "Java / Maven"
@@ -185,8 +222,7 @@ class TechStackAnalyzer:
         found_alt_components = []
         for item in tree_items:
             path = item.get("path", "")
-            # Skip common ignore directories
-            if any(p in path.split("/") for p in ["node_modules", "venv", ".venv", ".git", ".idea", ".vscode"]):
+            if is_ignored_path(path):
                 continue
             
             filename = path.split("/")[-1]
@@ -220,7 +256,7 @@ class TechStackAnalyzer:
         extension_counts = {}
         for item in tree_items:
             path = item.get("path", "")
-            if any(p in path.split("/") for p in ["node_modules", "venv", ".venv", ".git", ".idea", ".vscode"]):
+            if is_ignored_path(path):
                 continue
             
             filename = path.split("/")[-1]

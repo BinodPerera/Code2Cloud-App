@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
-import { BookMarked, ArrowLeft } from 'lucide-react';
+import { BookMarked, ArrowLeft, Settings2, ChevronDown, ChevronUp, HardDrive, Database, Globe, Layers, ShieldCheck, DollarSign, Server, Cpu, Check, Sliders, Zap } from 'lucide-react';
 import { apiClient } from '../utils/api';
 import Preloader from '../components/Preloader';
 
@@ -32,6 +32,18 @@ function ServiceSetup() {
   const [gcpMachineType, setGcpMachineType] = useState('e2-micro');
   const [gcpUseStaticIp, setGcpUseStaticIp] = useState(false);
 
+  // Advanced Infrastructure Settings & Add-ons states
+  const [isAdvancedOpen, setIsAdvancedOpen] = useState(false);
+  const [selectedRegion, setSelectedRegion] = useState('us-east-1');
+  const [selectedRegistry, setSelectedRegistry] = useState('native');
+  const [selectedEnvironment, setSelectedEnvironment] = useState('production');
+  const [storageSizeGb, setStorageSizeGb] = useState(20);
+  const [isCustomStorage, setIsCustomStorage] = useState(false);
+  const [swapEnabled, setSwapEnabled] = useState(false);
+  const [swapSizeGb, setSwapSizeGb] = useState(2);
+  const [dbEnabled, setDbEnabled] = useState(false);
+  const [dbEngine, setDbEngine] = useState('postgres'); // 'postgres' | 'mysql'
+
   // Monorepo component-specific configurations: { [compName]: { awsComputeChoice, awsInstanceType, gcpComputeChoice, gcpMachineType } }
   const [componentConfigs, setComponentConfigs] = useState({});
 
@@ -39,6 +51,7 @@ function ServiceSetup() {
   const [recommendLoading, setRecommendLoading] = useState({});
   const [aiReasons, setAiReasons] = useState({});
   const [aiSources, setAiSources] = useState({});
+
 
   const serviceConfigs = {
     finops: {
@@ -153,6 +166,9 @@ function ServiceSetup() {
       if (res.ok) {
         const data = await res.json();
         const recommendedInstance = data.recommended_instance;
+        const recommendedStorage = data.recommended_storage_gb || 20;
+        const recommendedSwapEnabled = data.recommended_swap_enabled !== undefined ? data.recommended_swap_enabled : (['ec2', 'gce'].includes(computeChoice));
+        const recommendedSwapSize = data.recommended_swap_size_gb || 2;
         const reasoning = data.reasoning;
 
         setAiReasons((prev) => ({ ...prev, [compName]: reasoning }));
@@ -161,6 +177,9 @@ function ServiceSetup() {
         if (compName === 'global') {
           if (targetCloud === 'AWS') setAwsInstanceType(recommendedInstance);
           if (targetCloud === 'GCP') setGcpMachineType(recommendedInstance);
+          setStorageSizeGb(recommendedStorage);
+          setSwapEnabled(recommendedSwapEnabled);
+          setSwapSizeGb(recommendedSwapSize);
         } else {
           setComponentConfigs((prev) => {
             const current = prev[compName] || {};
@@ -168,7 +187,10 @@ function ServiceSetup() {
               ...prev,
               [compName]: {
                 ...current,
-                ...(targetCloud === 'AWS' ? { awsInstanceType: recommendedInstance } : { gcpMachineType: recommendedInstance })
+                ...(targetCloud === 'AWS' ? { awsInstanceType: recommendedInstance } : { gcpMachineType: recommendedInstance }),
+                storageSizeGb: recommendedStorage,
+                swapEnabled: recommendedSwapEnabled,
+                swapSizeGb: recommendedSwapSize
               }
             };
           });
@@ -250,6 +272,87 @@ function ServiceSetup() {
     }));
   };
 
+  useEffect(() => {
+    if (selectedCloud === 'AWS') {
+      setSelectedRegion((prev) => (prev && ['us-east-1', 'us-west-2', 'eu-west-1', 'ap-southeast-1', 'ap-south-1'].includes(prev) ? prev : 'us-east-1'));
+    } else if (selectedCloud === 'GCP') {
+      setSelectedRegion((prev) => (prev && ['us-central1', 'us-east1', 'europe-west1', 'asia-southeast1', 'asia-south1'].includes(prev) ? prev : 'us-central1'));
+    }
+  }, [selectedCloud]);
+
+  const calculateCostBreakdown = () => {
+    let computeCost = 0;
+    let ipCost = 0;
+    let storageCost = 0;
+    let dbCost = 0;
+
+    const HOURS_PER_MONTH = 730;
+
+    const awsEc2Rates = { 't3.micro': 0.0104, 't3.small': 0.0208, 't3.medium': 0.0416, 't3.large': 0.0832 };
+    const awsFargateRates = { '0.25 vCPU / 512 MB': 0.0125, '0.5 vCPU / 1 GB': 0.0250, '1.0 vCPU / 2 GB': 0.0500, '2.0 vCPU / 4 GB': 0.1000 };
+    const gcpGceRates = { 'e2-micro': 0.0084, 'e2-small': 0.0168, 'e2-medium': 0.0335, 'e2-standard-2': 0.0670 };
+    const gcpCloudRunRates = { '1 vCPU / 512 MB': 0.0100, '1 vCPU / 1 GB': 0.0150, '2 vCPU / 2 GB': 0.0300, '2 vCPU / 4 GB': 0.0450 };
+
+    if (techStack?.components && techStack.components.length > 1) {
+      techStack.components.forEach((comp) => {
+        const compName = comp.name.toLowerCase().replace('/', '-').replace('\\', '-');
+        const cfg = componentConfigs[compName] || {};
+        if (cfg.enabled === false) return;
+        const compStorage = Number(cfg.storageSizeGb) || Number(storageSizeGb) || 20;
+        storageCost += compStorage * 0.08;
+
+        if (selectedCloud === 'AWS') {
+          const choice = cfg.awsComputeChoice || awsComputeChoice;
+          const inst = cfg.awsInstanceType || (choice === 'fargate' ? '0.25 vCPU / 512 MB' : 't3.micro');
+          const rate = choice === 'fargate' ? (awsFargateRates[inst] || 0.0125) : (awsEc2Rates[inst] || 0.0104);
+          computeCost += rate * HOURS_PER_MONTH;
+          if (cfg.awsUseEip || (choice === 'ec2' && awsUseEip)) {
+            ipCost += 0.005 * HOURS_PER_MONTH;
+          }
+        } else if (selectedCloud === 'GCP') {
+          const choice = cfg.gcpComputeChoice || gcpComputeChoice;
+          const mach = cfg.gcpMachineType || (choice === 'cloudrun' ? '1 vCPU / 512 MB' : 'e2-micro');
+          const rate = choice === 'cloudrun' ? (gcpCloudRunRates[mach] || 0.0100) : (gcpGceRates[mach] || 0.0084);
+          computeCost += rate * HOURS_PER_MONTH;
+          if (cfg.gcpUseStaticIp || (choice === 'gce' && gcpUseStaticIp)) {
+            ipCost += 0.005 * HOURS_PER_MONTH;
+          }
+        }
+      });
+    } else {
+      const storageGb = Number(storageSizeGb) || 20;
+      storageCost = storageGb * 0.08;
+
+      if (selectedCloud === 'AWS') {
+        const rate = awsComputeChoice === 'fargate' ? (awsFargateRates[awsInstanceType] || 0.0125) : (awsEc2Rates[awsInstanceType] || 0.0104);
+        computeCost = rate * HOURS_PER_MONTH;
+        if (awsComputeChoice === 'ec2' && awsUseEip) {
+          ipCost = 0.005 * HOURS_PER_MONTH;
+        }
+      } else if (selectedCloud === 'GCP') {
+        const rate = gcpComputeChoice === 'cloudrun' ? (gcpCloudRunRates[gcpMachineType] || 0.0100) : (gcpGceRates[gcpMachineType] || 0.0084);
+        computeCost = rate * HOURS_PER_MONTH;
+        if (gcpComputeChoice === 'gce' && gcpUseStaticIp) {
+          ipCost = 0.005 * HOURS_PER_MONTH;
+        }
+      }
+    }
+
+    if (dbEnabled) {
+      dbCost = selectedCloud === 'AWS' ? 14.71 : 14.35;
+    }
+
+    const totalCost = computeCost + ipCost + storageCost + dbCost;
+
+    return {
+      computeCost: computeCost.toFixed(2),
+      ipCost: ipCost.toFixed(2),
+      storageCost: storageCost.toFixed(2),
+      dbCost: dbCost.toFixed(2),
+      totalCost: totalCost.toFixed(2)
+    };
+  };
+
   const handleProceed = async () => {
     if (!selectedRepo || (serviceId !== 'docker' && !selectedCloud) || !token) return;
     try {
@@ -260,6 +363,17 @@ function ServiceSetup() {
         serviceId,
         cloud: serviceId === 'docker' ? 'None' : selectedCloud,
         techStack,
+        registryType: selectedRegistry,
+        region: selectedRegion || (selectedCloud === 'AWS' ? 'us-east-1' : 'us-central1'),
+        environment: selectedEnvironment,
+        storageSizeGb: Number(storageSizeGb) || 20,
+        storageType: selectedCloud === 'AWS' ? 'gp3' : 'pd-ssd',
+        dbEnabled,
+        dbEngine,
+        dbInstanceClass: selectedCloud === 'AWS' ? 'db.t3.micro' : 'db-f1-micro',
+        dbAllocatedStorage: 20,
+        swapEnabled,
+        swapSizeGb: Number(swapSizeGb) || 2,
         awsComputeChoice,
         awsInstanceType,
         awsUseEip,
@@ -571,14 +685,18 @@ function ServiceSetup() {
                        {techStack.components.map((comp) => {
                          const rawName = comp.name || 'app';
                          const compName = rawName.toLowerCase().replace('/', '-').replace('\\', '-');
-                         const compCfg = componentConfigs[compName] || {
-                           awsComputeChoice: awsComputeChoice,
-                           awsInstanceType: awsComputeChoice === 'fargate' ? '0.25 vCPU / 512 MB' : 't3.micro',
-                           awsUseEip: awsUseEip,
-                           gcpComputeChoice: gcpComputeChoice,
-                           gcpMachineType: gcpComputeChoice === 'cloudrun' ? '1 vCPU / 512 MB' : 'e2-micro',
-                           gcpUseStaticIp: gcpUseStaticIp
-                         };
+                          const compCfg = componentConfigs[compName] || {
+                            enabled: true,
+                            awsComputeChoice: awsComputeChoice,
+                            awsInstanceType: awsComputeChoice === 'fargate' ? '0.25 vCPU / 512 MB' : 't3.micro',
+                            awsUseEip: awsUseEip,
+                            gcpComputeChoice: gcpComputeChoice,
+                            gcpMachineType: gcpComputeChoice === 'cloudrun' ? '1 vCPU / 512 MB' : 'e2-micro',
+                            gcpUseStaticIp: gcpUseStaticIp,
+                            storageSizeGb: storageSizeGb || 20,
+                            swapEnabled: false,
+                            swapSizeGb: 2
+                          };
 
                           const updateCompCfg = (key, val) => {
                             setComponentConfigs((prev) => {
@@ -593,16 +711,37 @@ function ServiceSetup() {
                             });
                           };
 
-                         return (
-                           <div key={compName} style={{ background: 'rgba(255, 255, 255, 0.02)', border: '1.5px solid var(--c2c-border)', borderRadius: '16px', padding: '1.25rem' }}>
-                             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
-                               <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
-                                 <span style={{ color: currentConfig.color, fontWeight: '700', fontSize: '1rem', textTransform: 'capitalize' }}>{comp.name} Component</span>
-                                 <span style={{ background: 'rgba(255, 255, 255, 0.08)', padding: '0.2rem 0.6rem', borderRadius: '8px', color: '#a2a2b5', fontSize: '0.75rem' }}>{comp.type}</span>
-                               </div>
-                               <span style={{ color: '#6b7280', fontSize: '0.75rem', fontFamily: 'monospace' }}>path: {comp.path}</span>
-                             </div>
+                          return (
+                            <div key={compName} style={{ 
+                              background: compCfg.enabled !== false ? 'rgba(255, 255, 255, 0.02)' : 'rgba(255, 255, 255, 0.005)', 
+                              border: compCfg.enabled !== false ? '1.5px solid var(--c2c-border)' : '1.5px dashed rgba(255, 255, 255, 0.12)', 
+                              borderRadius: '16px', 
+                              padding: '1.25rem',
+                              opacity: compCfg.enabled !== false ? 1 : 0.65,
+                              transition: 'all 0.2s'
+                            }}>
+                              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: compCfg.enabled !== false ? '1rem' : '0' }}>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
+                                  <span style={{ color: compCfg.enabled !== false ? currentConfig.color : '#6e7191', fontWeight: '700', fontSize: '1rem', textTransform: 'capitalize' }}>{comp.name} Component</span>
+                                  <span style={{ background: 'rgba(255, 255, 255, 0.08)', padding: '0.2rem 0.6rem', borderRadius: '8px', color: '#a2a2b5', fontSize: '0.75rem' }}>{comp.type}</span>
+                                  <span style={{ color: '#6b7280', fontSize: '0.75rem', fontFamily: 'monospace' }}>path: {comp.path}</span>
+                                </div>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                                  <input
+                                    type="checkbox"
+                                    id={`enableComp-${compName}`}
+                                    checked={compCfg.enabled !== false}
+                                    onChange={(e) => updateCompCfg('enabled', e.target.checked)}
+                                    style={{ width: '16px', height: '16px', cursor: 'pointer', accentColor: currentConfig.color }}
+                                  />
+                                  <label htmlFor={`enableComp-${compName}`} style={{ color: compCfg.enabled !== false ? '#fff' : '#a2a2b5', fontSize: '0.8rem', fontWeight: '600', cursor: 'pointer', userSelect: 'none' }}>
+                                    {compCfg.enabled !== false ? 'Include in Deployment' : 'Excluded from Deployment'}
+                                  </label>
+                                </div>
+                              </div>
 
+                              {compCfg.enabled !== false && (
+                                <>
                              {/* AWS Per-Component Configs */}
                              {selectedCloud === 'AWS' && (
                                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
@@ -665,19 +804,61 @@ function ServiceSetup() {
                                    </div>
                                  </div>
                                  {compCfg.awsComputeChoice === 'ec2' && (
-                                   <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginTop: '0.5rem' }}>
-                                     <input
-                                       type="checkbox"
-                                       id={`awsUseEip-${compName}`}
-                                       checked={compCfg.awsUseEip || false}
-                                       onChange={(e) => updateCompCfg('awsUseEip', e.target.checked)}
-                                       style={{ width: '16px', height: '16px', cursor: 'pointer', accentColor: currentConfig.color }}
-                                     />
-                                     <label htmlFor={`awsUseEip-${compName}`} style={{ color: '#fff', fontSize: '0.85rem', cursor: 'pointer', userSelect: 'none' }}>
-                                       Allocate Elastic IP (Static Public IP)
-                                     </label>
-                                   </div>
-                                 )}
+                                    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem', marginTop: '0.75rem' }}>
+                                      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
+                                        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.35rem' }}>
+                                          <label style={{ color: '#fff', fontSize: '0.8rem', fontWeight: '600' }}>Root SSD Disk</label>
+                                          <select
+                                            value={compCfg.storageSizeGb || storageSizeGb || 20}
+                                            onChange={(e) => updateCompCfg('storageSizeGb', Number(e.target.value))}
+                                            style={{ background: '#0f0f15', border: '1.5px solid var(--c2c-border)', borderRadius: '10px', color: '#fff', padding: '0.55rem', fontSize: '0.8rem', outline: 'none', cursor: 'pointer' }}
+                                          >
+                                            <option value={10}>10 GB SSD ($0.80/mo)</option>
+                                            <option value={20}>20 GB SSD ($1.60/mo)</option>
+                                            <option value={50}>50 GB SSD ($4.00/mo)</option>
+                                            <option value={100}>100 GB SSD ($8.00/mo)</option>
+                                            <option value={200}>200 GB SSD ($16.00/mo)</option>
+                                          </select>
+                                        </div>
+
+                                        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.35rem' }}>
+                                          <label style={{ color: '#fff', fontSize: '0.8rem', fontWeight: '600' }}>Linux Swap (Virtual RAM)</label>
+                                          <select
+                                            value={compCfg.swapEnabled ? (compCfg.swapSizeGb || 2) : 0}
+                                            onChange={(e) => {
+                                              const val = Number(e.target.value);
+                                              if (val === 0) {
+                                                updateCompCfg('swapEnabled', false);
+                                              } else {
+                                                updateCompCfg('swapEnabled', true);
+                                                updateCompCfg('swapSizeGb', val);
+                                              }
+                                            }}
+                                            style={{ background: '#0f0f15', border: '1.5px solid var(--c2c-border)', borderRadius: '10px', color: '#fff', padding: '0.55rem', fontSize: '0.8rem', outline: 'none', cursor: 'pointer' }}
+                                          >
+                                            <option value={0}>None (Disabled)</option>
+                                            <option value={1}>1 GB Swap ($0.00)</option>
+                                            <option value={2}>2 GB Swap (Recommended)</option>
+                                            <option value={3}>3 GB Swap ($0.00)</option>
+                                            <option value={4}>4 GB Swap ($0.00)</option>
+                                          </select>
+                                        </div>
+                                      </div>
+
+                                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                                        <input
+                                          type="checkbox"
+                                          id={`awsUseEip-${compName}`}
+                                          checked={compCfg.awsUseEip || false}
+                                          onChange={(e) => updateCompCfg('awsUseEip', e.target.checked)}
+                                          style={{ width: '16px', height: '16px', cursor: 'pointer', accentColor: currentConfig.color }}
+                                        />
+                                        <label htmlFor={`awsUseEip-${compName}`} style={{ color: '#fff', fontSize: '0.82rem', cursor: 'pointer', userSelect: 'none' }}>
+                                          Allocate Elastic IP (Static Public IP)
+                                        </label>
+                                      </div>
+                                    </div>
+                                  )}
                                  {renderAiReasoning(compName)}
                                </div>
                              )}
@@ -743,24 +924,68 @@ function ServiceSetup() {
                                      </select>
                                    </div>
                                  </div>
-                                 {compCfg.gcpComputeChoice === 'gce' && (
-                                   <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginTop: '0.5rem' }}>
-                                     <input
-                                       type="checkbox"
-                                       id={`gcpUseStaticIp-${compName}`}
-                                       checked={compCfg.gcpUseStaticIp || false}
-                                       onChange={(e) => updateCompCfg('gcpUseStaticIp', e.target.checked)}
-                                       style={{ width: '16px', height: '16px', cursor: 'pointer', accentColor: currentConfig.color }}
-                                     />
-                                     <label htmlFor={`gcpUseStaticIp-${compName}`} style={{ color: '#fff', fontSize: '0.85rem', cursor: 'pointer', userSelect: 'none' }}>
-                                       Reserve Static External IP Address
-                                     </label>
-                                   </div>
-                                 )}
+                                  {compCfg.gcpComputeChoice === 'gce' && (
+                                    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem', marginTop: '0.75rem' }}>
+                                      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
+                                        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.35rem' }}>
+                                          <label style={{ color: '#fff', fontSize: '0.8rem', fontWeight: '600' }}>Root SSD Disk</label>
+                                          <select
+                                            value={compCfg.storageSizeGb || storageSizeGb || 20}
+                                            onChange={(e) => updateCompCfg('storageSizeGb', Number(e.target.value))}
+                                            style={{ background: '#0f0f15', border: '1.5px solid var(--c2c-border)', borderRadius: '10px', color: '#fff', padding: '0.55rem', fontSize: '0.8rem', outline: 'none', cursor: 'pointer' }}
+                                          >
+                                            <option value={10}>10 GB SSD ($0.80/mo)</option>
+                                            <option value={20}>20 GB SSD ($1.60/mo)</option>
+                                            <option value={50}>50 GB SSD ($4.00/mo)</option>
+                                            <option value={100}>100 GB SSD ($8.00/mo)</option>
+                                            <option value={200}>200 GB SSD ($16.00/mo)</option>
+                                          </select>
+                                        </div>
+
+                                        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.35rem' }}>
+                                          <label style={{ color: '#fff', fontSize: '0.8rem', fontWeight: '600' }}>Linux Swap (Virtual RAM)</label>
+                                          <select
+                                            value={compCfg.swapEnabled ? (compCfg.swapSizeGb || 2) : 0}
+                                            onChange={(e) => {
+                                              const val = Number(e.target.value);
+                                              if (val === 0) {
+                                                updateCompCfg('swapEnabled', false);
+                                              } else {
+                                                updateCompCfg('swapEnabled', true);
+                                                updateCompCfg('swapSizeGb', val);
+                                              }
+                                            }}
+                                            style={{ background: '#0f0f15', border: '1.5px solid var(--c2c-border)', borderRadius: '10px', color: '#fff', padding: '0.55rem', fontSize: '0.8rem', outline: 'none', cursor: 'pointer' }}
+                                          >
+                                            <option value={0}>None (Disabled)</option>
+                                            <option value={1}>1 GB Swap ($0.00)</option>
+                                            <option value={2}>2 GB Swap (Recommended)</option>
+                                            <option value={3}>3 GB Swap ($0.00)</option>
+                                            <option value={4}>4 GB Swap ($0.00)</option>
+                                          </select>
+                                        </div>
+                                      </div>
+
+                                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                                        <input
+                                          type="checkbox"
+                                          id={`gcpUseStaticIp-${compName}`}
+                                          checked={compCfg.gcpUseStaticIp || false}
+                                          onChange={(e) => updateCompCfg('gcpUseStaticIp', e.target.checked)}
+                                          style={{ width: '16px', height: '16px', cursor: 'pointer', accentColor: currentConfig.color }}
+                                        />
+                                        <label htmlFor={`gcpUseStaticIp-${compName}`} style={{ color: '#fff', fontSize: '0.85rem', cursor: 'pointer', userSelect: 'none' }}>
+                                          Reserve Static External IP Address
+                                        </label>
+                                      </div>
+                                    </div>
+                                  )}
                                  {renderAiReasoning(compName)}
                                </div>
                              )}
-                           </div>
+                                </>
+                              )}
+                            </div>
                          );
                        })}
                      </div>
@@ -914,6 +1139,397 @@ function ServiceSetup() {
                      {renderAiReasoning('global')}
                    </div>
                  )}
+
+                  {/* FinOps Real-time Cost Estimation Card */}
+                  {selectedCloud && serviceId !== 'docker' && (
+                    <div style={{
+                      borderTop: '2px solid var(--c2c-border)',
+                      paddingTop: '1.5rem',
+                      display: 'flex',
+                      flexDirection: 'column',
+                      gap: '0.8rem'
+                    }}>
+                      <div style={{
+                        background: 'linear-gradient(135deg, rgba(16, 185, 129, 0.08) 0%, rgba(5, 150, 105, 0.03) 100%)',
+                        border: '1.5px solid rgba(16, 185, 129, 0.3)',
+                        borderRadius: '16px',
+                        padding: '1.25rem',
+                        display: 'flex',
+                        flexDirection: 'column',
+                        gap: '0.75rem'
+                      }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                            <DollarSign size={18} style={{ color: '#10B981' }} />
+                            <span style={{ color: '#fff', fontWeight: '700', fontSize: '0.95rem' }}>Live FinOps Cost Estimation</span>
+                          </div>
+                          <div style={{
+                            background: 'rgba(16, 185, 129, 0.2)',
+                            color: '#10B981',
+                            padding: '0.3rem 0.8rem',
+                            borderRadius: '20px',
+                            fontWeight: '700',
+                            fontSize: '0.9rem',
+                            border: '1px solid rgba(16, 185, 129, 0.4)'
+                          }}>
+                            ${calculateCostBreakdown().totalCost} / month
+                          </div>
+                        </div>
+
+                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem', fontSize: '0.75rem' }}>
+                          <span style={{ background: 'rgba(255, 255, 255, 0.05)', color: '#e2e2e9', padding: '0.3rem 0.6rem', borderRadius: '8px', border: '1px solid var(--c2c-border)' }}>
+                            Compute: <strong>${calculateCostBreakdown().computeCost}/mo</strong>
+                          </span>
+                          <span style={{ background: 'rgba(255, 255, 255, 0.05)', color: '#e2e2e9', padding: '0.3rem 0.6rem', borderRadius: '8px', border: '1px solid var(--c2c-border)' }}>
+                            Storage ({storageSizeGb}GB): <strong>${calculateCostBreakdown().storageCost}/mo</strong>
+                          </span>
+                          {(awsUseEip || gcpUseStaticIp || Object.values(componentConfigs).some(c => c.awsUseEip || c.gcpUseStaticIp)) && (
+                            <span style={{ background: 'rgba(255, 255, 255, 0.05)', color: '#e2e2e9', padding: '0.3rem 0.6rem', borderRadius: '8px', border: '1px solid var(--c2c-border)' }}>
+                              Static IP: <strong>+${calculateCostBreakdown().ipCost}/mo</strong>
+                            </span>
+                          )}
+                          {dbEnabled && (
+                            <span style={{ background: 'rgba(16, 185, 129, 0.15)', color: '#34d399', padding: '0.3rem 0.6rem', borderRadius: '8px', border: '1px solid rgba(16, 185, 129, 0.3)' }}>
+                              Managed DB ({dbEngine.toUpperCase()}): <strong>+${calculateCostBreakdown().dbCost}/mo</strong>
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Advanced Infrastructure Settings Accordion */}
+                  {selectedCloud && serviceId === 'terraform' && (
+                    <div style={{
+                      borderTop: '2px solid var(--c2c-border)',
+                      paddingTop: '1.25rem',
+                      display: 'flex',
+                      flexDirection: 'column',
+                      gap: '0.75rem'
+                    }}>
+                      <div 
+                        onClick={() => setIsAdvancedOpen(!isAdvancedOpen)}
+                        style={{
+                          background: 'rgba(255, 255, 255, 0.02)',
+                          border: isAdvancedOpen ? `1.5px solid ${currentConfig.color}` : '1.5px solid var(--c2c-border)',
+                          borderRadius: '16px',
+                          padding: '1rem 1.25rem',
+                          cursor: 'pointer',
+                          display: 'flex',
+                          justifyContent: 'space-between',
+                          alignItems: 'center',
+                          transition: 'all 0.2s'
+                        }}
+                      >
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+                          <Sliders size={18} style={{ color: currentConfig.color }} />
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.2rem' }}>
+                            <span style={{ color: '#fff', fontWeight: '600', fontSize: '0.95rem' }}>Advanced Infrastructure Settings</span>
+                            <span style={{ color: '#a2a2b5', fontSize: '0.75rem' }}>
+                              Region: <strong style={{ color: '#fff' }}>{selectedRegion}</strong> • Registry: <strong style={{ color: '#fff' }}>{selectedRegistry === 'native' ? (selectedCloud === 'AWS' ? 'ECR' : 'GAR') : 'DockerHub'}</strong> • Env: <strong style={{ color: '#fff' }}>{selectedEnvironment}</strong> {techStack?.components && techStack.components.length > 1 ? (<>• Storage & Swap: <strong style={{ color: '#fff' }}>Per-Component</strong></>) : (<>• Storage: <strong style={{ color: '#fff' }}>{storageSizeGb}GB</strong> {swapEnabled && `• Swap: ${swapSizeGb}GB`}</>)} {dbEnabled && `• DB: ${dbEngine.toUpperCase()}`}
+                            </span>
+                          </div>
+                        </div>
+                        {isAdvancedOpen ? <ChevronUp size={18} style={{ color: '#a2a2b5' }} /> : <ChevronDown size={18} style={{ color: '#a2a2b5' }} />}
+                      </div>
+
+                      {isAdvancedOpen && (
+                        <div style={{
+                          background: 'rgba(0, 0, 0, 0.2)',
+                          border: '1.5px solid var(--c2c-border)',
+                          borderRadius: '16px',
+                          padding: '1.25rem',
+                          display: 'flex',
+                          flexDirection: 'column',
+                          gap: '1.25rem',
+                          marginTop: '0.25rem'
+                        }}>
+                          {/* 1. Region Selector */}
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
+                            <label style={{ color: '#fff', fontSize: '0.85rem', fontWeight: '600', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+                              <Globe size={15} style={{ color: currentConfig.color }} />
+                              Deployment Region
+                            </label>
+                            <select
+                              value={selectedRegion}
+                              onChange={(e) => setSelectedRegion(e.target.value)}
+                              style={{ background: '#0f0f15', border: '1.5px solid var(--c2c-border)', borderRadius: '10px', color: '#fff', padding: '0.65rem', fontSize: '0.85rem', outline: 'none', cursor: 'pointer' }}
+                            >
+                              {selectedCloud === 'AWS' ? (
+                                <>
+                                  <option value="us-east-1">us-east-1 (US East - N. Virginia) [Default]</option>
+                                  <option value="us-west-2">us-west-2 (US West - Oregon)</option>
+                                  <option value="eu-west-1">eu-west-1 (Europe - Ireland)</option>
+                                  <option value="ap-southeast-1">ap-southeast-1 (Asia Pacific - Singapore)</option>
+                                  <option value="ap-south-1">ap-south-1 (Asia Pacific - Mumbai)</option>
+                                </>
+                              ) : (
+                                <>
+                                  <option value="us-central1">us-central1 (US Central - Iowa) [Default]</option>
+                                  <option value="us-east1">us-east1 (US East - S. Carolina)</option>
+                                  <option value="europe-west1">europe-west1 (Europe - Belgium)</option>
+                                  <option value="asia-southeast1">asia-southeast1 (Asia Pacific - Singapore)</option>
+                                  <option value="asia-south1">asia-south1 (Asia Pacific - Mumbai)</option>
+                                </>
+                              )}
+                            </select>
+                          </div>
+
+                          {/* 2. Container Registry Selector */}
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
+                            <label style={{ color: '#fff', fontSize: '0.85rem', fontWeight: '600', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+                              <Layers size={15} style={{ color: currentConfig.color }} />
+                              Container Image Registry
+                            </label>
+                            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.6rem' }}>
+                              {[
+                                { id: 'native', name: selectedCloud === 'AWS' ? 'Amazon ECR (Native)' : 'Google Artifact Registry (Native)' },
+                                { id: 'dockerhub', name: 'Docker Hub' }
+                              ].map((reg) => (
+                                <div
+                                  key={reg.id}
+                                  onClick={() => setSelectedRegistry(reg.id)}
+                                  style={{
+                                    background: selectedRegistry === reg.id ? 'var(--c2c-selected-bg)' : 'rgba(255, 255, 255, 0.02)',
+                                    border: selectedRegistry === reg.id ? `2px solid ${currentConfig.color}` : '1.5px solid var(--c2c-border)',
+                                    borderRadius: '10px',
+                                    padding: '0.65rem 0.5rem',
+                                    textAlign: 'center',
+                                    cursor: 'pointer',
+                                    fontWeight: '600',
+                                    fontSize: '0.82rem',
+                                    color: selectedRegistry === reg.id ? currentConfig.color : '#fff',
+                                    transition: 'all 0.2s',
+                                    userSelect: 'none'
+                                  }}
+                                >
+                                  {reg.name}
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+
+                          {/* 3. Deployment Environment Selector */}
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
+                            <label style={{ color: '#fff', fontSize: '0.85rem', fontWeight: '600', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+                              <ShieldCheck size={15} style={{ color: currentConfig.color }} />
+                              Deployment Environment
+                            </label>
+                            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '0.6rem' }}>
+                              {[
+                                { id: 'production', name: 'Production' },
+                                { id: 'staging', name: 'Staging' },
+                                { id: 'development', name: 'Development' }
+                              ].map((envOption) => (
+                                <div
+                                  key={envOption.id}
+                                  onClick={() => setSelectedEnvironment(envOption.id)}
+                                  style={{
+                                    background: selectedEnvironment === envOption.id ? 'var(--c2c-selected-bg)' : 'rgba(255, 255, 255, 0.02)',
+                                    border: selectedEnvironment === envOption.id ? `2px solid ${currentConfig.color}` : '1.5px solid var(--c2c-border)',
+                                    borderRadius: '10px',
+                                    padding: '0.65rem 0.5rem',
+                                    textAlign: 'center',
+                                    cursor: 'pointer',
+                                    fontWeight: '600',
+                                    fontSize: '0.82rem',
+                                    color: selectedEnvironment === envOption.id ? currentConfig.color : '#fff',
+                                    transition: 'all 0.2s',
+                                    userSelect: 'none'
+                                  }}
+                                >
+                                  {envOption.name}
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+
+                          {/* 4. Storage Sizing Option (Single-Component Repos) */}
+                          {(!techStack?.components || techStack.components.length <= 1) ? (
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
+                              <label style={{ color: '#fff', fontSize: '0.85rem', fontWeight: '600', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+                                <HardDrive size={15} style={{ color: currentConfig.color }} />
+                                Root SSD Storage Volume
+                              </label>
+                              <select
+                                value={isCustomStorage ? 'custom' : storageSizeGb}
+                                onChange={(e) => {
+                                  const val = e.target.value;
+                                  if (val === 'custom') {
+                                    setIsCustomStorage(true);
+                                  } else {
+                                    setIsCustomStorage(false);
+                                    setStorageSizeGb(Number(val));
+                                  }
+                                }}
+                                style={{ background: '#0f0f15', border: '1.5px solid var(--c2c-border)', borderRadius: '10px', color: '#fff', padding: '0.65rem', fontSize: '0.85rem', outline: 'none', cursor: 'pointer' }}
+                              >
+                                <option value={10}>10 GB SSD (Lightweight / Frontend Only - ${ (10 * 0.08).toFixed(2) }/mo)</option>
+                                <option value={20}>20 GB SSD (Standard Baseline - ${ (20 * 0.08).toFixed(2) }/mo)</option>
+                                <option value={50}>50 GB SSD (Medium App - ${ (50 * 0.08).toFixed(2) }/mo)</option>
+                                <option value={100}>100 GB SSD (High Capacity - ${ (100 * 0.08).toFixed(2) }/mo)</option>
+                                <option value={200}>200 GB SSD (Heavy Workload - ${ (200 * 0.08).toFixed(2) }/mo)</option>
+                                <option value="custom">⚙️ Custom Size (Define your own GB)...</option>
+                              </select>
+
+                              {isCustomStorage && (
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', marginTop: '0.3rem', background: 'rgba(255,255,255,0.02)', padding: '0.5rem 0.8rem', borderRadius: '10px', border: '1px solid var(--c2c-border)' }}>
+                                  <span style={{ color: '#a2a2b5', fontSize: '0.8rem' }}>Custom Storage:</span>
+                                  <input
+                                    type="number"
+                                    min="10"
+                                    max="2000"
+                                    value={storageSizeGb}
+                                    onChange={(e) => {
+                                      const num = Math.max(10, Math.min(2000, Number(e.target.value) || 10));
+                                      setStorageSizeGb(num);
+                                    }}
+                                    style={{
+                                      background: '#0f0f15',
+                                      border: '1.5px solid var(--c2c-border)',
+                                      borderRadius: '8px',
+                                      color: '#fff',
+                                      padding: '0.4rem 0.6rem',
+                                      fontSize: '0.85rem',
+                                      width: '80px',
+                                      outline: 'none'
+                                    }}
+                                  />
+                                  <span style={{ color: '#fff', fontSize: '0.85rem', fontWeight: '600' }}>GB SSD</span>
+                                  <span style={{ color: '#10B981', fontSize: '0.8rem', marginLeft: 'auto', fontWeight: '600' }}>
+                                    +${(Number(storageSizeGb || 10) * 0.08).toFixed(2)}/mo
+                                  </span>
+                                </div>
+                              )}
+                            </div>
+                          ) : (
+                            <div style={{ background: 'rgba(255, 255, 255, 0.02)', border: '1px dashed var(--c2c-border)', borderRadius: '12px', padding: '0.85rem 1.1rem', display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+                              <span style={{ fontSize: '1.2rem' }}>💾</span>
+                              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.15rem' }}>
+                                <span style={{ color: '#fff', fontSize: '0.85rem', fontWeight: '600' }}>Per-Component Storage & Virtual RAM Active</span>
+                                <span style={{ color: '#a2a2b5', fontSize: '0.75rem' }}>Root SSD storage sizes (10GB–200GB) and Linux swap memory (1GB–4GB) are tuned independently on each component card above.</span>
+                              </div>
+                            </div>
+                          )}
+
+                          {/* 5. Managed Database Add-On */}
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem', borderTop: '1px solid var(--c2c-border)', paddingTop: '1rem' }}>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.2rem' }}>
+                                <label style={{ color: '#fff', fontSize: '0.9rem', fontWeight: '600', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+                                  <Database size={16} style={{ color: currentConfig.color }} />
+                                  Managed Database Add-On
+                                </label>
+                                <span style={{ color: '#a2a2b5', fontSize: '0.75rem' }}>
+                                  Provision high-availability {selectedCloud === 'AWS' ? 'Amazon RDS' : 'Google Cloud SQL'} instance
+                                </span>
+                              </div>
+                              <input
+                                type="checkbox"
+                                id="dbEnabledToggle"
+                                checked={dbEnabled}
+                                onChange={(e) => setDbEnabled(e.target.checked)}
+                                style={{ width: '18px', height: '18px', cursor: 'pointer', accentColor: currentConfig.color }}
+                              />
+                            </div>
+
+                            {dbEnabled && (
+                              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.6rem', marginTop: '0.4rem' }}>
+                                <label style={{ color: '#a2a2b5', fontSize: '0.8rem', fontWeight: '500' }}>Select Database Engine</label>
+                                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.6rem' }}>
+                                  {[
+                                    { id: 'postgres', name: 'PostgreSQL 15', port: 'Port 5432' },
+                                    { id: 'mysql', name: 'MySQL 8.0', port: 'Port 3306' }
+                                  ].map((engine) => (
+                                    <div
+                                      key={engine.id}
+                                      onClick={() => setDbEngine(engine.id)}
+                                      style={{
+                                        background: dbEngine === engine.id ? 'var(--c2c-selected-bg)' : 'rgba(255, 255, 255, 0.02)',
+                                        border: dbEngine === engine.id ? `2px solid ${currentConfig.color}` : '1.5px solid var(--c2c-border)',
+                                        borderRadius: '10px',
+                                        padding: '0.75rem',
+                                        cursor: 'pointer',
+                                        transition: 'all 0.2s',
+                                        userSelect: 'none'
+                                      }}
+                                    >
+                                      <div style={{ color: dbEngine === engine.id ? currentConfig.color : '#fff', fontWeight: '600', fontSize: '0.85rem' }}>{engine.name}</div>
+                                      <div style={{ color: '#a2a2b5', fontSize: '0.75rem', marginTop: '0.15rem' }}>{engine.port} • ~$14.50/mo</div>
+                                    </div>
+                                  ))}
+                                </div>
+                                <span style={{ color: '#10B981', fontSize: '0.75rem', marginTop: '0.2rem' }}>
+                                  ✨ DATABASE_URL and credentials will be auto-injected into your application container.
+                                </span>
+                              </div>
+                            )}
+                          </div>
+
+                          {/* 6. Linux Swap Memory Option (Single-Component Repos) */}
+                          {(!techStack?.components || techStack.components.length <= 1) && (
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem', borderTop: '1px solid var(--c2c-border)', paddingTop: '1rem' }}>
+                              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.2rem' }}>
+                                  <label style={{ color: '#fff', fontSize: '0.9rem', fontWeight: '600', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+                                    <Zap size={16} style={{ color: currentConfig.color }} />
+                                    Linux Swap Memory (Virtual RAM)
+                                  </label>
+                                  <span style={{ color: '#a2a2b5', fontSize: '0.75rem' }}>
+                                    Prevent Out-Of-Memory (OOM) crashes on burstable instances ($0 compute charge)
+                                  </span>
+                                </div>
+                                <input
+                                  type="checkbox"
+                                  id="swapEnabledToggle"
+                                  checked={swapEnabled}
+                                  onChange={(e) => setSwapEnabled(e.target.checked)}
+                                  style={{ width: '18px', height: '18px', cursor: 'pointer', accentColor: currentConfig.color }}
+                                />
+                              </div>
+
+                              {swapEnabled && (
+                                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.6rem', marginTop: '0.4rem' }}>
+                                  <label style={{ color: '#a2a2b5', fontSize: '0.8rem', fontWeight: '500' }}>Select Swap Allocation Size</label>
+                                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '0.5rem' }}>
+                                    {[
+                                      { size: 1, label: '1 GB' },
+                                      { size: 2, label: '2 GB (Default)' },
+                                      { size: 3, label: '3 GB' },
+                                      { size: 4, label: '4 GB' }
+                                    ].map((item) => (
+                                      <div
+                                        key={item.size}
+                                        onClick={() => setSwapSizeGb(item.size)}
+                                        style={{
+                                          background: swapSizeGb === item.size ? 'var(--c2c-selected-bg)' : 'rgba(255, 255, 255, 0.02)',
+                                          border: swapSizeGb === item.size ? `2px solid ${currentConfig.color}` : '1.5px solid var(--c2c-border)',
+                                          borderRadius: '10px',
+                                          padding: '0.6rem 0.4rem',
+                                          textAlign: 'center',
+                                          cursor: 'pointer',
+                                          fontWeight: '600',
+                                          fontSize: '0.78rem',
+                                          color: swapSizeGb === item.size ? currentConfig.color : '#fff',
+                                          transition: 'all 0.2s',
+                                          userSelect: 'none'
+                                        }}
+                                      >
+                                        {item.label}
+                                      </div>
+                                    ))}
+                                  </div>
+                                  <span style={{ color: '#10B981', fontSize: '0.75rem', marginTop: '0.2rem' }}>
+                                    ✨ Allocates an optimized swapfile (`/swapfile`) with `swappiness=10` on the root disk during boot.
+                                  </span>
+                                </div>
+                              )}
+                            </div>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  )}
 
                 <button 
                   onClick={handleProceed}

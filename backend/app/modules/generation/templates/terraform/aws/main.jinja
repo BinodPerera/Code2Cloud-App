@@ -8,7 +8,8 @@ resource "aws_vpc" "main" {
   enable_dns_support   = true
 
   tags = {
-    Name = "${var.project_name}-vpc"
+    Name        = "${var.project_name}-vpc"
+    Environment = var.environment
   }
 }
 
@@ -19,7 +20,8 @@ resource "aws_subnet" "public_1" {
   map_public_ip_on_launch = true
 
   tags = {
-    Name = "${var.project_name}-public-subnet-1"
+    Name        = "${var.project_name}-public-subnet-1"
+    Environment = var.environment
   }
 }
 
@@ -30,7 +32,8 @@ resource "aws_subnet" "public_2" {
   map_public_ip_on_launch = true
 
   tags = {
-    Name = "${var.project_name}-public-subnet-2"
+    Name        = "${var.project_name}-public-subnet-2"
+    Environment = var.environment
   }
 }
 
@@ -38,7 +41,8 @@ resource "aws_internet_gateway" "gw" {
   vpc_id = aws_vpc.main.id
 
   tags = {
-    Name = "${var.project_name}-igw"
+    Name        = "${var.project_name}-igw"
+    Environment = var.environment
   }
 }
 
@@ -51,7 +55,8 @@ resource "aws_route_table" "public" {
   }
 
   tags = {
-    Name = "${var.project_name}-public-rt"
+    Name        = "${var.project_name}-public-rt"
+    Environment = var.environment
   }
 }
 
@@ -68,6 +73,10 @@ resource "aws_route_table_association" "a2" {
 # --- ECS Cluster ---
 resource "aws_ecs_cluster" "main" {
   name = "${var.project_name}-cluster"
+
+  tags = {
+    Environment = var.environment
+  }
 }
 
 # --- IAM Roles for ECS ---
@@ -86,6 +95,10 @@ resource "aws_iam_role" "ecs_execution_role" {
       }
     ]
   })
+
+  tags = {
+    Environment = var.environment
+  }
 }
 
 resource "aws_iam_role_policy_attachment" "ecs_execution" {
@@ -112,7 +125,72 @@ resource "aws_security_group" "ecs_tasks" {
     to_port     = 0
     cidr_blocks = ["0.0.0.0/0"]
   }
+
+  tags = {
+    Name        = "${var.project_name}-ecs-tasks-sg"
+    Environment = var.environment
+  }
 }
+
+{% if db_enabled %}
+# --- Managed Database Security Group & Resources ---
+resource "aws_security_group" "db_sg" {
+  name_prefix = "${lower(var.project_name)}-db-sg-"
+  description = "Allow inbound database traffic from ECS tasks"
+  vpc_id      = aws_vpc.main.id
+
+  ingress {
+    from_port       = {{ db_port | default(5432) }}
+    to_port         = {{ db_port | default(5432) }}
+    protocol        = "tcp"
+    security_groups = [aws_security_group.ecs_tasks.id]
+  }
+
+  egress {
+    from_port   = 0
+    to_port     = 0
+    protocol    = "-1"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+
+  tags = {
+    Name        = "${var.project_name}-db-sg"
+    Environment = var.environment
+  }
+}
+
+resource "aws_db_subnet_group" "db_subnets" {
+  name        = "${lower(var.project_name)}-db-subnet-group"
+  subnet_ids  = [aws_subnet.public_1.id, aws_subnet.public_2.id]
+  description = "Subnet group for RDS instance"
+
+  tags = {
+    Name        = "${var.project_name}-db-subnets"
+    Environment = var.environment
+  }
+}
+
+resource "aws_db_instance" "db" {
+  identifier           = "${lower(var.project_name)}-db"
+  allocated_storage    = {{ db_allocated_storage | default(20) }}
+  storage_type         = "gp3"
+  engine               = "{{ 'postgres' if db_engine == 'postgres' else 'mysql' }}"
+  engine_version       = "{{ '15.4' if db_engine == 'postgres' else '8.0' }}"
+  instance_class       = "{{ db_instance_class | default('db.t3.micro') }}"
+  db_name              = "{{ db_name | default('app_db') }}"
+  username             = "{{ db_user | default('c2c_admin') }}"
+  password             = var.db_password
+  db_subnet_group_name = aws_db_subnet_group.db_subnets.name
+  vpc_security_group_ids = [aws_security_group.db_sg.id]
+  skip_final_snapshot  = true
+  publicly_accessible  = false
+
+  tags = {
+    Name        = "${var.project_name}-rds"
+    Environment = var.environment
+  }
+}
+{% endif %}
 
 # --- ECS Task Definitions for each Component ---
 {% for comp in components %}
@@ -133,7 +211,16 @@ resource "aws_ecs_task_definition" "{{ comp.name }}" {
       hostPort      = {{ comp.port | default(80) }}
     }]
     environment = [
-      { name = "PORT", value = "{{ comp.port | default(80) }}" }
+      { name = "PORT", value = "{{ comp.port | default(80) }}" },
+      { name = "ENVIRONMENT", value = "${var.environment}" }
+      {%- if db_enabled %}
+      , { name = "DB_HOST", value = "${aws_db_instance.db.address}" }
+      , { name = "DB_PORT", value = "{{ db_port | default(5432) }}" }
+      , { name = "DB_USER", value = "{{ db_user | default('c2c_admin') }}" }
+      , { name = "DB_PASSWORD", value = "${var.db_password}" }
+      , { name = "DB_NAME", value = "{{ db_name | default('app_db') }}" }
+      , { name = "DATABASE_URL", value = "{{ 'postgres' if db_engine == 'postgres' else 'mysql' }}://{{ db_user | default('c2c_admin') }}:${var.db_password}@${aws_db_instance.db.address}:{{ db_port | default(5432) }}/{{ db_name | default('app_db') }}" }
+      {%- endif %}
       {%- if comp.depends_on %}
       # Monorepo Auto-wired Links
       {%- for dep in comp.depends_on %}
@@ -142,6 +229,10 @@ resource "aws_ecs_task_definition" "{{ comp.name }}" {
       {%- endif %}
     ]
   }])
+
+  tags = {
+    Environment = var.environment
+  }
 }
 
 resource "aws_ecs_service" "{{ comp.name }}" {
@@ -156,5 +247,10 @@ resource "aws_ecs_service" "{{ comp.name }}" {
     subnets          = [aws_subnet.public_1.id, aws_subnet.public_2.id]
     assign_public_ip = true
   }
+
+  tags = {
+    Environment = var.environment
+  }
 }
 {% endfor %}
+

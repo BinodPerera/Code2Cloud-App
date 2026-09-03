@@ -1,0 +1,53 @@
+name: Destroy AWS Cloud Infrastructure (Teardown)
+
+on:
+  workflow_dispatch:
+    inputs:
+      confirm_destroy:
+        description: 'Type "DESTROY" to confirm permanent deletion of all cloud resources'
+        required: true
+        default: 'DESTROY'
+
+jobs:
+  teardown:
+    name: Teardown AWS Cloud Resources
+    runs-on: ubuntu-latest
+    if: {% raw %}${{ github.event.inputs.confirm_destroy == 'DESTROY' }}{% endraw %}
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      # Setup AWS credentials
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: {% raw %}${{ secrets.AWS_ACCESS_KEY_ID }}{% endraw %}
+          aws-secret-access-key: {% raw %}${{ secrets.AWS_SECRET_ACCESS_KEY }}{% endraw %}
+          aws-session-token: {% raw %}${{ secrets.AWS_SESSION_TOKEN }}{% endraw %}
+          aws-region: {{ aws_region | default('us-east-1') }}
+
+      # Setup Terraform
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: 1.7.0
+
+      # Resolve Terraform Remote State S3 Bucket
+      - name: Resolve Terraform Remote State S3 Bucket
+        id: state-bucket
+        run: |
+          ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
+          BUCKET="code2cloud-tfstate-${ACCOUNT_ID}-{{ aws_region | default('us-east-1') }}"
+          echo "bucket_name=$BUCKET" >> $GITHUB_OUTPUT
+
+      - name: Terraform Init
+        working-directory: ./terraform
+        run: |
+          terraform init \
+            -backend-config="bucket={% raw %}${{ steps.state-bucket.outputs.bucket_name }}{% endraw %}" \
+            -backend-config="key={{ repo_name | lower }}/terraform.tfstate" \
+            -backend-config="region={{ aws_region | default('us-east-1') }}"
+
+      - name: Terraform Destroy
+        working-directory: ./terraform
+        run: terraform destroy -auto-approve -no-color

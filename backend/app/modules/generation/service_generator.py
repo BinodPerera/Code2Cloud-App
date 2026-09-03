@@ -22,6 +22,16 @@ class CodeGenerator:
         current_user_login: str,
         generation_repo: GenerationRepository,
         registry_type: str = "native",
+        region: Optional[str] = None,
+        environment: str = "production",
+        storage_size_gb: int = 20,
+        storage_type: str = "gp3",
+        db_enabled: bool = False,
+        db_engine: str = "postgres",
+        db_instance_class: str = "db.t3.micro",
+        db_allocated_storage: int = 20,
+        swap_enabled: bool = False,
+        swap_size_gb: int = 2,
         aws_compute_choice: str = "ec2",
         aws_instance_type: str = "t3.micro",
         aws_use_eip: bool = False,
@@ -62,6 +72,11 @@ class CodeGenerator:
         
         generated_code = {}
         generation_id = f"gen_{uuid.uuid4().hex[:8]}"
+
+        cloud_clean = (cloud or "").lower()
+        selected_region = region
+        if not selected_region:
+            selected_region = "us-east-1" if cloud_clean == "aws" else "us-central1"
         
         # Docker Configurations
         if service_id == "docker":
@@ -105,6 +120,12 @@ class CodeGenerator:
                     comp_name = raw_name.lower().replace("/", "-").replace("\\", "-")
                     comp_path = comp.get("path", ".")
                     comp_type = comp.get("type", "")
+                    
+                    comp_cfg = {}
+                    if component_configs and isinstance(component_configs, dict):
+                        comp_cfg = component_configs.get(comp_name) or component_configs.get(raw_name) or {}
+                    if comp_cfg.get("enabled", True) is False:
+                        continue
                     
                     template_name = "docker/express.jinja"
                     port = comp.get("port") or 3000
@@ -165,6 +186,9 @@ class CodeGenerator:
                 if component_configs and isinstance(component_configs, dict):
                     comp_cfg = component_configs.get(comp_name) or component_configs.get(raw_name) or {}
 
+                if comp_cfg.get("enabled", True) is False:
+                    continue
+
                 comp_aws_compute = comp_cfg.get("awsComputeChoice", aws_compute_choice)
                 comp_aws_instance = comp_cfg.get("awsInstanceType", aws_instance_type)
                 comp_aws_use_eip = comp_cfg.get("awsUseEip", aws_use_eip)
@@ -185,6 +209,10 @@ class CodeGenerator:
                 elif comp_gcp_machine == "2 vCPU / 2 GB":
                     comp_gcp_cpu, comp_gcp_mem = "2", "2048Mi"
 
+                comp_storage_size = comp_cfg.get("storageSizeGb") or storage_size_gb or 20
+                comp_swap_enabled = comp_cfg.get("swapEnabled", swap_enabled if swap_enabled is not None else False)
+                comp_swap_size = comp_cfg.get("swapSizeGb", swap_size_gb or 2)
+
                 tf_components.append({
                     "name": comp_name,
                     "port": port,
@@ -202,25 +230,60 @@ class CodeGenerator:
                     "instance_type": comp_aws_instance,
                     "machine_type": comp_gcp_machine,
                     "use_eip": comp_aws_use_eip,
-                    "use_static_ip": comp_gcp_use_static_ip
+                    "use_static_ip": comp_gcp_use_static_ip,
+                    "storage_size_gb": comp_storage_size,
+                    "swap_enabled": comp_swap_enabled,
+                    "swap_size_gb": comp_swap_size
                 })
                 
-            if cloud.lower() == "aws":
+            cloud_clean = (cloud or "").lower()
+            selected_region = region
+            if not selected_region:
+                selected_region = "us-east-1" if cloud_clean == "aws" else "us-central1"
+
+            db_port = 5432 if (db_engine or "").lower() == "postgres" else 3306
+            db_name = repo.lower().replace("-", "_").replace(".", "_") + "_db"
+            db_user = "c2c_admin"
+
+            if cloud_clean == "aws":
                 try:
                     providers_tmpl = env.get_template("terraform/aws/providers.jinja")
                     variables_tmpl = env.get_template("terraform/aws/variables.jinja")
                     outputs_tmpl = env.get_template("terraform/aws/outputs.jinja")
                     
-                    generated_code["terraform/providers.tf"] = providers_tmpl.render(aws_region="us-east-1")
-                    generated_code["terraform/variables.tf"] = variables_tmpl.render(project_name=repo, aws_region="us-east-1")
+                    generated_code["terraform/providers.tf"] = providers_tmpl.render(aws_region=selected_region)
+                    generated_code["terraform/variables.tf"] = variables_tmpl.render(
+                        project_name=repo,
+                        aws_region=selected_region,
+                        environment=environment,
+                        storage_size_gb=storage_size_gb,
+                        db_enabled=db_enabled,
+                        db_engine=db_engine,
+                        swap_enabled=swap_enabled,
+                        swap_size_gb=swap_size_gb
+                    )
                     
-                    if aws_compute_choice == "ec2":
+                    is_aws_ec2 = aws_compute_choice == "ec2" or any(c.get("aws_compute_choice") == "ec2" for c in tf_components)
+                    if is_aws_ec2:
                         main_tmpl = env.get_template("terraform/aws/main_ec2.jinja")
                         generated_code["terraform/main.tf"] = main_tmpl.render(
                             components=tf_components, 
                             project_name=repo,
                             instance_type=aws_instance_type,
-                            use_eip=aws_use_eip
+                            use_eip=aws_use_eip,
+                            aws_region=selected_region,
+                            environment=environment,
+                            storage_size_gb=storage_size_gb,
+                            storage_type=storage_type,
+                            db_enabled=db_enabled,
+                            db_engine=db_engine,
+                            db_name=db_name,
+                            db_user=db_user,
+                            db_port=db_port,
+                            db_instance_class=db_instance_class,
+                            db_allocated_storage=db_allocated_storage,
+                            swap_enabled=swap_enabled,
+                            swap_size_gb=swap_size_gb
                         )
                     else:  # fargate
                         main_tmpl = env.get_template("terraform/aws/main.jinja")
@@ -234,41 +297,82 @@ class CodeGenerator:
                             components=tf_components, 
                             project_name=repo,
                             cpu=cpu_val,
-                            memory=mem_val
+                            memory=mem_val,
+                            aws_region=selected_region,
+                            environment=environment,
+                            db_enabled=db_enabled,
+                            db_engine=db_engine,
+                            db_name=db_name,
+                            db_user=db_user,
+                            db_port=db_port,
+                            db_instance_class=db_instance_class,
+                            db_allocated_storage=db_allocated_storage
                         )
                     
                     generated_code["terraform/outputs.tf"] = outputs_tmpl.render(
                         components=tf_components,
                         compute_choice=aws_compute_choice,
-                        use_eip=aws_use_eip
+                        use_eip=aws_use_eip,
+                        db_enabled=db_enabled,
+                        db_engine=db_engine,
+                        environment=environment
                     )
 
-                    # Generate AWS GHA workflow
+                    # Generate AWS GHA workflows (Deploy and Destroy)
                     workflow_tmpl = env.get_template("workflows/aws_deploy.jinja")
                     generated_code[".github/workflows/deploy.yml"] = workflow_tmpl.render(
                         branch="code2cloud-setup",
                         repo_name=repo,
                         registry_type=registry_type,
-                        components=tf_components
+                        components=tf_components,
+                        aws_region=selected_region,
+                        environment=environment
+                    )
+                    destroy_tmpl = env.get_template("workflows/aws_destroy.jinja")
+                    generated_code[".github/workflows/destroy.yml"] = destroy_tmpl.render(
+                        repo_name=repo,
+                        aws_region=selected_region
                     )
                 except Exception as e:
                     generated_code["terraform/main.tf"] = f"# Error generating AWS Terraform/GHA: {str(e)}"
-            elif cloud.lower() == "gcp":
+            elif cloud_clean == "gcp":
                 try:
                     providers_tmpl = env.get_template("terraform/gcp/providers.jinja")
                     variables_tmpl = env.get_template("terraform/gcp/variables.jinja")
                     
-                    generated_code["terraform/providers.tf"] = providers_tmpl.render(gcp_region="us-central1")
-                    generated_code["terraform/variables.tf"] = variables_tmpl.render(project_name=repo)
+                    generated_code["terraform/providers.tf"] = providers_tmpl.render(gcp_region=selected_region)
+                    generated_code["terraform/variables.tf"] = variables_tmpl.render(
+                        project_name=repo,
+                        gcp_region=selected_region,
+                        environment=environment,
+                        storage_size_gb=storage_size_gb,
+                        db_enabled=db_enabled,
+                        db_engine=db_engine,
+                        swap_enabled=swap_enabled,
+                        swap_size_gb=swap_size_gb
+                    )
                     
-                    if gcp_compute_choice == "gce":
+                    is_gcp_gce = gcp_compute_choice == "gce" or any(c.get("gcp_compute_choice") == "gce" for c in tf_components)
+                    if is_gcp_gce:
                         main_tmpl = env.get_template("terraform/gcp/main_gce.jinja")
                         generated_code["terraform/main.tf"] = main_tmpl.render(
                             components=tf_components,
                             project_name=repo,
                             machine_type=gcp_machine_type,
                             use_static_ip=gcp_use_static_ip,
-                            gcp_region="us-central1"
+                            gcp_region=selected_region,
+                            environment=environment,
+                            storage_size_gb=storage_size_gb,
+                            storage_type=storage_type,
+                            db_enabled=db_enabled,
+                            db_engine=db_engine,
+                            db_name=db_name,
+                            db_user=db_user,
+                            db_port=db_port,
+                            db_instance_class=db_instance_class,
+                            db_allocated_storage=db_allocated_storage,
+                            swap_enabled=swap_enabled,
+                            swap_size_gb=swap_size_gb
                         )
                     else:  # cloudrun
                         main_tmpl = env.get_template("terraform/gcp/main_cloudrun.jinja")
@@ -283,16 +387,30 @@ class CodeGenerator:
                             project_name=repo,
                             cpu=cpu_val,
                             memory=mem_val,
-                            gcp_region="us-central1"
+                            gcp_region=selected_region,
+                            environment=environment,
+                            db_enabled=db_enabled,
+                            db_engine=db_engine,
+                            db_name=db_name,
+                            db_user=db_user,
+                            db_port=db_port,
+                            db_instance_class=db_instance_class
                         )
 
-                    # Generate GCP GHA workflow
+                    # Generate GCP GHA workflows (Deploy and Destroy)
                     workflow_tmpl = env.get_template("workflows/gcp_deploy.jinja")
                     generated_code[".github/workflows/deploy.yml"] = workflow_tmpl.render(
                         branch="code2cloud-setup",
                         repo_name=repo,
                         registry_type=registry_type,
-                        components=tf_components
+                        components=tf_components,
+                        gcp_region=selected_region,
+                        environment=environment
+                    )
+                    destroy_tmpl = env.get_template("workflows/gcp_destroy.jinja")
+                    generated_code[".github/workflows/destroy.yml"] = destroy_tmpl.render(
+                        repo_name=repo,
+                        gcp_region=selected_region
                     )
                     
                     # Generate GCP Terraform Outputs
@@ -300,13 +418,16 @@ class CodeGenerator:
                     generated_code["terraform/outputs.tf"] = gcp_outputs_tmpl.render(
                         components=tf_components,
                         compute_choice=gcp_compute_choice,
-                        use_static_ip=gcp_use_static_ip
+                        use_static_ip=gcp_use_static_ip,
+                        db_enabled=db_enabled,
+                        db_engine=db_engine,
+                        environment=environment
                     )
                 except Exception as e:
                     generated_code["terraform/main.tf"] = f"# Error generating GCP Terraform/GHA: {str(e)}"
             else:
-                generated_code["terraform/providers.tf"] = f"provider \"{cloud.lower()}\" {{\n}}"
-                generated_code["terraform/main.tf"] = f"# Deployment script for {cloud}\nresource \"{cloud.lower()}_instance\" \"app\" {{\n  name = \"{repo}-app\"\n}}"
+                generated_code["terraform/providers.tf"] = f"provider \"{cloud_clean}\" {{\n}}"
+                generated_code["terraform/main.tf"] = f"# Deployment script for {cloud}\nresource \"{cloud_clean}_instance\" \"app\" {{\n  name = \"{repo}-app\"\n}}"
 
             # Generate Terraform README
             try:
@@ -314,7 +435,15 @@ class CodeGenerator:
                 generated_code["terraform/README.md"] = readme_tmpl.render(
                     project_name=repo,
                     cloud=cloud,
-                    aws_region="us-east-1",
+                    aws_region=selected_region,
+                    gcp_region=selected_region,
+                    environment=environment,
+                    storage_size_gb=storage_size_gb,
+                    db_enabled=db_enabled,
+                    db_engine=db_engine,
+                    swap_enabled=swap_enabled,
+                    swap_size_gb=swap_size_gb,
+                    registry_type=registry_type,
                     components=tf_components
                 )
             except Exception as e:
@@ -365,6 +494,16 @@ class CodeGenerator:
             "service_id": service_id,
             "cloud": cloud,
             "registry_type": registry_type,
+            "region": selected_region,
+            "environment": environment,
+            "storage_size_gb": storage_size_gb,
+            "storage_type": storage_type,
+            "db_enabled": db_enabled,
+            "db_engine": db_engine,
+            "db_instance_class": db_instance_class,
+            "db_allocated_storage": db_allocated_storage,
+            "swap_enabled": swap_enabled,
+            "swap_size_gb": swap_size_gb,
             "aws_compute_choice": aws_compute_choice,
             "aws_instance_type": aws_instance_type,
             "aws_use_eip": aws_use_eip,
