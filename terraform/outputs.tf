@@ -1,3 +1,13 @@
+output "aws_region" {
+  description = "Target deployment region"
+  value       = var.aws_region
+}
+
+output "environment" {
+  description = "Deployment environment"
+  value       = var.environment
+}
+
 
 output "backend_ecr_repository_url" {
   description = "Registry URL for backend container builds"
@@ -21,4 +31,7 @@ output "frontend_public_ip" {
   description = "Public IP address of the frontend virtual machine"
   value       = aws_instance.frontend.public_ip
 }
+
+
+
 

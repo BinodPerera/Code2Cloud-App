@@ -16,8 +16,12 @@ variable "environment" {
   default     = "production"
 }
 
-variable "app_env_vars" {
-  description = "Application environment variables passed from GitHub Secrets"
-  type        = map(string)
-  default     = {}
+variable "storage_size_gb" {
+  description = "Root SSD block storage volume size in GB"
+  type        = number
+  default     = 20
 }
+
+
+
+

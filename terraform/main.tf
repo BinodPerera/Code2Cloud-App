@@ -8,7 +8,8 @@ resource "aws_vpc" "main" {
   enable_dns_support   = true
 
   tags = {
-    Name = "${var.project_name}-vpc"
+    Name        = "${var.project_name}-vpc"
+    Environment = var.environment
   }
 }
 
@@ -19,7 +20,20 @@ resource "aws_subnet" "public_1" {
   map_public_ip_on_launch = true
 
   tags = {
-    Name = "${var.project_name}-public-subnet-1"
+    Name        = "${var.project_name}-public-subnet-1"
+    Environment = var.environment
+  }
+}
+
+resource "aws_subnet" "public_2" {
+  vpc_id            = aws_vpc.main.id
+  cidr_block        = "10.0.2.0/24"
+  availability_zone = "${var.aws_region}b"
+  map_public_ip_on_launch = true
+
+  tags = {
+    Name        = "${var.project_name}-public-subnet-2"
+    Environment = var.environment
   }
 }
 
@@ -27,7 +41,8 @@ resource "aws_internet_gateway" "gw" {
   vpc_id = aws_vpc.main.id
 
   tags = {
-    Name = "${var.project_name}-igw"
+    Name        = "${var.project_name}-igw"
+    Environment = var.environment
   }
 }
 
@@ -40,12 +55,18 @@ resource "aws_route_table" "public" {
   }
 
   tags = {
-    Name = "${var.project_name}-public-rt"
+    Name        = "${var.project_name}-public-rt"
+    Environment = var.environment
   }
 }
 
 resource "aws_route_table_association" "a1" {
   subnet_id      = aws_subnet.public_1.id
+  route_table_id = aws_route_table.public.id
+}
+
+resource "aws_route_table_association" "a2" {
+  subnet_id      = aws_subnet.public_2.id
   route_table_id = aws_route_table.public.id
 }
 
@@ -65,6 +86,10 @@ resource "aws_iam_role" "ec2_role" {
       }
     ]
   })
+
+  tags = {
+    Environment = var.environment
+  }
 }
 
 resource "aws_iam_role_policy_attachment" "ecr_read" {
@@ -110,19 +135,40 @@ resource "aws_security_group" "web_sg" {
     protocol    = "-1"
     cidr_blocks = ["0.0.0.0/0"]
   }
+
+  tags = {
+    Name        = "${var.project_name}-web-sg"
+    Environment = var.environment
+  }
 }
 
+
+
 # --- Elastic IP (Conditional) ---
+
+
+
+
 
 
 # --- EC2 Instances ---
 
 resource "aws_instance" "backend" {
   ami                  = "ami-0c7217cdde317cfec"
-  instance_type        = "t3.micro"
+  instance_type        = "t3.medium"
   subnet_id            = aws_subnet.public_1.id
   vpc_security_group_ids = [aws_security_group.web_sg.id]
   iam_instance_profile = aws_iam_instance_profile.ec2_profile.name
+
+  root_block_device {
+    volume_size           = 20
+    volume_type           = "gp3"
+    delete_on_termination = true
+    tags = {
+      Name        = "${var.project_name}-backend-root-disk"
+      Environment = var.environment
+    }
+  }
 
   user_data_replace_on_change = true
 
@@ -150,23 +196,32 @@ resource "aws_instance" "backend" {
       --name backend \
       --restart always \
       -e PORT=8000 \
-      %{ for k, v in var.app_env_vars ~}
-      -e ${k}="${v}" \
-      %{ endfor ~}
+      -e ENVIRONMENT=\${var.environment} \
       \${data.aws_caller_identity.current.account_id}.dkr.ecr.\${data.aws_region.current.name}.amazonaws.com/\${lower(var.project_name)}-backend:latest
   EOF
 
   tags = {
-    Name = "${var.project_name}-backend"
+    Name        = "${var.project_name}-backend"
+    Environment = var.environment
   }
 }
 
 resource "aws_instance" "frontend" {
   ami                  = "ami-0c7217cdde317cfec"
-  instance_type        = "t3.micro"
+  instance_type        = "t3.small"
   subnet_id            = aws_subnet.public_1.id
   vpc_security_group_ids = [aws_security_group.web_sg.id]
   iam_instance_profile = aws_iam_instance_profile.ec2_profile.name
+
+  root_block_device {
+    volume_size           = 20
+    volume_type           = "gp3"
+    delete_on_termination = true
+    tags = {
+      Name        = "${var.project_name}-frontend-root-disk"
+      Environment = var.environment
+    }
+  }
 
   user_data_replace_on_change = true
 
@@ -194,14 +249,14 @@ resource "aws_instance" "frontend" {
       --name frontend \
       --restart always \
       -e PORT=3000 \
+      -e ENVIRONMENT=\${var.environment} \
       -e BACKEND_URL=http://localhost:3000 \
-      %{ for k, v in var.app_env_vars ~}
-      -e ${k}="${v}" \
-      %{ endfor ~}
       \${data.aws_caller_identity.current.account_id}.dkr.ecr.\${data.aws_region.current.name}.amazonaws.com/\${lower(var.project_name)}-frontend:latest
   EOF
 
   tags = {
-    Name = "${var.project_name}-frontend"
+    Name        = "${var.project_name}-frontend"
+    Environment = var.environment
   }
 }
+
