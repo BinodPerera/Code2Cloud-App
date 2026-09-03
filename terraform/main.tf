@@ -155,7 +155,7 @@ resource "aws_security_group" "web_sg" {
 
 resource "aws_instance" "backend" {
   ami                  = "ami-0c7217cdde317cfec"
-  instance_type        = "t3.medium"
+  instance_type        = "t3.micro"
   subnet_id            = aws_subnet.public_1.id
   vpc_security_group_ids = [aws_security_group.web_sg.id]
   iam_instance_profile = aws_iam_instance_profile.ec2_profile.name
@@ -187,6 +187,15 @@ resource "aws_instance" "backend" {
       systemctl enable docker
       usermod -aG docker ec2-user || true
     fi
+
+    # Configure Linux Swap Memory
+    fallocate -l 1G /swapfile || dd if=/dev/zero of=/swapfile bs=1M count=$(expr 1 \* 1024)
+    chmod 600 /swapfile
+    mkswap /swapfile
+    swapon /swapfile
+    echo '/swapfile swap swap defaults 0 0' >> /etc/fstab
+    sysctl vm.swappiness=10
+    echo 'vm.swappiness=10' >> /etc/sysctl.conf
     
     # Authenticate Docker against ECR
     aws ecr get-login-password --region \${var.aws_region} | docker login --username AWS --password-stdin \${data.aws_caller_identity.current.account_id}.dkr.ecr.\${data.aws_region.current.name}.amazonaws.com/\${lower(var.project_name)}-backend
@@ -208,13 +217,13 @@ resource "aws_instance" "backend" {
 
 resource "aws_instance" "frontend" {
   ami                  = "ami-0c7217cdde317cfec"
-  instance_type        = "t3.small"
+  instance_type        = "t3.micro"
   subnet_id            = aws_subnet.public_1.id
   vpc_security_group_ids = [aws_security_group.web_sg.id]
   iam_instance_profile = aws_iam_instance_profile.ec2_profile.name
 
   root_block_device {
-    volume_size           = 20
+    volume_size           = 10
     volume_type           = "gp3"
     delete_on_termination = true
     tags = {
