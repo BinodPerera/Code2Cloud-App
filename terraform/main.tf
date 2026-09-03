@@ -189,7 +189,7 @@ resource "aws_instance" "backend" {
     fi
 
     # Configure Linux Swap Memory
-    fallocate -l 1G /swapfile || dd if=/dev/zero of=/swapfile bs=1M count=$(expr 1 \* 1024)
+    fallocate -l 2G /swapfile || dd if=/dev/zero of=/swapfile bs=1M count=$(expr 2 \* 1024)
     chmod 600 /swapfile
     mkswap /swapfile
     swapon /swapfile
@@ -249,6 +249,15 @@ resource "aws_instance" "frontend" {
       systemctl enable docker
       usermod -aG docker ec2-user || true
     fi
+
+    # Configure Linux Swap Memory
+    fallocate -l 1G /swapfile || dd if=/dev/zero of=/swapfile bs=1M count=$(expr 1 \* 1024)
+    chmod 600 /swapfile
+    mkswap /swapfile
+    swapon /swapfile
+    echo '/swapfile swap swap defaults 0 0' >> /etc/fstab
+    sysctl vm.swappiness=10
+    echo 'vm.swappiness=10' >> /etc/sysctl.conf
     
     # Authenticate Docker against ECR
     aws ecr get-login-password --region \${var.aws_region} | docker login --username AWS --password-stdin \${data.aws_caller_identity.current.account_id}.dkr.ecr.\${data.aws_region.current.name}.amazonaws.com/\${lower(var.project_name)}-frontend
