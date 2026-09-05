@@ -193,6 +193,26 @@ resource "aws_instance" "backend" {
 set -ex
 exec > >(tee -a /var/log/user-data.log|logger -t user-data -s 2>/dev/console) 2>&1
 
+# Prevent concurrent execution
+exec 200>/var/lock/user-data.lock
+flock -n 200 || { echo "User-data script is already running in background."; exit 0; }
+
+# Force apt to use IPv4 to prevent slow IPv6 timeouts in AWS VPCs
+if [ -d /etc/apt/apt.conf.d ]; then
+  echo 'Acquire::ForceIPv4 "true";' > /etc/apt/apt.conf.d/99force-ipv4
+fi
+
+# Configure Linux Swap Memory first to avoid OOM killer on small instances
+if [ ! -f /swapfile ]; then
+  fallocate -l 2G /swapfile || dd if=/dev/zero of=/swapfile bs=1M count=$(expr 2 \* 1024)
+  chmod 600 /swapfile
+  mkswap /swapfile
+  swapon /swapfile
+  echo '/swapfile swap swap defaults 0 0' >> /etc/fstab
+  sysctl vm.swappiness=10
+  echo 'vm.swappiness=10' >> /etc/sysctl.conf
+fi
+
 # Wait for any background apt processes (unattended-upgrades) to release locks
 while fuser /var/lib/dpkg/lock-frontend /var/lib/apt/lists/lock >/dev/null 2>&1; do
   echo "Waiting for other apt process to finish..."
@@ -201,8 +221,8 @@ done
 
 if command -v apt-get &>/dev/null; then
   export DEBIAN_FRONTEND=noninteractive
-  apt-get update -y
-  apt-get install -y docker.io awscli python3
+  apt-get update -y || (sleep 5 && apt-get update -y)
+  apt-get install -y --no-install-recommends docker.io awscli python3 || apt-get install -y --fix-missing --no-install-recommends docker.io awscli python3
   systemctl start docker
   systemctl enable docker
   usermod -aG docker ubuntu || true
@@ -213,15 +233,6 @@ elif command -v dnf &>/dev/null; then
   systemctl enable docker
   usermod -aG docker ec2-user || true
 fi
-
-# Configure Linux Swap Memory
-fallocate -l 2G /swapfile || dd if=/dev/zero of=/swapfile bs=1M count=$(expr 2 \* 1024)
-chmod 600 /swapfile
-mkswap /swapfile
-swapon /swapfile
-echo '/swapfile swap swap defaults 0 0' >> /etc/fstab
-sysctl vm.swappiness=10
-echo 'vm.swappiness=10' >> /etc/sysctl.conf
 
 # Authenticate Docker against ECR
 aws ecr get-login-password --region ${var.aws_region} | docker login --username AWS --password-stdin ${data.aws_caller_identity.current.account_id}.dkr.ecr.${data.aws_region.current.name}.amazonaws.com/${lower(var.project_name)}-backend
@@ -294,6 +305,26 @@ resource "aws_instance" "frontend" {
 set -ex
 exec > >(tee -a /var/log/user-data.log|logger -t user-data -s 2>/dev/console) 2>&1
 
+# Prevent concurrent execution
+exec 200>/var/lock/user-data.lock
+flock -n 200 || { echo "User-data script is already running in background."; exit 0; }
+
+# Force apt to use IPv4 to prevent slow IPv6 timeouts in AWS VPCs
+if [ -d /etc/apt/apt.conf.d ]; then
+  echo 'Acquire::ForceIPv4 "true";' > /etc/apt/apt.conf.d/99force-ipv4
+fi
+
+# Configure Linux Swap Memory first to avoid OOM killer on small instances
+if [ ! -f /swapfile ]; then
+  fallocate -l 1G /swapfile || dd if=/dev/zero of=/swapfile bs=1M count=$(expr 1 \* 1024)
+  chmod 600 /swapfile
+  mkswap /swapfile
+  swapon /swapfile
+  echo '/swapfile swap swap defaults 0 0' >> /etc/fstab
+  sysctl vm.swappiness=10
+  echo 'vm.swappiness=10' >> /etc/sysctl.conf
+fi
+
 # Wait for any background apt processes (unattended-upgrades) to release locks
 while fuser /var/lib/dpkg/lock-frontend /var/lib/apt/lists/lock >/dev/null 2>&1; do
   echo "Waiting for other apt process to finish..."
@@ -302,8 +333,8 @@ done
 
 if command -v apt-get &>/dev/null; then
   export DEBIAN_FRONTEND=noninteractive
-  apt-get update -y
-  apt-get install -y docker.io awscli python3
+  apt-get update -y || (sleep 5 && apt-get update -y)
+  apt-get install -y --no-install-recommends docker.io awscli python3 || apt-get install -y --fix-missing --no-install-recommends docker.io awscli python3
   systemctl start docker
   systemctl enable docker
   usermod -aG docker ubuntu || true
@@ -314,15 +345,6 @@ elif command -v dnf &>/dev/null; then
   systemctl enable docker
   usermod -aG docker ec2-user || true
 fi
-
-# Configure Linux Swap Memory
-fallocate -l 1G /swapfile || dd if=/dev/zero of=/swapfile bs=1M count=$(expr 1 \* 1024)
-chmod 600 /swapfile
-mkswap /swapfile
-swapon /swapfile
-echo '/swapfile swap swap defaults 0 0' >> /etc/fstab
-sysctl vm.swappiness=10
-echo 'vm.swappiness=10' >> /etc/sysctl.conf
 
 # Authenticate Docker against ECR
 aws ecr get-login-password --region ${var.aws_region} | docker login --username AWS --password-stdin ${data.aws_caller_identity.current.account_id}.dkr.ecr.${data.aws_region.current.name}.amazonaws.com/${lower(var.project_name)}-frontend
