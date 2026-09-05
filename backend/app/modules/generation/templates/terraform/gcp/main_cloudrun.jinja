@@ -112,6 +112,15 @@ resource "google_cloud_run_v2_service" "{{ comp.name }}" {
       }
       {%- endfor %}
       {%- endif %}
+
+      # Dynamic application environment variables
+      dynamic "env" {
+        for_each = can(jsondecode(var.app_env_vars)["{{ comp.name }}"]) ? jsondecode(var.app_env_vars)["{{ comp.name }}"] : try(jsondecode(var.app_env_vars), {})
+        content {
+          name  = env.key
+          value = tostring(env.value)
+        }
+      }
     }
   }
 

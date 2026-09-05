@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
-import { BookMarked, ArrowLeft, Settings2, ChevronDown, ChevronUp, HardDrive, Database, Globe, Layers, ShieldCheck, DollarSign, Server, Cpu, Check, Sliders, Zap, ExternalLink, Sparkles, RefreshCw } from 'lucide-react';
+import { BookMarked, ArrowLeft, Settings2, ChevronDown, ChevronUp, HardDrive, Database, Globe, Layers, ShieldCheck, DollarSign, Server, Cpu, Check, Sliders, Zap, ExternalLink, Sparkles, RefreshCw, Plus, Trash2, Lock, Unlock, Eye, EyeOff, KeyRound, FileText } from 'lucide-react';
 import { apiClient } from '../utils/api';
 import Preloader from '../components/Preloader';
 
@@ -43,6 +43,13 @@ function ServiceSetup() {
   const [swapSizeGb, setSwapSizeGb] = useState(2);
   const [dbEnabled, setDbEnabled] = useState(false);
   const [dbEngine, setDbEngine] = useState('postgres'); // 'postgres' | 'mysql'
+
+  // Application Environment Variables states
+  const [envVars, setEnvVars] = useState({});
+  const [isEnvOpen, setIsEnvOpen] = useState(true);
+  const [showSecretMap, setShowSecretMap] = useState({});
+  const [envPasteModalComp, setEnvPasteModalComp] = useState(null);
+  const [envPasteText, setEnvPasteText] = useState('');
 
   // Monorepo component-specific configurations: { [compName]: { awsComputeChoice, awsInstanceType, gcpComputeChoice, gcpMachineType } }
   const [componentConfigs, setComponentConfigs] = useState({});
@@ -134,10 +141,11 @@ function ServiceSetup() {
     fetchTechStack();
   }, [selectedRepo, token]);
 
-  // Sync componentConfigs state whenever techStack changes
+  // Sync componentConfigs and envVars state whenever techStack changes
   useEffect(() => {
     if (techStack?.components && techStack.components.length > 0) {
       const initialConfigs = {};
+      const initialEnv = { ...envVars };
       techStack.components.forEach((comp) => {
         const compName = comp.name.toLowerCase().replace('/', '-').replace('\\', '-');
         initialConfigs[compName] = componentConfigs[compName] || {
@@ -148,10 +156,87 @@ function ServiceSetup() {
           gcpMachineType: gcpComputeChoice === 'cloudrun' ? '1 vCPU / 512 MB' : 'e2-micro',
           gcpUseStaticIp: gcpUseStaticIp
         };
+
+        if (!initialEnv[compName] || initialEnv[compName].length === 0) {
+          if (Array.isArray(comp.detected_env_vars) && comp.detected_env_vars.length > 0) {
+            initialEnv[compName] = comp.detected_env_vars.map((v) => ({
+              key: v.key,
+              value: v.value || '',
+              is_secret: Boolean(v.is_secret)
+            }));
+          } else {
+            initialEnv[compName] = [];
+          }
+        }
       });
       setComponentConfigs(initialConfigs);
+      setEnvVars(initialEnv);
     }
   }, [techStack]);
+
+  const handleAddEnvVar = (compName) => {
+    setEnvVars((prev) => ({
+      ...prev,
+      [compName]: [...(prev[compName] || []), { key: '', value: '', is_secret: false }]
+    }));
+  };
+
+  const handleUpdateEnvVar = (compName, index, field, value) => {
+    setEnvVars((prev) => {
+      const list = [...(prev[compName] || [])];
+      list[index] = { ...list[index], [field]: value };
+      if (field === 'key') {
+        const upper = value.toUpperCase();
+        if (['SECRET', 'KEY', 'PASSWORD', 'TOKEN', 'AUTH', 'PRIVATE', 'CREDENTIAL'].some((k) => upper.includes(k))) {
+          list[index].is_secret = true;
+        }
+      }
+      return { ...prev, [compName]: list };
+    });
+  };
+
+  const handleDeleteEnvVar = (compName, index) => {
+    setEnvVars((prev) => ({
+      ...prev,
+      [compName]: (prev[compName] || []).filter((_, i) => i !== index)
+    }));
+  };
+
+  const handleImportEnvPaste = () => {
+    if (!envPasteModalComp || !envPasteText) {
+      setEnvPasteModalComp(null);
+      return;
+    }
+    const lines = envPasteText.split('\n');
+    const secretKeywords = ['SECRET', 'KEY', 'PASSWORD', 'TOKEN', 'AUTH', 'PRIVATE', 'CREDENTIAL'];
+    const newItems = [];
+    lines.forEach((line) => {
+      const trimmed = line.trim();
+      if (!trimmed || trimmed.startsWith('#')) return;
+      const eqIdx = trimmed.indexOf('=');
+      if (eqIdx !== -1) {
+        const k = trimmed.slice(0, eqIdx).trim();
+        let v = trimmed.slice(eqIdx + 1).trim();
+        if ((v.startsWith('"') && v.endsWith('"')) || (v.startsWith("'") && v.endsWith("'"))) {
+          v = v.slice(1, -1);
+        }
+        if (k) {
+          const isSec = secretKeywords.some((kw) => k.toUpperCase().includes(kw));
+          newItems.push({ key: k, value: v, is_secret: isSec });
+        }
+      }
+    });
+
+    setEnvVars((prev) => {
+      const existing = prev[envPasteModalComp] || [];
+      const map = new Map(existing.map((item) => [item.key, item]));
+      newItems.forEach((item) => map.set(item.key, item));
+      return { ...prev, [envPasteModalComp]: Array.from(map.values()) };
+    });
+
+    setEnvPasteModalComp(null);
+    setEnvPasteText('');
+  };
 
   const fetchAiRecommendation = async (targetCloud, computeChoice, compName = 'global', compType = null) => {
     if (!targetCloud || !['AWS', 'GCP'].includes(targetCloud)) return;
@@ -405,7 +490,8 @@ function ServiceSetup() {
         gcpComputeChoice,
         gcpMachineType,
         gcpUseStaticIp,
-        componentConfigs
+        componentConfigs,
+        envVars
       });
       if (!res.ok) {
         throw new Error("Failed to generate deployment scripts");
@@ -1807,6 +1893,381 @@ function ServiceSetup() {
                       )}
                     </div>
                   )}
+                </div>
+              )}
+
+              {/* Application Environment Variables Section */}
+              {selectedCloud && techStack && (
+                <div style={{
+                  background: 'rgba(255, 255, 255, 0.02)',
+                  border: isEnvOpen ? `1.5px solid ${currentConfig.color}80` : '1.5px solid var(--c2c-border)',
+                  borderRadius: '20px',
+                  padding: '1.25rem',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: '1rem',
+                  transition: 'all 0.2s',
+                  boxShadow: isEnvOpen ? `0 8px 32px -8px ${currentConfig.color}20` : 'none'
+                }}>
+                  <div 
+                    onClick={() => setIsEnvOpen(!isEnvOpen)}
+                    style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', cursor: 'pointer', userSelect: 'none' }}
+                  >
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+                      <div style={{
+                        background: 'rgba(255, 255, 255, 0.05)',
+                        border: '1px solid var(--c2c-border)',
+                        borderRadius: '12px',
+                        width: '36px',
+                        height: '36px',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        color: currentConfig.color
+                      }}>
+                        <KeyRound size={18} />
+                      </div>
+                      <div>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
+                          <h4 style={{ color: '#fff', fontSize: '0.95rem', fontWeight: '700', margin: 0 }}>Application Environment Variables</h4>
+                          <span style={{
+                            background: 'rgba(255, 255, 255, 0.06)',
+                            border: '1px solid var(--c2c-border)',
+                            borderRadius: '20px',
+                            padding: '0.15rem 0.6rem',
+                            fontSize: '0.72rem',
+                            fontWeight: '600',
+                            color: '#a2a2b5'
+                          }}>
+                            {Object.values(envVars).reduce((sum, l) => sum + (Array.isArray(l) ? l.length : 0), 0)} Configured
+                          </span>
+                        </div>
+                        <p style={{ color: '#a2a2b5', fontSize: '0.78rem', margin: '0.2rem 0 0 0' }}>
+                          Injected dynamically into your containers at launch. Secrets are encrypted via GitHub Actions & Terraform.
+                        </p>
+                      </div>
+                    </div>
+                    {isEnvOpen ? <ChevronUp size={18} style={{ color: '#a2a2b5' }} /> : <ChevronDown size={18} style={{ color: '#a2a2b5' }} />}
+                  </div>
+
+                  {isEnvOpen && (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem', marginTop: '0.25rem' }}>
+                      {(techStack?.components || [{ name: 'app' }]).map((comp) => {
+                        const compName = comp.name.toLowerCase().replace('/', '-').replace('\\', '-');
+                        const compEnvList = envVars[compName] || [];
+
+                        return (
+                          <div 
+                            key={compName}
+                            style={{
+                              background: 'rgba(0, 0, 0, 0.25)',
+                              border: '1px solid var(--c2c-border)',
+                              borderRadius: '14px',
+                              padding: '1rem',
+                              display: 'flex',
+                              flexDirection: 'column',
+                              gap: '0.85rem'
+                            }}
+                          >
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '0.5rem' }}>
+                              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                                <span style={{ color: '#fff', fontSize: '0.88rem', fontWeight: '700' }}>
+                                  {comp.name || 'Application'}
+                                </span>
+                                {comp.type && (
+                                  <span style={{ fontSize: '0.72rem', color: '#a2a2b5', background: 'rgba(255,255,255,0.04)', padding: '0.1rem 0.5rem', borderRadius: '6px' }}>
+                                    {comp.type}
+                                  </span>
+                                )}
+                              </div>
+                              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                                <button
+                                  type="button"
+                                  onClick={() => setEnvPasteModalComp(compName)}
+                                  style={{
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    gap: '0.35rem',
+                                    background: 'rgba(255, 255, 255, 0.05)',
+                                    border: '1px solid var(--c2c-border)',
+                                    color: '#fff',
+                                    borderRadius: '8px',
+                                    padding: '0.35rem 0.65rem',
+                                    fontSize: '0.76rem',
+                                    fontWeight: '600',
+                                    cursor: 'pointer',
+                                    transition: 'all 0.2s'
+                                  }}
+                                  onMouseOver={(e) => { e.currentTarget.style.borderColor = currentConfig.color; }}
+                                  onMouseOut={(e) => { e.currentTarget.style.borderColor = 'var(--c2c-border)'; }}
+                                >
+                                  <FileText size={13} />
+                                  Paste .env
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => handleAddEnvVar(compName)}
+                                  style={{
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    gap: '0.35rem',
+                                    background: `${currentConfig.color}15`,
+                                    border: `1px solid ${currentConfig.color}50`,
+                                    color: currentConfig.color,
+                                    borderRadius: '8px',
+                                    padding: '0.35rem 0.65rem',
+                                    fontSize: '0.76rem',
+                                    fontWeight: '600',
+                                    cursor: 'pointer',
+                                    transition: 'all 0.2s'
+                                  }}
+                                  onMouseOver={(e) => { e.currentTarget.style.background = `${currentConfig.color}25`; }}
+                                  onMouseOut={(e) => { e.currentTarget.style.background = `${currentConfig.color}15`; }}
+                                >
+                                  <Plus size={13} />
+                                  Add Variable
+                                </button>
+                              </div>
+                            </div>
+
+                            {compEnvList.length === 0 ? (
+                              <div style={{
+                                border: '1px dashed rgba(255, 255, 255, 0.1)',
+                                borderRadius: '10px',
+                                padding: '1rem',
+                                textAlign: 'center',
+                                color: '#6e7191',
+                                fontSize: '0.8rem'
+                              }}>
+                                No variables defined. Click <strong>"Add Variable"</strong> or <strong>"Paste .env"</strong> to add configuration.
+                              </div>
+                            ) : (
+                              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                                {compEnvList.map((item, idx) => {
+                                  const maskKey = `${compName}-${idx}`;
+                                  const isRevealed = Boolean(showSecretMap[maskKey]);
+
+                                  return (
+                                    <div 
+                                      key={idx}
+                                      style={{
+                                        display: 'grid',
+                                        gridTemplateColumns: 'minmax(140px, 1fr) minmax(180px, 1.5fr) auto auto auto',
+                                        gap: '0.5rem',
+                                        alignItems: 'center',
+                                        background: 'rgba(255, 255, 255, 0.02)',
+                                        border: '1px solid var(--c2c-border)',
+                                        borderRadius: '10px',
+                                        padding: '0.4rem 0.6rem'
+                                      }}
+                                    >
+                                      {/* Key */}
+                                      <input
+                                        type="text"
+                                        placeholder="KEY_NAME"
+                                        value={item.key}
+                                        onChange={(e) => handleUpdateEnvVar(compName, idx, 'key', e.target.value)}
+                                        style={{
+                                          background: 'transparent',
+                                          border: 'none',
+                                          color: '#fff',
+                                          fontFamily: 'monospace',
+                                          fontSize: '0.82rem',
+                                          fontWeight: '600',
+                                          outline: 'none',
+                                          padding: '0.3rem'
+                                        }}
+                                      />
+
+                                      {/* Value */}
+                                      <input
+                                        type={item.is_secret && !isRevealed ? 'password' : 'text'}
+                                        placeholder="Value"
+                                        value={item.value}
+                                        onChange={(e) => handleUpdateEnvVar(compName, idx, 'value', e.target.value)}
+                                        style={{
+                                          background: 'transparent',
+                                          border: 'none',
+                                          color: '#a2a2b5',
+                                          fontFamily: 'monospace',
+                                          fontSize: '0.82rem',
+                                          outline: 'none',
+                                          padding: '0.3rem'
+                                        }}
+                                      />
+
+                                      {/* Toggle Reveal for Secrets */}
+                                      {item.is_secret ? (
+                                        <button
+                                          type="button"
+                                          onClick={() => setShowSecretMap(prev => ({ ...prev, [maskKey]: !prev[maskKey] }))}
+                                          title={isRevealed ? "Hide Secret" : "Reveal Secret"}
+                                          style={{
+                                            background: 'transparent',
+                                            border: 'none',
+                                            color: '#6e7191',
+                                            cursor: 'pointer',
+                                            padding: '0.2rem',
+                                            display: 'flex',
+                                            alignItems: 'center'
+                                          }}
+                                        >
+                                          {isRevealed ? <EyeOff size={15} /> : <Eye size={15} />}
+                                        </button>
+                                      ) : <div style={{ width: '15px' }} />}
+
+                                      {/* Secret / Public toggle */}
+                                      <button
+                                        type="button"
+                                        onClick={() => handleUpdateEnvVar(compName, idx, 'is_secret', !item.is_secret)}
+                                        title={item.is_secret ? "Sensitive Secret (Encrypted in GitHub Secrets)" : "Plaintext Configuration"}
+                                        style={{
+                                          background: item.is_secret ? 'rgba(239, 68, 68, 0.15)' : 'rgba(255, 255, 255, 0.05)',
+                                          border: item.is_secret ? '1px solid rgba(239, 68, 68, 0.4)' : '1px solid var(--c2c-border)',
+                                          color: item.is_secret ? '#f87171' : '#6e7191',
+                                          borderRadius: '6px',
+                                          padding: '0.25rem 0.45rem',
+                                          fontSize: '0.7rem',
+                                          cursor: 'pointer',
+                                          display: 'flex',
+                                          alignItems: 'center',
+                                          gap: '0.25rem'
+                                        }}
+                                      >
+                                        {item.is_secret ? <Lock size={12} /> : <Unlock size={12} />}
+                                        {item.is_secret ? 'Secret' : 'Plain'}
+                                      </button>
+
+                                      {/* Delete */}
+                                      <button
+                                        type="button"
+                                        onClick={() => handleDeleteEnvVar(compName, idx)}
+                                        style={{
+                                          background: 'transparent',
+                                          border: 'none',
+                                          color: '#6e7191',
+                                          cursor: 'pointer',
+                                          padding: '0.2rem',
+                                          display: 'flex',
+                                          alignItems: 'center'
+                                        }}
+                                        onMouseOver={(e) => { e.currentTarget.style.color = '#ef4444'; }}
+                                        onMouseOut={(e) => { e.currentTarget.style.color = '#6e7191'; }}
+                                      >
+                                        <Trash2 size={15} />
+                                      </button>
+                                    </div>
+                                  );
+                                })}
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* Paste .env Bulk Import Modal */}
+              {envPasteModalComp && (
+                <div style={{
+                  position: 'fixed',
+                  top: 0,
+                  left: 0,
+                  right: 0,
+                  bottom: 0,
+                  backgroundColor: 'rgba(0, 0, 0, 0.8)',
+                  backdropFilter: 'blur(8px)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  zIndex: 9999,
+                  padding: '1.5rem'
+                }}>
+                  <div style={{
+                    background: '#12121a',
+                    border: '1.5px solid var(--c2c-border)',
+                    borderRadius: '20px',
+                    width: '100%',
+                    maxWidth: '560px',
+                    padding: '1.75rem',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    gap: '1.25rem',
+                    boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.7)'
+                  }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
+                        <FileText size={20} style={{ color: currentConfig.color }} />
+                        <h3 style={{ color: '#fff', fontSize: '1.1rem', fontWeight: '700', margin: 0 }}>
+                          Paste .env for {envPasteModalComp}
+                        </h3>
+                      </div>
+                      <button 
+                        onClick={() => setEnvPasteModalComp(null)}
+                        style={{ background: 'none', border: 'none', color: '#a2a2b5', cursor: 'pointer', fontSize: '1.2rem' }}
+                      >
+                        ✕
+                      </button>
+                    </div>
+
+                    <p style={{ color: '#a2a2b5', fontSize: '0.82rem', margin: 0, lineHeight: '1.4' }}>
+                      Paste the raw contents of your <code>.env</code> file below. Lines formatted as <code>KEY=VALUE</code> will be parsed, and variables containing keywords like <em>KEY, SECRET, TOKEN, PASSWORD</em> will automatically be flagged as encrypted secrets.
+                    </p>
+
+                    <textarea
+                      value={envPasteText}
+                      onChange={(e) => setEnvPasteText(e.target.value)}
+                      placeholder={`PORT=3000\nNODE_ENV=production\nDATABASE_URL=postgres://user:pass@host:5432/db\nJWT_SECRET=your-secret-key`}
+                      rows={10}
+                      style={{
+                        background: '#09090d',
+                        border: '1.5px solid var(--c2c-border)',
+                        borderRadius: '12px',
+                        color: '#fff',
+                        fontFamily: 'monospace',
+                        fontSize: '0.82rem',
+                        padding: '0.85rem',
+                        outline: 'none',
+                        resize: 'vertical'
+                      }}
+                    />
+
+                    <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.75rem' }}>
+                      <button
+                        onClick={() => setEnvPasteModalComp(null)}
+                        style={{
+                          background: 'transparent',
+                          border: '1px solid var(--c2c-border)',
+                          color: '#a2a2b5',
+                          borderRadius: '10px',
+                          padding: '0.6rem 1.2rem',
+                          fontSize: '0.85rem',
+                          fontWeight: '600',
+                          cursor: 'pointer'
+                        }}
+                      >
+                        Cancel
+                      </button>
+                      <button
+                        onClick={handleImportEnvPaste}
+                        disabled={!envPasteText.trim()}
+                        style={{
+                          background: envPasteText.trim() ? currentConfig.color : 'rgba(255,255,255,0.05)',
+                          color: envPasteText.trim() ? '#000' : '#6e7191',
+                          border: 'none',
+                          borderRadius: '10px',
+                          padding: '0.6rem 1.4rem',
+                          fontSize: '0.85rem',
+                          fontWeight: '700',
+                          cursor: envPasteText.trim() ? 'pointer' : 'not-allowed'
+                        }}
+                      >
+                        Import Variables
+                      </button>
+                    </div>
+                  </div>
                 </div>
               )}
 

@@ -41,6 +41,32 @@ def parse_spring_port(content: str, filename: str) -> Optional[int]:
             return int(inline_match.group(1))
     return None
 
+def parse_env_file(content: str) -> List[Dict[str, Any]]:
+    """
+    Parse a .env or .env.example file into a list of {key, value, is_secret}.
+    """
+    env_vars = []
+    secret_keywords = ("SECRET", "KEY", "PASSWORD", "TOKEN", "AUTH", "PRIVATE", "CREDENTIAL")
+    seen_keys = set()
+    for line in content.splitlines():
+        line = line.strip()
+        if not line or line.startswith("#"):
+            continue
+        if "=" in line:
+            key, val = line.split("=", 1)
+            key = key.strip()
+            val = val.strip().strip("'\"")
+            if not key or key in seen_keys:
+                continue
+            seen_keys.add(key)
+            is_sec = any(kw in key.upper() for kw in secret_keywords)
+            env_vars.append({
+                "key": key,
+                "value": val,
+                "is_secret": is_sec
+            })
+    return env_vars
+
 class TechStackAnalyzer:
     @staticmethod
     async def analyze(owner: str, repo: str, github_access_token: str) -> Dict[str, Any]:
@@ -188,6 +214,55 @@ class TechStackAnalyzer:
                         deep_components = await TechStackAnalyzer.deep_analyze(client, tree_items, owner, repo, headers)
                         if deep_components:
                             components.extend(deep_components)
+
+                    # Scan for .env.example / .env.sample / .env.template / .env files
+                    try:
+                        env_files_in_tree = []
+                        env_target_names = {".env.example", ".env.sample", ".env.template", ".env.local.example", ".env"}
+                        for item in tree_items:
+                            item_path = item.get("path", "")
+                            filename = item_path.rsplit("/", 1)[-1].lower()
+                            if filename in env_target_names and not is_ignored_path(item_path):
+                                env_files_in_tree.append(item_path)
+
+                        parsed_env_files = {}
+                        for env_path in env_files_in_tree:
+                            try:
+                                env_res = await client.get(
+                                    f"https://api.github.com/repos/{owner}/{repo}/contents/{env_path}",
+                                    headers=headers
+                                )
+                                if env_res.status_code == 200:
+                                    env_data = env_res.json()
+                                    env_content = base64.b64decode(env_data["content"]).decode("utf-8", errors="ignore")
+                                    parsed_env_files[env_path] = parse_env_file(env_content)
+                            except Exception:
+                                pass
+
+                        for comp in components:
+                            comp_path = comp.get("path", ".")
+                            for suffix in ["/package.json", "/pom.xml", "/requirements.txt", "/build.gradle", "/build.gradle.kts"]:
+                                if comp_path.endswith(suffix):
+                                    comp_path = comp_path[:-len(suffix)]
+                                    break
+                            comp_dir = "." if comp_path in ("", ".", "package.json", "requirements.txt", "pom.xml") else comp_path
+
+                            matched_vars = []
+                            for epath, evars in parsed_env_files.items():
+                                edir = epath.rsplit("/", 1)[0] if "/" in epath else "."
+                                if edir == comp_dir:
+                                    matched_vars.extend(evars)
+                                    break
+
+                            if not matched_vars and len(components) == 1:
+                                for epath, evars in parsed_env_files.items():
+                                    if "/" not in epath or epath.rsplit("/", 1)[0] == ".":
+                                        matched_vars.extend(evars)
+                                        break
+
+                            comp["detected_env_vars"] = matched_vars
+                    except Exception:
+                        pass
             except Exception:
                 pass
 

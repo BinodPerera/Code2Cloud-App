@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { FileCode, Folder, Download, Save, ArrowLeft, Check, AlertCircle, RefreshCw, Layers, GitCommit, GitBranch, Database, ShieldCheck, Play, Lock, ExternalLink, CloudLightning, Key, Shield, Globe, Zap, Trash2 } from 'lucide-react';
+import { FileCode, Folder, Download, Save, ArrowLeft, Check, AlertCircle, RefreshCw, Layers, GitCommit, GitBranch, GitMerge, Database, ShieldCheck, Play, Lock, ExternalLink, CloudLightning, Key, Shield, Globe, Zap, Trash2, Plus, Unlock, Eye, EyeOff, KeyRound, FileText } from 'lucide-react';
 import { apiClient } from '../utils/api';
 
 function GenerationViewer() {
@@ -89,6 +89,118 @@ function GenerationViewer() {
   const [destroying, setDestroying] = useState(false);
   const [destroyError, setDestroyError] = useState('');
   const [destroySuccess, setDestroySuccess] = useState(false);
+  const [destroySuccessMsg, setDestroySuccessMsg] = useState('');
+  const [mergeToDefault, setMergeToDefault] = useState(true);
+
+  // Post-Deployment Environment Variables state
+  const [envModalOpen, setEnvModalOpen] = useState(false);
+  const [postDeployEnvVars, setPostDeployEnvVars] = useState({});
+  const [envUpdating, setEnvUpdating] = useState(false);
+  const [envUpdateSuccess, setEnvUpdateSuccess] = useState(false);
+  const [envUpdateError, setEnvUpdateError] = useState('');
+  const [envShowSecretMap, setEnvShowSecretMap] = useState({});
+  const [envPasteModalComp, setEnvPasteModalComp] = useState(null);
+  const [envPasteText, setEnvPasteText] = useState('');
+
+  const handleAddPostDeployEnvVar = (compName) => {
+    setPostDeployEnvVars((prev) => ({
+      ...prev,
+      [compName]: [...(prev[compName] || []), { key: '', value: '', is_secret: false }]
+    }));
+  };
+
+  const handleUpdatePostDeployEnvVar = (compName, index, field, value) => {
+    setPostDeployEnvVars((prev) => {
+      const list = [...(prev[compName] || [])];
+      list[index] = { ...list[index], [field]: value };
+      if (field === 'key') {
+        const upper = value.toUpperCase();
+        if (['SECRET', 'KEY', 'PASSWORD', 'TOKEN', 'AUTH', 'PRIVATE', 'CREDENTIAL'].some((k) => upper.includes(k))) {
+          list[index].is_secret = true;
+        }
+      }
+      return { ...prev, [compName]: list };
+    });
+  };
+
+  const handleDeletePostDeployEnvVar = (compName, index) => {
+    setPostDeployEnvVars((prev) => ({
+      ...prev,
+      [compName]: (prev[compName] || []).filter((_, i) => i !== index)
+    }));
+  };
+
+  const handleImportPostDeployEnvPaste = () => {
+    if (!envPasteModalComp || !envPasteText) {
+      setEnvPasteModalComp(null);
+      return;
+    }
+    const lines = envPasteText.split('\n');
+    const secretKeywords = ['SECRET', 'KEY', 'PASSWORD', 'TOKEN', 'AUTH', 'PRIVATE', 'CREDENTIAL'];
+    const newItems = [];
+    lines.forEach((line) => {
+      const trimmed = line.trim();
+      if (!trimmed || trimmed.startsWith('#')) return;
+      const eqIdx = trimmed.indexOf('=');
+      if (eqIdx !== -1) {
+        const k = trimmed.slice(0, eqIdx).trim();
+        let v = trimmed.slice(eqIdx + 1).trim();
+        if ((v.startsWith('"') && v.endsWith('"')) || (v.startsWith("'") && v.endsWith("'"))) {
+          v = v.slice(1, -1);
+        }
+        if (k) {
+          const isSec = secretKeywords.some((kw) => k.toUpperCase().includes(kw));
+          newItems.push({ key: k, value: v, is_secret: isSec });
+        }
+      }
+    });
+
+    setPostDeployEnvVars((prev) => {
+      const existing = prev[envPasteModalComp] || [];
+      const map = new Map(existing.map((item) => [item.key, item]));
+      newItems.forEach((item) => map.set(item.key, item));
+      return { ...prev, [envPasteModalComp]: Array.from(map.values()) };
+    });
+
+    setEnvPasteModalComp(null);
+    setEnvPasteText('');
+  };
+
+  const handleSavePostDeployEnvVars = async (redeploy = true) => {
+    try {
+      setEnvUpdating(true);
+      setEnvUpdateError('');
+      setEnvUpdateSuccess(false);
+
+      const res = await apiClient.post(`/repos/generations/${generationId}/env-vars`, {
+        env_vars: postDeployEnvVars,
+        redeploy: redeploy,
+        branch: commitBranch || 'code2cloud-setup'
+      });
+
+      if (!res.ok) {
+        const err = await res.json();
+        throw new Error(err.detail || 'Failed to update environment variables');
+      }
+
+      const data = await res.json();
+      setEnvUpdateSuccess(true);
+      if (data.workflow_triggered) {
+        setPolling(true);
+        setTimeout(() => {
+          fetchWorkflowStatus();
+        }, 2000);
+      }
+      setTimeout(() => {
+        setEnvUpdateSuccess(false);
+      }, 4000);
+    } catch (err) {
+      setEnvUpdateError(err.message || 'Error updating environment variables');
+    } finally {
+      setEnvUpdating(false);
+    }
+  };
+
 
   const getOwnerAndRepo = () => {
     if (!repoUrl) return { owner: '', repo: '' };
@@ -108,7 +220,8 @@ function GenerationViewer() {
       setDestroying(true);
       setDestroyError('');
       const res = await apiClient.post(`/repos/generations/${generationId}/destroy`, {
-        branch: commitBranch || 'code2cloud-setup'
+        branch: commitBranch || 'code2cloud-setup',
+        merge_to_default: mergeToDefault
       });
 
       if (!res.ok) {
@@ -116,6 +229,8 @@ function GenerationViewer() {
         throw new Error(errData.detail || 'Failed to dispatch teardown workflow.');
       }
 
+      const resData = await res.json();
+      setDestroySuccessMsg(resData.message || 'The destroy.yml workflow was triggered on GitHub Actions.');
       setDestroySuccess(true);
       setPolling(true);
       setTimeout(() => {
@@ -172,7 +287,9 @@ function GenerationViewer() {
       const res = await apiClient.post(`/repos/generations/${generationId}/commit`, {
         branch: commitBranch,
         commit_message: commitMessage,
-        secrets_payload: secretsPayload
+        secrets_payload: secretsPayload,
+        app_env_vars: postDeployEnvVars,
+        merge_to_default: mergeToDefault
       });
       
       if (!res.ok) {
@@ -337,6 +454,7 @@ function GenerationViewer() {
         setGcpMachineType(data.gcp_machine_type || 'e2-micro');
         setGcpUseStaticIp(data.gcp_use_static_ip || false);
         setComponentConfigs(data.component_configs || {});
+        setPostDeployEnvVars(data.env_vars || {});
 
         if (data.committed) {
           setPolling(true);
@@ -623,6 +741,38 @@ function GenerationViewer() {
           >
             <GitCommit size={16} />
             Commit to GitHub
+          </button>
+
+          <button
+            onClick={() => setEnvModalOpen(true)}
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '0.5rem',
+              background: 'rgba(255, 255, 255, 0.05)',
+              border: '2px solid var(--c2c-border)',
+              color: '#fff',
+              padding: '0 1.2rem',
+              borderRadius: '12px',
+              fontWeight: '600',
+              cursor: 'pointer',
+              height: '38px',
+              boxSizing: 'border-box',
+              flexShrink: 0,
+              whiteSpace: 'nowrap',
+              transition: 'all 0.3s ease'
+            }}
+            onMouseOver={(e) => {
+              e.currentTarget.style.borderColor = 'var(--c2c-green)';
+              e.currentTarget.style.color = 'var(--c2c-green)';
+            }}
+            onMouseOut={(e) => {
+              e.currentTarget.style.borderColor = 'var(--c2c-border)';
+              e.currentTarget.style.color = '#fff';
+            }}
+          >
+            <KeyRound size={16} />
+            Environment Variables
           </button>
 
           {url && (
@@ -1199,7 +1349,7 @@ function GenerationViewer() {
                 <div>
                   <h4 style={{ color: '#fff', fontSize: '1.15rem', fontWeight: '600', margin: 0 }}>Teardown Pipeline Dispatched!</h4>
                   <p style={{ color: '#a2a2b5', fontSize: '0.85rem', margin: '0.4rem 0 0 0' }}>
-                    The <code style={{ color: '#ff8585' }}>destroy.yml</code> workflow was triggered on GitHub Actions. All cloud resources will be safely deleted.
+                    {destroySuccessMsg || 'The destroy.yml workflow was triggered on GitHub Actions. All cloud resources will be safely deleted.'}
                   </p>
                 </div>
                 <button
@@ -1274,6 +1424,45 @@ function GenerationViewer() {
                   lineHeight: '1.45'
                 }}>
                   <strong style={{ color: '#ff6b6b' }}>Warning:</strong> This will execute <code style={{ color: '#ff8585' }}>terraform destroy</code> to terminate all compute instances, unmount persistent SSD storage, and delete managed databases. This action cannot be undone.
+                </div>
+
+                {/* Auto-merge to default branch checkbox */}
+                <div
+                  onClick={() => setMergeToDefault(!mergeToDefault)}
+                  style={{
+                    display: 'flex',
+                    alignItems: 'flex-start',
+                    gap: '0.75rem',
+                    background: 'rgba(255, 255, 255, 0.03)',
+                    border: '1px solid rgba(255, 255, 255, 0.1)',
+                    borderRadius: '12px',
+                    padding: '0.85rem 1rem',
+                    cursor: 'pointer',
+                    userSelect: 'none'
+                  }}
+                >
+                  <input
+                    type="checkbox"
+                    id="mergeToDefaultCheck"
+                    checked={mergeToDefault}
+                    onChange={(e) => setMergeToDefault(e.target.checked)}
+                    style={{
+                      marginTop: '0.2rem',
+                      cursor: 'pointer',
+                      accentColor: '#ff6b6b',
+                      width: '16px',
+                      height: '16px'
+                    }}
+                  />
+                  <div style={{ fontSize: '0.82rem', color: '#e2e2e9', lineHeight: '1.4' }}>
+                    <div style={{ fontWeight: '600', color: '#fff', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+                      <GitMerge size={14} style={{ color: '#ff6b6b' }} />
+                      Merge setup branch into default branch
+                    </div>
+                    <p style={{ margin: '0.25rem 0 0 0', color: '#a2a2b5', fontSize: '0.76rem', lineHeight: '1.35' }}>
+                      GitHub Actions requires <code style={{ color: '#ff8585' }}>destroy.yml</code> to be on your repository's default branch to run teardowns. When checked, Code2Cloud will merge automatically before triggering destroy.
+                    </p>
+                  </div>
                 </div>
 
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
@@ -1462,6 +1651,26 @@ function GenerationViewer() {
                     </div>
                   </div>
                 )}
+
+                {commitResult.default_branch_synced && commitResult.branch !== commitResult.default_branch && (
+                  <div style={{
+                    width: '100%',
+                    background: 'rgba(59, 130, 246, 0.08)',
+                    border: '1.5px solid rgba(59, 130, 246, 0.3)',
+                    borderRadius: '14px',
+                    padding: '0.85rem 1rem',
+                    textAlign: 'left',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '0.6rem'
+                  }}>
+                    <GitMerge size={18} style={{ color: '#60a5fa', flexShrink: 0 }} />
+                    <span style={{ color: '#e2e2e9', fontSize: '0.82rem' }}>
+                      Synchronized with default branch <code style={{ color: '#60a5fa', fontWeight: '600' }}>{commitResult.default_branch}</code>
+                      {commitResult.merged_to_default ? ' (deployment configurations merged into default branch)' : ''}.
+                    </span>
+                  </div>
+                )}
                 
                 <div style={{ display: 'flex', width: '100%', gap: '1rem', marginTop: '0.5rem' }}>
                   <a
@@ -1565,6 +1774,48 @@ function GenerationViewer() {
                       }}
                     />
                   </div>
+                </div>
+
+                {/* Branch Synchronization Setting */}
+                <div
+                  onClick={() => setMergeToDefault(!mergeToDefault)}
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                    background: 'rgba(0, 0, 0, 0.25)',
+                    border: mergeToDefault ? '1.5px solid rgba(59, 130, 246, 0.4)' : '1.5px solid var(--c2c-border)',
+                    borderRadius: '12px',
+                    padding: '0.85rem 1rem',
+                    cursor: 'pointer',
+                    userSelect: 'none',
+                    transition: 'all 0.2s'
+                  }}
+                >
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+                    <GitMerge size={17} style={{ color: mergeToDefault ? '#60a5fa' : '#a2a2b5', flexShrink: 0 }} />
+                    <div style={{ textAlign: 'left' }}>
+                      <div style={{ color: '#fff', fontSize: '0.85rem', fontWeight: '600' }}>
+                        Synchronize with Default Branch (main/master)
+                      </div>
+                      <div style={{ color: '#a2a2b5', fontSize: '0.75rem', marginTop: '0.1rem' }}>
+                        Pulls latest code from default branch into <code style={{ color: '#60a5fa' }}>{commitBranch || 'code2cloud-setup'}</code> before deploying, and updates default branch with cloud setup.
+                      </div>
+                    </div>
+                  </div>
+                  <input
+                    type="checkbox"
+                    id="mergeToDefaultCommitCheck"
+                    checked={mergeToDefault}
+                    onChange={(e) => setMergeToDefault(e.target.checked)}
+                    style={{
+                      cursor: 'pointer',
+                      accentColor: '#3b82f6',
+                      width: '18px',
+                      height: '18px',
+                      flexShrink: 0
+                    }}
+                  />
                 </div>
 
                 {/* Cloud Secrets Setup Section */}
@@ -1866,6 +2117,476 @@ function GenerationViewer() {
                 </div>
               </form>
             )}
+          </div>
+        </div>
+      )}
+
+      {/* Post-Deployment Runtime Environment Variables Modal */}
+      {envModalOpen && (
+        <div style={{
+          position: 'fixed',
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: 0,
+          background: 'rgba(5, 5, 10, 0.88)',
+          backdropFilter: 'blur(16px)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          zIndex: 9999,
+          padding: '1.5rem'
+        }}>
+          <div style={{
+            background: '#12121a',
+            border: '1.5px solid var(--c2c-border)',
+            borderRadius: '24px',
+            width: '100%',
+            maxWidth: '750px',
+            maxHeight: '90vh',
+            display: 'flex',
+            flexDirection: 'column',
+            overflow: 'hidden',
+            boxShadow: '0 25px 60px -15px rgba(0, 0, 0, 0.8)'
+          }}>
+            {/* Modal Header */}
+            <div style={{
+              padding: '1.5rem',
+              borderBottom: '1px solid var(--c2c-border)',
+              display: 'flex',
+              justifyContent: 'space-between',
+              alignItems: 'flex-start'
+            }}>
+              <div style={{ display: 'flex', gap: '0.85rem' }}>
+                <div style={{
+                  background: 'rgba(16, 185, 129, 0.1)',
+                  border: '1px solid rgba(16, 185, 129, 0.3)',
+                  borderRadius: '14px',
+                  width: '42px',
+                  height: '42px',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  color: 'var(--c2c-green)',
+                  flexShrink: 0
+                }}>
+                  <KeyRound size={22} />
+                </div>
+                <div>
+                  <h3 style={{ color: '#fff', fontSize: '1.2rem', fontWeight: '700', margin: 0 }}>
+                    Runtime Environment Variables
+                  </h3>
+                  <p style={{ color: '#a2a2b5', fontSize: '0.82rem', margin: '0.25rem 0 0 0' }}>
+                    Configure application variables and secrets post-deployment. Saving triggers a zero-downtime rolling update without rebuilding Docker images.
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={() => setEnvModalOpen(false)}
+                style={{ background: 'none', border: 'none', color: '#6e7191', cursor: 'pointer', fontSize: '1.25rem', padding: '0.2rem' }}
+              >
+                ✕
+              </button>
+            </div>
+
+            {/* Modal Body */}
+            <div style={{ padding: '1.5rem', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '1.2rem' }}>
+              {envUpdateSuccess && (
+                <div style={{
+                  background: 'rgba(16, 185, 129, 0.12)',
+                  border: '1px solid var(--c2c-green)',
+                  borderRadius: '12px',
+                  padding: '0.85rem 1rem',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '0.6rem',
+                  color: '#10B981',
+                  fontSize: '0.85rem',
+                  fontWeight: '600'
+                }}>
+                  <Check size={18} />
+                  Environment variables saved & encrypted in GitHub Secrets! Zero-downtime redeployment initiated.
+                </div>
+              )}
+
+              {envUpdateError && (
+                <div style={{
+                  background: 'rgba(239, 68, 68, 0.12)',
+                  border: '1px solid #ef4444',
+                  borderRadius: '12px',
+                  padding: '0.85rem 1rem',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '0.6rem',
+                  color: '#ef4444',
+                  fontSize: '0.85rem',
+                  fontWeight: '600'
+                }}>
+                  <AlertCircle size={18} />
+                  {envUpdateError}
+                </div>
+              )}
+
+              {/* Component Sections */}
+              {(Object.keys(postDeployEnvVars).length > 0 ? Object.keys(postDeployEnvVars) : ['app']).map((compName) => {
+                const compEnvList = postDeployEnvVars[compName] || [];
+
+                return (
+                  <div
+                    key={compName}
+                    style={{
+                      background: 'rgba(255, 255, 255, 0.02)',
+                      border: '1px solid var(--c2c-border)',
+                      borderRadius: '16px',
+                      padding: '1.1rem',
+                      display: 'flex',
+                      flexDirection: 'column',
+                      gap: '0.85rem'
+                    }}
+                  >
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <span style={{ color: '#fff', fontSize: '0.92rem', fontWeight: '700' }}>
+                        Component: <code style={{ color: 'var(--c2c-green)' }}>{compName}</code>
+                      </span>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                        <button
+                          type="button"
+                          onClick={() => setEnvPasteModalComp(compName)}
+                          style={{
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '0.35rem',
+                            background: 'rgba(255, 255, 255, 0.05)',
+                            border: '1px solid var(--c2c-border)',
+                            color: '#fff',
+                            borderRadius: '8px',
+                            padding: '0.35rem 0.65rem',
+                            fontSize: '0.76rem',
+                            fontWeight: '600',
+                            cursor: 'pointer'
+                          }}
+                        >
+                          <FileText size={13} />
+                          Paste .env
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleAddPostDeployEnvVar(compName)}
+                          style={{
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '0.35rem',
+                            background: 'rgba(16, 185, 129, 0.15)',
+                            border: '1px solid rgba(16, 185, 129, 0.4)',
+                            color: 'var(--c2c-green)',
+                            borderRadius: '8px',
+                            padding: '0.35rem 0.65rem',
+                            fontSize: '0.76rem',
+                            fontWeight: '600',
+                            cursor: 'pointer'
+                          }}
+                        >
+                          <Plus size={13} />
+                          Add Variable
+                        </button>
+                      </div>
+                    </div>
+
+                    {compEnvList.length === 0 ? (
+                      <div style={{
+                        border: '1px dashed rgba(255, 255, 255, 0.1)',
+                        borderRadius: '10px',
+                        padding: '1rem',
+                        textAlign: 'center',
+                        color: '#6e7191',
+                        fontSize: '0.8rem'
+                      }}>
+                        No variables defined. Click <strong>"Add Variable"</strong> or <strong>"Paste .env"</strong> to add.
+                      </div>
+                    ) : (
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                        {compEnvList.map((item, idx) => {
+                          const maskKey = `pd-${compName}-${idx}`;
+                          const isRevealed = Boolean(envShowSecretMap[maskKey]);
+
+                          return (
+                            <div
+                              key={idx}
+                              style={{
+                                display: 'grid',
+                                gridTemplateColumns: 'minmax(140px, 1fr) minmax(180px, 1.5fr) auto auto auto',
+                                gap: '0.5rem',
+                                alignItems: 'center',
+                                background: 'rgba(255, 255, 255, 0.02)',
+                                border: '1px solid var(--c2c-border)',
+                                borderRadius: '10px',
+                                padding: '0.4rem 0.6rem'
+                              }}
+                            >
+                              <input
+                                type="text"
+                                placeholder="KEY_NAME"
+                                value={item.key}
+                                onChange={(e) => handleUpdatePostDeployEnvVar(compName, idx, 'key', e.target.value)}
+                                style={{
+                                  background: 'transparent',
+                                  border: 'none',
+                                  color: '#fff',
+                                  fontFamily: 'monospace',
+                                  fontSize: '0.82rem',
+                                  fontWeight: '600',
+                                  outline: 'none',
+                                  padding: '0.3rem'
+                                }}
+                              />
+                              <input
+                                type={item.is_secret && !isRevealed ? 'password' : 'text'}
+                                placeholder="Value"
+                                value={item.value}
+                                onChange={(e) => handleUpdatePostDeployEnvVar(compName, idx, 'value', e.target.value)}
+                                style={{
+                                  background: 'transparent',
+                                  border: 'none',
+                                  color: '#a2a2b5',
+                                  fontFamily: 'monospace',
+                                  fontSize: '0.82rem',
+                                  outline: 'none',
+                                  padding: '0.3rem'
+                                }}
+                              />
+
+                              {item.is_secret ? (
+                                <button
+                                  type="button"
+                                  onClick={() => setEnvShowSecretMap(prev => ({ ...prev, [maskKey]: !prev[maskKey] }))}
+                                  title={isRevealed ? "Hide Secret" : "Reveal Secret"}
+                                  style={{
+                                    background: 'transparent',
+                                    border: 'none',
+                                    color: '#6e7191',
+                                    cursor: 'pointer',
+                                    padding: '0.2rem',
+                                    display: 'flex',
+                                    alignItems: 'center'
+                                  }}
+                                >
+                                  {isRevealed ? <EyeOff size={15} /> : <Eye size={15} />}
+                                </button>
+                              ) : <div style={{ width: '15px' }} />}
+
+                              <button
+                                type="button"
+                                onClick={() => handleUpdatePostDeployEnvVar(compName, idx, 'is_secret', !item.is_secret)}
+                                title={item.is_secret ? "Sensitive Secret (Encrypted in GitHub Secrets)" : "Plaintext Configuration"}
+                                style={{
+                                  background: item.is_secret ? 'rgba(239, 68, 68, 0.15)' : 'rgba(255, 255, 255, 0.05)',
+                                  border: item.is_secret ? '1px solid rgba(239, 68, 68, 0.4)' : '1px solid var(--c2c-border)',
+                                  color: item.is_secret ? '#f87171' : '#6e7191',
+                                  borderRadius: '6px',
+                                  padding: '0.25rem 0.45rem',
+                                  fontSize: '0.7rem',
+                                  cursor: 'pointer',
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                  gap: '0.25rem'
+                                }}
+                              >
+                                {item.is_secret ? <Lock size={12} /> : <Unlock size={12} />}
+                                {item.is_secret ? 'Secret' : 'Plain'}
+                              </button>
+
+                              <button
+                                type="button"
+                                onClick={() => handleDeletePostDeployEnvVar(compName, idx)}
+                                style={{
+                                  background: 'transparent',
+                                  border: 'none',
+                                  color: '#6e7191',
+                                  cursor: 'pointer',
+                                  padding: '0.2rem',
+                                  display: 'flex',
+                                  alignItems: 'center'
+                                }}
+                                onMouseOver={(e) => { e.currentTarget.style.color = '#ef4444'; }}
+                                onMouseOut={(e) => { e.currentTarget.style.color = '#6e7191'; }}
+                              >
+                                <Trash2 size={15} />
+                              </button>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+
+            {/* Modal Footer */}
+            <div style={{
+              padding: '1.25rem 1.5rem',
+              borderTop: '1px solid var(--c2c-border)',
+              display: 'flex',
+              justifyContent: 'space-between',
+              alignItems: 'center',
+              background: 'rgba(0,0,0,0.2)'
+            }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', color: '#10B981', fontSize: '0.78rem', fontWeight: '500' }}>
+                <Zap size={14} />
+                <span>Zero-downtime update (~20s) via <code>skip_build: true</code></span>
+              </div>
+              <div style={{ display: 'flex', gap: '0.75rem' }}>
+                <button
+                  type="button"
+                  onClick={() => setEnvModalOpen(false)}
+                  style={{
+                    background: 'transparent',
+                    border: '1px solid var(--c2c-border)',
+                    color: '#a2a2b5',
+                    borderRadius: '10px',
+                    padding: '0.6rem 1.2rem',
+                    fontSize: '0.85rem',
+                    fontWeight: '600',
+                    cursor: 'pointer'
+                  }}
+                >
+                  Close
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleSavePostDeployEnvVars(true)}
+                  disabled={envUpdating}
+                  style={{
+                    background: 'linear-gradient(135deg, var(--c2c-green), var(--c2c-green-hover))',
+                    border: 'none',
+                    color: '#05050a',
+                    borderRadius: '10px',
+                    padding: '0.6rem 1.4rem',
+                    fontSize: '0.85rem',
+                    fontWeight: '700',
+                    cursor: envUpdating ? 'not-allowed' : 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '0.4rem',
+                    boxShadow: '0 4px 15px rgba(16, 185, 129, 0.2)'
+                  }}
+                >
+                  {envUpdating ? (
+                    <>
+                      <RefreshCw size={15} className="loading-spinner" />
+                      Updating & Deploying...
+                    </>
+                  ) : (
+                    <>
+                      <Zap size={15} />
+                      Save & Redeploy
+                    </>
+                  )}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Paste .env Bulk Import Modal */}
+      {envPasteModalComp && (
+        <div style={{
+          position: 'fixed',
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: 0,
+          backgroundColor: 'rgba(0, 0, 0, 0.8)',
+          backdropFilter: 'blur(8px)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          zIndex: 10000,
+          padding: '1.5rem'
+        }}>
+          <div style={{
+            background: '#12121a',
+            border: '1.5px solid var(--c2c-border)',
+            borderRadius: '20px',
+            width: '100%',
+            maxWidth: '560px',
+            padding: '1.75rem',
+            display: 'flex',
+            flexDirection: 'column',
+            gap: '1.25rem',
+            boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.7)'
+          }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
+                <FileText size={20} style={{ color: 'var(--c2c-green)' }} />
+                <h3 style={{ color: '#fff', fontSize: '1.1rem', fontWeight: '700', margin: 0 }}>
+                  Paste .env for {envPasteModalComp}
+                </h3>
+              </div>
+              <button 
+                onClick={() => setEnvPasteModalComp(null)}
+                style={{ background: 'none', border: 'none', color: '#a2a2b5', cursor: 'pointer', fontSize: '1.2rem' }}
+              >
+                ✕
+              </button>
+            </div>
+
+            <p style={{ color: '#a2a2b5', fontSize: '0.82rem', margin: 0, lineHeight: '1.4' }}>
+              Paste the raw contents of your <code>.env</code> file below. Lines formatted as <code>KEY=VALUE</code> will be parsed, and variables containing keywords like <em>KEY, SECRET, TOKEN, PASSWORD</em> will automatically be flagged as encrypted secrets.
+            </p>
+
+            <textarea
+              value={envPasteText}
+              onChange={(e) => setEnvPasteText(e.target.value)}
+              placeholder={`PORT=3000\nNODE_ENV=production\nDATABASE_URL=postgres://user:pass@host:5432/db\nJWT_SECRET=your-secret-key`}
+              rows={10}
+              style={{
+                background: '#09090d',
+                border: '1.5px solid var(--c2c-border)',
+                borderRadius: '12px',
+                color: '#fff',
+                fontFamily: 'monospace',
+                fontSize: '0.82rem',
+                padding: '0.85rem',
+                outline: 'none',
+                resize: 'vertical'
+              }}
+            />
+
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.75rem' }}>
+              <button
+                onClick={() => setEnvPasteModalComp(null)}
+                style={{
+                  background: 'transparent',
+                  border: '1px solid var(--c2c-border)',
+                  color: '#a2a2b5',
+                  borderRadius: '10px',
+                  padding: '0.6rem 1.2rem',
+                  fontSize: '0.85rem',
+                  fontWeight: '600',
+                  cursor: 'pointer'
+                }}
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleImportPostDeployEnvPaste}
+                disabled={!envPasteText.trim()}
+                style={{
+                  background: envPasteText.trim() ? 'var(--c2c-green)' : 'rgba(255,255,255,0.05)',
+                  color: envPasteText.trim() ? '#000' : '#6e7191',
+                  border: 'none',
+                  borderRadius: '10px',
+                  padding: '0.6rem 1.4rem',
+                  fontSize: '0.85rem',
+                  fontWeight: '700',
+                  cursor: envPasteText.trim() ? 'pointer' : 'not-allowed'
+                }}
+              >
+                Import Variables
+              </button>
+            </div>
           </div>
         </div>
       )}

@@ -44,4 +44,12 @@ variable "swap_size_gb" {
 }
 {% endif %}
 
+variable "app_env_vars" {
+  description = "Application runtime environment variables per component (JSON string)"
+  type        = string
+  default     = "{}"
+  sensitive   = true
+}
+
+
 

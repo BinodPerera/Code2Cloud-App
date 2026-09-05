@@ -4,6 +4,13 @@ on:
   push:
     branches:
       - {{ branch }}
+  workflow_dispatch:
+    inputs:
+      skip_build:
+        description: 'Skip Docker image build and only apply infrastructure/env updates'
+        required: false
+        default: false
+        type: boolean
 
 jobs:
   deploy:
@@ -26,6 +33,7 @@ jobs:
       {% if registry_type == 'dockerhub' %}
       # Log in to Docker Hub
       - name: Log in to Docker Hub
+        if: {% raw %}${{ github.event_name != 'workflow_dispatch' || !inputs.skip_build }}{% endraw %}
         uses: docker/login-action@v3
         with:
           username: {% raw %}${{ secrets.DOCKER_USERNAME }}{% endraw %}
@@ -33,6 +41,7 @@ jobs:
 
       {% for comp in components %}
       - name: Build, tag, and push {{ comp.name }} to Docker Hub
+        if: {% raw %}${{ github.event_name != 'workflow_dispatch' || !inputs.skip_build }}{% endraw %}
         env:
           DOCKER_USERNAME: {% raw %}${{ secrets.DOCKER_USERNAME }}{% endraw %}
           IMAGE_NAME: {{ repo_name | lower }}-{{ comp.name }}
@@ -45,13 +54,15 @@ jobs:
       {% else %}
       # Log in and push to Google Artifact Registry (GAR) (Default)
       - name: Configure Docker for Google Artifact Registry
+        if: {% raw %}${{ github.event_name != 'workflow_dispatch' || !inputs.skip_build }}{% endraw %}
         run: |
           gcloud auth configure-docker {{ gcp_region | default('us-central1') }}-docker.pkg.dev --quiet
 
       {% for comp in components %}
       - name: Build and Push {{ comp.name }} to Google Artifact Registry
+        if: {% raw %}${{ github.event_name != 'workflow_dispatch' || !inputs.skip_build }}{% endraw %}
         env:
-          IMAGE_NAME: {{ gcp_region | default('us-central1') }}-docker.pkg.dev/{% raw %}${{ secrets.GCP_PROJECT_ID }}{% endraw %}/{{ repo_name | lower }}-repo/{{ repo_name | lower }}-{{ comp.name }}
+          IMAGE_NAME: {{ gcp_region | default('us-central1') }}-docker.pkg.dev/{% raw %}${{ secrets.GCP_PROJECT_ID }}{% endraw }}/{{ repo_name | lower }}-repo/{{ repo_name | lower }}-{{ comp.name }}
           IMAGE_TAG: {% raw %}${{ github.sha }}{% endraw %}
         run: |
           # Create repository if it doesn't exist
@@ -92,8 +103,12 @@ jobs:
 
       - name: Terraform Plan
         working-directory: ./terraform
+        env:
+          TF_VAR_app_env_vars: {% raw %}${{ secrets.APP_ENV_VARS_JSON }}{% endraw %}
         run: terraform plan -no-color
 
       - name: Terraform Apply
         working-directory: ./terraform
+        env:
+          TF_VAR_app_env_vars: {% raw %}${{ secrets.APP_ENV_VARS_JSON }}{% endraw %}
         run: terraform apply -auto-approve -no-color
