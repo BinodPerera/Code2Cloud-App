@@ -4,6 +4,13 @@ on:
   push:
     branches:
       - code2cloud-setup
+  workflow_dispatch:
+    inputs:
+      skip_build:
+        description: 'Skip Docker image build and only apply infrastructure/env updates'
+        required: false
+        default: false
+        type: boolean
 
 jobs:
   deploy:
@@ -26,11 +33,13 @@ jobs:
       
       # Log in and push to Amazon ECR (Default)
       - name: Login to Amazon ECR
+        if: ${{ github.event_name != 'workflow_dispatch' || !inputs.skip_build }}
         id: login-ecr
         uses: aws-actions/amazon-ecr-login@v2
 
       
       - name: Build, tag, and push backend to Amazon ECR
+        if: ${{ github.event_name != 'workflow_dispatch' || !inputs.skip_build }}
         env:
           ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
           ECR_REPOSITORY: code2cloud-app-backend
@@ -44,6 +53,7 @@ jobs:
           docker push $ECR_REGISTRY/$ECR_REPOSITORY:latest
       
       - name: Build, tag, and push frontend to Amazon ECR
+        if: ${{ github.event_name != 'workflow_dispatch' || !inputs.skip_build }}
         env:
           ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
           ECR_REPOSITORY: code2cloud-app-frontend
@@ -64,14 +74,39 @@ jobs:
         with:
           terraform_version: 1.7.0
 
+      # Ensure Terraform Remote State S3 Bucket Exists
+      - name: Configure Terraform Remote State S3 Bucket
+        id: state-bucket
+        run: |
+          ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
+          BUCKET="code2cloud-tfstate-${ACCOUNT_ID}-us-east-1"
+          echo "bucket_name=$BUCKET" >> $GITHUB_OUTPUT
+          
+          if ! aws s3api head-bucket --bucket "$BUCKET" 2>/dev/null; then
+            echo "Creating S3 remote state bucket: $BUCKET"
+            
+            aws s3api create-bucket --bucket "$BUCKET" --region us-east-1 || true
+            
+            aws s3api put-bucket-versioning --bucket "$BUCKET" --versioning-configuration Status=Enabled || true
+            aws s3api put-bucket-encryption --bucket "$BUCKET" --server-side-encryption-configuration '{"Rules":[{"ApplyServerSideEncryptionByDefault":{"SSEAlgorithm":"AES256"}}]}' || true
+          fi
+
       - name: Terraform Init
         working-directory: ./terraform
-        run: terraform init
+        run: |
+          terraform init \
+            -backend-config="bucket=${{ steps.state-bucket.outputs.bucket_name }}" \
+            -backend-config="key=code2cloud-app/terraform.tfstate" \
+            -backend-config="region=us-east-1"
 
       - name: Terraform Plan
         working-directory: ./terraform
+        env:
+          TF_VAR_app_env_vars: ${{ secrets.APP_ENV_VARS_JSON }}
         run: terraform plan -no-color
 
       - name: Terraform Apply
         working-directory: ./terraform
+        env:
+          TF_VAR_app_env_vars: ${{ secrets.APP_ENV_VARS_JSON }}
         run: terraform apply -auto-approve -no-color

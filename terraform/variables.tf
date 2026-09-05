@@ -25,3 +25,11 @@ variable "storage_size_gb" {
 
 
 
+
+variable "app_env_vars" {
+  description = "Application runtime environment variables per component (JSON string)"
+  type        = string
+  default     = "{}"
+  sensitive   = true
+}
+

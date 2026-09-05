@@ -1,6 +1,22 @@
 data "aws_caller_identity" "current" {}
 data "aws_region" "current" {}
 
+# Dynamically lookup the latest official Ubuntu 22.04 LTS AMI for the target region
+data "aws_ami" "ubuntu" {
+  most_recent = true
+  owners      = ["099720109477"] # Canonical
+
+  filter {
+    name   = "name"
+    values = ["ubuntu/images/hvm-ssd/ubuntu-jammy-22.04-amd64-server-*"]
+  }
+
+  filter {
+    name   = "virtualization-type"
+    values = ["hvm"]
+  }
+}
+
 # --- Networking (VPC Setup) ---
 resource "aws_vpc" "main" {
   cidr_block           = "10.0.0.0/16"
@@ -154,7 +170,7 @@ resource "aws_security_group" "web_sg" {
 # --- EC2 Instances ---
 
 resource "aws_instance" "backend" {
-  ami                  = "ami-0c7217cdde317cfec"
+  ami                  = data.aws_ami.ubuntu.id
   instance_type        = "t3.micro"
   subnet_id            = aws_subnet.public_1.id
   vpc_security_group_ids = [aws_security_group.web_sg.id]
@@ -170,19 +186,26 @@ resource "aws_instance" "backend" {
     }
   }
 
-  user_data_replace_on_change = true
+  user_data_replace_on_change = false
 
   user_data = <<-EOF
     #!/bin/bash
+    # Wait for any background apt processes (unattended-upgrades) to release locks
+    while fuser /var/lib/dpkg/lock-frontend /var/lib/apt/lists/lock >/dev/null 2>&1; do
+      echo "Waiting for other apt process to finish..."
+      sleep 3
+    done
+
     if command -v apt-get &>/dev/null; then
+      export DEBIAN_FRONTEND=noninteractive
       apt-get update -y
-      apt-get install -y docker.io awscli
+      apt-get install -y docker.io awscli python3
       systemctl start docker
       systemctl enable docker
       usermod -aG docker ubuntu || true
     elif command -v dnf &>/dev/null; then
       dnf update -y
-      dnf install -y docker
+      dnf install -y docker python3
       systemctl start docker
       systemctl enable docker
       usermod -aG docker ec2-user || true
@@ -198,15 +221,35 @@ resource "aws_instance" "backend" {
     echo 'vm.swappiness=10' >> /etc/sysctl.conf
     
     # Authenticate Docker against ECR
-    aws ecr get-login-password --region \${var.aws_region} | docker login --username AWS --password-stdin \${data.aws_caller_identity.current.account_id}.dkr.ecr.\${data.aws_region.current.name}.amazonaws.com/\${lower(var.project_name)}-backend
+    aws ecr get-login-password --region ${var.aws_region} | docker login --username AWS --password-stdin ${data.aws_caller_identity.current.account_id}.dkr.ecr.${data.aws_region.current.name}.amazonaws.com/${lower(var.project_name)}-backend
     
-    # Run the container
+    # Prepare app env file
+    mkdir -p /opt/app
+    cat <<'ENVEOF' > /opt/app/backend.env
+    PORT=8000
+    ENVIRONMENT=${var.environment}
+ENVEOF
+
+    cat <<'PYEOF' | python3
+import json, os
+try:
+    data = json.loads('''${var.app_env_vars}''')
+    comp_vars = data.get("backend", data if not any(isinstance(v, dict) for v in data.values()) else {})
+    if isinstance(comp_vars, dict):
+        with open("/opt/app/backend.env", "a") as f:
+            for k, v in comp_vars.items():
+                f.write(f"{k}={v}\n")
+except Exception as e:
+    print(f"Error parsing app_env_vars: {e}")
+PYEOF
+    chmod 600 /opt/app/backend.env
+
+    # Run the container using --env-file
     docker run -d -p 80:8000 \
       --name backend \
       --restart always \
-      -e PORT=8000 \
-      -e ENVIRONMENT=\${var.environment} \
-      \${data.aws_caller_identity.current.account_id}.dkr.ecr.\${data.aws_region.current.name}.amazonaws.com/\${lower(var.project_name)}-backend:latest
+      --env-file /opt/app/backend.env \
+      ${data.aws_caller_identity.current.account_id}.dkr.ecr.${data.aws_region.current.name}.amazonaws.com/${lower(var.project_name)}-backend:latest
   EOF
 
   tags = {
@@ -216,7 +259,7 @@ resource "aws_instance" "backend" {
 }
 
 resource "aws_instance" "frontend" {
-  ami                  = "ami-0c7217cdde317cfec"
+  ami                  = data.aws_ami.ubuntu.id
   instance_type        = "t3.micro"
   subnet_id            = aws_subnet.public_1.id
   vpc_security_group_ids = [aws_security_group.web_sg.id]
@@ -232,19 +275,26 @@ resource "aws_instance" "frontend" {
     }
   }
 
-  user_data_replace_on_change = true
+  user_data_replace_on_change = false
 
   user_data = <<-EOF
     #!/bin/bash
+    # Wait for any background apt processes (unattended-upgrades) to release locks
+    while fuser /var/lib/dpkg/lock-frontend /var/lib/apt/lists/lock >/dev/null 2>&1; do
+      echo "Waiting for other apt process to finish..."
+      sleep 3
+    done
+
     if command -v apt-get &>/dev/null; then
+      export DEBIAN_FRONTEND=noninteractive
       apt-get update -y
-      apt-get install -y docker.io awscli
+      apt-get install -y docker.io awscli python3
       systemctl start docker
       systemctl enable docker
       usermod -aG docker ubuntu || true
     elif command -v dnf &>/dev/null; then
       dnf update -y
-      dnf install -y docker
+      dnf install -y docker python3
       systemctl start docker
       systemctl enable docker
       usermod -aG docker ec2-user || true
@@ -260,16 +310,36 @@ resource "aws_instance" "frontend" {
     echo 'vm.swappiness=10' >> /etc/sysctl.conf
     
     # Authenticate Docker against ECR
-    aws ecr get-login-password --region \${var.aws_region} | docker login --username AWS --password-stdin \${data.aws_caller_identity.current.account_id}.dkr.ecr.\${data.aws_region.current.name}.amazonaws.com/\${lower(var.project_name)}-frontend
+    aws ecr get-login-password --region ${var.aws_region} | docker login --username AWS --password-stdin ${data.aws_caller_identity.current.account_id}.dkr.ecr.${data.aws_region.current.name}.amazonaws.com/${lower(var.project_name)}-frontend
     
-    # Run the container
+    # Prepare app env file
+    mkdir -p /opt/app
+    cat <<'ENVEOF' > /opt/app/frontend.env
+    PORT=3000
+    ENVIRONMENT=${var.environment}
+    BACKEND_URL=http://localhost:3000
+ENVEOF
+
+    cat <<'PYEOF' | python3
+import json, os
+try:
+    data = json.loads('''${var.app_env_vars}''')
+    comp_vars = data.get("frontend", data if not any(isinstance(v, dict) for v in data.values()) else {})
+    if isinstance(comp_vars, dict):
+        with open("/opt/app/frontend.env", "a") as f:
+            for k, v in comp_vars.items():
+                f.write(f"{k}={v}\n")
+except Exception as e:
+    print(f"Error parsing app_env_vars: {e}")
+PYEOF
+    chmod 600 /opt/app/frontend.env
+
+    # Run the container using --env-file
     docker run -d -p 80:3000 \
       --name frontend \
       --restart always \
-      -e PORT=3000 \
-      -e ENVIRONMENT=\${var.environment} \
-      -e BACKEND_URL=http://localhost:3000 \
-      \${data.aws_caller_identity.current.account_id}.dkr.ecr.\${data.aws_region.current.name}.amazonaws.com/\${lower(var.project_name)}-frontend:latest
+      --env-file /opt/app/frontend.env \
+      ${data.aws_caller_identity.current.account_id}.dkr.ecr.${data.aws_region.current.name}.amazonaws.com/${lower(var.project_name)}-frontend:latest
   EOF
 
   tags = {
