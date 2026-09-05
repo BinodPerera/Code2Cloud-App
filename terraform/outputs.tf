@@ -20,6 +20,11 @@ output "backend_public_ip" {
   value       = aws_instance.backend.public_ip
 }
 
+output "backend_instance_id" {
+  description = "EC2 instance ID for backend virtual machine"
+  value       = aws_instance.backend.id
+}
+
 
 output "frontend_ecr_repository_url" {
   description = "Registry URL for frontend container builds"
@@ -30,6 +35,11 @@ output "frontend_ecr_repository_url" {
 output "frontend_public_ip" {
   description = "Public IP address of the frontend virtual machine"
   value       = aws_instance.frontend.public_ip
+}
+
+output "frontend_instance_id" {
+  description = "EC2 instance ID for frontend virtual machine"
+  value       = aws_instance.frontend.id
 }
 
 
