@@ -61,6 +61,8 @@ jobs:
       
       
       - name: Refresh backend Container on EC2 (In-Place via AWS SSM)
+        env:
+          APP_ENV_VARS_JSON: ${{ secrets.APP_ENV_VARS_JSON }}
         run: |
           INSTANCE_ID=$(aws ec2 describe-instances \
             --filters "Name=tag:Name,Values=Code2Cloud-App-backend" "Name=instance-state-name,Values=running" \
@@ -69,19 +71,65 @@ jobs:
           
           if [ -n "$INSTANCE_ID" ] && [ "$INSTANCE_ID" != "None" ]; then
             echo "Found running instance for backend: $INSTANCE_ID"
+            
+            ENV_B64=$(echo -n "$APP_ENV_VARS_JSON" | base64 | tr -d '\n')
+            PY_SCRIPT_B64=$(cat <<'PYEOF' | base64 | tr -d '\n'
+import json, os, sys
+comp = sys.argv[1] if len(sys.argv) > 1 else "backend"
+env_file = f"/opt/app/{comp}.env"
+json_file = "/tmp/app_env_vars.json"
+if os.path.exists(json_file):
+    try:
+        with open(json_file, "r") as f:
+            data = json.load(f)
+        new_vars = data.get(comp, data if not any(isinstance(v, dict) for v in data.values()) else {})
+        if isinstance(new_vars, dict) and new_vars:
+            lines = []
+            existing = set()
+            if os.path.exists(env_file):
+                with open(env_file, "r") as f:
+                    for line in f:
+                        stripped = line.strip()
+                        if stripped and not stripped.startswith("#") and "=" in stripped:
+                            k = stripped.split("=", 1)[0].strip()
+                            if k in new_vars:
+                                lines.append(f"{k}={new_vars[k]}\n")
+                                existing.add(k)
+                            else:
+                                lines.append(line)
+                        else:
+                            lines.append(line)
+            for k, v in new_vars.items():
+                if k not in existing:
+                    lines.append(f"{k}={v}\n")
+            os.makedirs("/opt/app", exist_ok=True)
+            with open(env_file, "w") as f:
+                f.writelines(lines)
+            os.chmod(env_file, 0o600)
+    except Exception as e:
+        print(f"Error updating env: {e}")
+    finally:
+        if os.path.exists(json_file):
+            os.remove(json_file)
+PYEOF
+)
+
             COMMAND_ID=$(aws ssm send-command \
               --instance-ids "$INSTANCE_ID" \
               --document-name "AWS-RunShellScript" \
-              --comment "Code2Cloud CD: In-Place Refresh backend" \
-              --parameters 'commands=[
-                "ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)",
-                "REGION=us-east-1",
-                "aws ecr get-login-password --region $REGION | docker login --username AWS --password-stdin $ACCOUNT_ID.dkr.ecr.$REGION.amazonaws.com",
-                "docker pull $ACCOUNT_ID.dkr.ecr.$REGION.amazonaws.com/code2cloud-app-backend:latest",
-                "docker stop backend || true",
-                "docker rm backend || true",
-                "docker run -d --name backend --restart always --env-file /opt/app/backend.env -p 80:8000 $ACCOUNT_ID.dkr.ecr.$REGION.amazonaws.com/code2cloud-app-backend:latest"
-              ]' \
+              --comment "Code2Cloud CD: In-Place Refresh backend with updated env vars" \
+              --parameters "commands=[
+                \"ACCOUNT_ID=\$(aws sts get-caller-identity --query Account --output text)\",
+                \"REGION=us-east-1\",
+                \"if [ -n '$ENV_B64' ]; then echo '$ENV_B64' | base64 -d > /tmp/app_env_vars.json && echo '$PY_SCRIPT_B64' | base64 -d > /tmp/sync_env.py && python3 /tmp/sync_env.py backend || true; rm -f /tmp/sync_env.py /tmp/app_env_vars.json; fi\",
+                
+                \"aws ecr get-login-password --region \$REGION | docker login --username AWS --password-stdin \$ACCOUNT_ID.dkr.ecr.\$REGION.amazonaws.com\",
+                \"docker pull \$ACCOUNT_ID.dkr.ecr.\$REGION.amazonaws.com/code2cloud-app-backend:latest\",
+                \"docker stop backend || true\",
+                \"docker rm backend || true\",
+                \"docker run -d --name backend --restart always --env-file /opt/app/backend.env -p 80:8000 \$ACCOUNT_ID.dkr.ecr.\$REGION.amazonaws.com/code2cloud-app-backend:latest\"
+                
+              ]" \
               --query "Command.CommandId" --output text --region us-east-1)
             echo "SSM Command dispatched: $COMMAND_ID. Waiting for execution..."
             aws ssm wait command-executed --command-id "$COMMAND_ID" --instance-id "$INSTANCE_ID" --region us-east-1 || echo "Command dispatched successfully."
@@ -92,6 +140,8 @@ jobs:
       
       
       - name: Refresh frontend Container on EC2 (In-Place via AWS SSM)
+        env:
+          APP_ENV_VARS_JSON: ${{ secrets.APP_ENV_VARS_JSON }}
         run: |
           INSTANCE_ID=$(aws ec2 describe-instances \
             --filters "Name=tag:Name,Values=Code2Cloud-App-frontend" "Name=instance-state-name,Values=running" \
@@ -100,19 +150,65 @@ jobs:
           
           if [ -n "$INSTANCE_ID" ] && [ "$INSTANCE_ID" != "None" ]; then
             echo "Found running instance for frontend: $INSTANCE_ID"
+            
+            ENV_B64=$(echo -n "$APP_ENV_VARS_JSON" | base64 | tr -d '\n')
+            PY_SCRIPT_B64=$(cat <<'PYEOF' | base64 | tr -d '\n'
+import json, os, sys
+comp = sys.argv[1] if len(sys.argv) > 1 else "frontend"
+env_file = f"/opt/app/{comp}.env"
+json_file = "/tmp/app_env_vars.json"
+if os.path.exists(json_file):
+    try:
+        with open(json_file, "r") as f:
+            data = json.load(f)
+        new_vars = data.get(comp, data if not any(isinstance(v, dict) for v in data.values()) else {})
+        if isinstance(new_vars, dict) and new_vars:
+            lines = []
+            existing = set()
+            if os.path.exists(env_file):
+                with open(env_file, "r") as f:
+                    for line in f:
+                        stripped = line.strip()
+                        if stripped and not stripped.startswith("#") and "=" in stripped:
+                            k = stripped.split("=", 1)[0].strip()
+                            if k in new_vars:
+                                lines.append(f"{k}={new_vars[k]}\n")
+                                existing.add(k)
+                            else:
+                                lines.append(line)
+                        else:
+                            lines.append(line)
+            for k, v in new_vars.items():
+                if k not in existing:
+                    lines.append(f"{k}={v}\n")
+            os.makedirs("/opt/app", exist_ok=True)
+            with open(env_file, "w") as f:
+                f.writelines(lines)
+            os.chmod(env_file, 0o600)
+    except Exception as e:
+        print(f"Error updating env: {e}")
+    finally:
+        if os.path.exists(json_file):
+            os.remove(json_file)
+PYEOF
+)
+
             COMMAND_ID=$(aws ssm send-command \
               --instance-ids "$INSTANCE_ID" \
               --document-name "AWS-RunShellScript" \
-              --comment "Code2Cloud CD: In-Place Refresh frontend" \
-              --parameters 'commands=[
-                "ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)",
-                "REGION=us-east-1",
-                "aws ecr get-login-password --region $REGION | docker login --username AWS --password-stdin $ACCOUNT_ID.dkr.ecr.$REGION.amazonaws.com",
-                "docker pull $ACCOUNT_ID.dkr.ecr.$REGION.amazonaws.com/code2cloud-app-frontend:latest",
-                "docker stop frontend || true",
-                "docker rm frontend || true",
-                "docker run -d --name frontend --restart always --env-file /opt/app/frontend.env -p 80:3000 $ACCOUNT_ID.dkr.ecr.$REGION.amazonaws.com/code2cloud-app-frontend:latest"
-              ]' \
+              --comment "Code2Cloud CD: In-Place Refresh frontend with updated env vars" \
+              --parameters "commands=[
+                \"ACCOUNT_ID=\$(aws sts get-caller-identity --query Account --output text)\",
+                \"REGION=us-east-1\",
+                \"if [ -n '$ENV_B64' ]; then echo '$ENV_B64' | base64 -d > /tmp/app_env_vars.json && echo '$PY_SCRIPT_B64' | base64 -d > /tmp/sync_env.py && python3 /tmp/sync_env.py frontend || true; rm -f /tmp/sync_env.py /tmp/app_env_vars.json; fi\",
+                
+                \"aws ecr get-login-password --region \$REGION | docker login --username AWS --password-stdin \$ACCOUNT_ID.dkr.ecr.\$REGION.amazonaws.com\",
+                \"docker pull \$ACCOUNT_ID.dkr.ecr.\$REGION.amazonaws.com/code2cloud-app-frontend:latest\",
+                \"docker stop frontend || true\",
+                \"docker rm frontend || true\",
+                \"docker run -d --name frontend --restart always --env-file /opt/app/frontend.env -p 80:3000 \$ACCOUNT_ID.dkr.ecr.\$REGION.amazonaws.com/code2cloud-app-frontend:latest\"
+                
+              ]" \
               --query "Command.CommandId" --output text --region us-east-1)
             echo "SSM Command dispatched: $COMMAND_ID. Waiting for execution..."
             aws ssm wait command-executed --command-id "$COMMAND_ID" --instance-id "$INSTANCE_ID" --region us-east-1 || echo "Command dispatched successfully."
