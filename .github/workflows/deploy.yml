@@ -1,0 +1,112 @@
+name: Deploy to AWS (Code2Cloud)
+
+on:
+  push:
+    branches:
+      - code2cloud-setup
+  workflow_dispatch:
+    inputs:
+      skip_build:
+        description: 'Skip Docker image build and only apply infrastructure/env updates'
+        required: false
+        default: false
+        type: boolean
+
+jobs:
+  deploy:
+    name: Build & Deploy to AWS
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      # Setup AWS credentials
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-session-token: ${{ secrets.AWS_SESSION_TOKEN }}
+          aws-region: us-east-1
+
+      
+      # Log in and push to Amazon ECR (Default)
+      - name: Login to Amazon ECR
+        if: ${{ github.event_name != 'workflow_dispatch' || !inputs.skip_build }}
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v2
+
+      
+      - name: Build, tag, and push backend to Amazon ECR
+        if: ${{ github.event_name != 'workflow_dispatch' || !inputs.skip_build }}
+        env:
+          ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+          ECR_REPOSITORY: code2cloud-app-backend
+          IMAGE_TAG: ${{ github.sha }}
+        run: |
+          # Create repository if it doesn't exist
+          aws ecr describe-repositories --repository-names $ECR_REPOSITORY || aws ecr create-repository --repository-name $ECR_REPOSITORY
+          
+          docker build -t $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG -t $ECR_REGISTRY/$ECR_REPOSITORY:latest backend
+          docker push $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
+          docker push $ECR_REGISTRY/$ECR_REPOSITORY:latest
+      
+      - name: Build, tag, and push frontend to Amazon ECR
+        if: ${{ github.event_name != 'workflow_dispatch' || !inputs.skip_build }}
+        env:
+          ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+          ECR_REPOSITORY: code2cloud-app-frontend
+          IMAGE_TAG: ${{ github.sha }}
+        run: |
+          # Create repository if it doesn't exist
+          aws ecr describe-repositories --repository-names $ECR_REPOSITORY || aws ecr create-repository --repository-name $ECR_REPOSITORY
+          
+          docker build -t $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG -t $ECR_REGISTRY/$ECR_REPOSITORY:latest frontend
+          docker push $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
+          docker push $ECR_REGISTRY/$ECR_REPOSITORY:latest
+      
+      
+
+      # Setup Terraform and Apply
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: 1.7.0
+
+      # Ensure Terraform Remote State S3 Bucket Exists
+      - name: Configure Terraform Remote State S3 Bucket
+        id: state-bucket
+        run: |
+          ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
+          BUCKET="code2cloud-tfstate-${ACCOUNT_ID}-us-east-1"
+          echo "bucket_name=$BUCKET" >> $GITHUB_OUTPUT
+          
+          if ! aws s3api head-bucket --bucket "$BUCKET" 2>/dev/null; then
+            echo "Creating S3 remote state bucket: $BUCKET"
+            
+            aws s3api create-bucket --bucket "$BUCKET" --region us-east-1 || true
+            
+            aws s3api put-bucket-versioning --bucket "$BUCKET" --versioning-configuration Status=Enabled || true
+            aws s3api put-bucket-encryption --bucket "$BUCKET" --server-side-encryption-configuration '{"Rules":[{"ApplyServerSideEncryptionByDefault":{"SSEAlgorithm":"AES256"}}]}' || true
+          fi
+
+      - name: Terraform Init
+        working-directory: ./terraform
+        run: |
+          terraform init \
+            -backend-config="bucket=${{ steps.state-bucket.outputs.bucket_name }}" \
+            -backend-config="key=code2cloud-app/terraform.tfstate" \
+            -backend-config="region=us-east-1"
+
+      - name: Terraform Plan
+        working-directory: ./terraform
+        env:
+          TF_VAR_app_env_vars: ${{ secrets.APP_ENV_VARS_JSON }}
+        run: terraform plan -no-color
+
+      - name: Terraform Apply
+        working-directory: ./terraform
+        env:
+          TF_VAR_app_env_vars: ${{ secrets.APP_ENV_VARS_JSON }}
+        run: terraform apply -auto-approve -no-color
