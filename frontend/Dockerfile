@@ -1,5 +1,5 @@
-# --- Build Stage ---
-FROM node:18-alpine AS builder
+# Stage 1: Build
+FROM node:22-alpine AS build
 WORKDIR /app
 COPY package*.json ./
 RUN npm ci
@@ -15,5 +15,14 @@ COPY package*.json ./
 RUN npm ci --only=production
 COPY --from=builder /app ./
 
-EXPOSE 3000
-CMD ["sh", "-c", "if npm run | grep -E -q '^[[:space:]]*start'; then npm start; elif npm run | grep -E -q '^[[:space:]]*dev'; then npm run dev -- --host 0.0.0.0; elif npm run | grep -E -q '^[[:space:]]*preview'; then npm run preview -- --host 0.0.0.0; else node index.js || node server.js || node src/index.js || node src/main.js; fi"]
+RUN npm run build
+
+# Stage 2: Serve
+FROM nginx:alpine
+# Copy build artifacts to nginx public html
+COPY --from=build /app/dist /usr/share/nginx/html
+# Custom nginx conf for supporting React Router history API rules maps
+COPY nginx.conf /etc/nginx/conf.d/default.conf
+
+EXPOSE 80 3000
+CMD ["nginx", "-g", "daemon off;"]

@@ -46,16 +46,16 @@ jobs:
       # Log in and push to Google Artifact Registry (GAR) (Default)
       - name: Configure Docker for Google Artifact Registry
         run: |
-          gcloud auth configure-docker us-central1-docker.pkg.dev --quiet
+          gcloud auth configure-docker {{ gcp_region | default('us-central1') }}-docker.pkg.dev --quiet
 
       {% for comp in components %}
       - name: Build and Push {{ comp.name }} to Google Artifact Registry
         env:
-          IMAGE_NAME: us-central1-docker.pkg.dev/{% raw %}${{ secrets.GCP_PROJECT_ID }}{% endraw %}/{{ repo_name | lower }}-repo/{{ repo_name | lower }}-{{ comp.name }}
+          IMAGE_NAME: {{ gcp_region | default('us-central1') }}-docker.pkg.dev/{% raw %}${{ secrets.GCP_PROJECT_ID }}{% endraw %}/{{ repo_name | lower }}-repo/{{ repo_name | lower }}-{{ comp.name }}
           IMAGE_TAG: {% raw %}${{ github.sha }}{% endraw %}
         run: |
           # Create repository if it doesn't exist
-          gcloud artifacts repositories describe {{ repo_name | lower }}-repo --location=us-central1 || gcloud artifacts repositories create {{ repo_name | lower }}-repo --repository-format=docker --location=us-central1
+          gcloud artifacts repositories describe {{ repo_name | lower }}-repo --location={{ gcp_region | default('us-central1') }} || gcloud artifacts repositories create {{ repo_name | lower }}-repo --repository-format=docker --location={{ gcp_region | default('us-central1') }}
           
           docker build -t $IMAGE_NAME:$IMAGE_TAG -t $IMAGE_NAME:latest {{ comp.path }}
           docker push $IMAGE_NAME:$IMAGE_TAG
@@ -69,9 +69,26 @@ jobs:
         with:
           terraform_version: 1.7.0
 
+      # Ensure Terraform Remote State GCS Bucket Exists
+      - name: Configure Terraform Remote State GCS Bucket
+        id: state-bucket
+        run: |
+          PROJECT_ID="{% raw %}${{ secrets.GCP_PROJECT_ID }}{% endraw %}"
+          BUCKET="code2cloud-tfstate-${PROJECT_ID}"
+          echo "bucket_name=$BUCKET" >> $GITHUB_OUTPUT
+          
+          if ! gcloud storage buckets describe "gs://$BUCKET" 2>/dev/null; then
+            echo "Creating GCS state bucket: $BUCKET"
+            gcloud storage buckets create "gs://$BUCKET" --location="{{ gcp_region | default('us-central1') }}" --uniform-bucket-level-access || true
+            gcloud storage buckets update "gs://$BUCKET" --versioning || true
+          fi
+
       - name: Terraform Init
         working-directory: ./terraform
-        run: terraform init
+        run: |
+          terraform init \
+            -backend-config="bucket={% raw %}${{ steps.state-bucket.outputs.bucket_name }}{% endraw %}" \
+            -backend-config="prefix={{ repo_name | lower }}/terraform"
 
       - name: Terraform Plan
         working-directory: ./terraform

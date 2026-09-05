@@ -1,0 +1,52 @@
+name: Destroy GCP Cloud Infrastructure (Teardown)
+
+on:
+  workflow_dispatch:
+    inputs:
+      confirm_destroy:
+        description: 'Type "DESTROY" to confirm permanent deletion of all cloud resources'
+        required: true
+        default: 'DESTROY'
+
+jobs:
+  teardown:
+    name: Teardown GCP Cloud Resources
+    runs-on: ubuntu-latest
+    if: {% raw %}${{ github.event.inputs.confirm_destroy == 'DESTROY' }}{% endraw %}
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      # Authenticate to Google Cloud
+      - name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@v2
+        with:
+          credentials_json: {% raw %}${{ secrets.GCP_SA_KEY }}{% endraw %}
+
+      - name: Set up Cloud SDK
+        uses: google-github-actions/setup-gcloud@v2
+
+      # Setup Terraform
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: 1.7.0
+
+      # Resolve Terraform Remote State GCS Bucket
+      - name: Resolve Terraform Remote State GCS Bucket
+        id: state-bucket
+        run: |
+          PROJECT_ID="{% raw %}${{ secrets.GCP_PROJECT_ID }}{% endraw %}"
+          BUCKET="code2cloud-tfstate-${PROJECT_ID}"
+          echo "bucket_name=$BUCKET" >> $GITHUB_OUTPUT
+
+      - name: Terraform Init
+        working-directory: ./terraform
+        run: |
+          terraform init \
+            -backend-config="bucket={% raw %}${{ steps.state-bucket.outputs.bucket_name }}{% endraw %}" \
+            -backend-config="prefix={{ repo_name | lower }}/terraform"
+
+      - name: Terraform Destroy
+        working-directory: ./terraform
+        run: terraform destroy -auto-approve -no-color

@@ -6,6 +6,16 @@ class GenerateRequest(BaseModel):
     cloud: str
     techStack: Optional[Dict[str, Any]] = None
     registryType: Optional[str] = 'native'
+    region: Optional[str] = None
+    environment: Optional[str] = 'production'
+    storageSizeGb: Optional[int] = 20
+    storageType: Optional[str] = 'gp3'
+    dbEnabled: Optional[bool] = False
+    dbEngine: Optional[str] = 'postgres'
+    dbInstanceClass: Optional[str] = 'db.t3.micro'
+    dbAllocatedStorage: Optional[int] = 20
+    swapEnabled: Optional[bool] = False
+    swapSizeGb: Optional[int] = 2
     awsComputeChoice: Optional[str] = 'ec2'
     awsInstanceType: Optional[str] = 't3.micro'
     awsUseEip: Optional[bool] = False
@@ -18,9 +28,18 @@ class GenerateRequest(BaseModel):
 class UpdateCodeRequest(BaseModel):
     generated_code: Dict[str, str]
 
+class SecretsPayload(BaseModel):
+    push_to_github: bool = True
+    provider: str = "aws"
+    credential_id: Optional[str] = None
+    manual_data: Optional[Dict[str, Any]] = None
+    save_to_profile: bool = False
+    profile_name: Optional[str] = None
+
 class CommitRequest(BaseModel):
     branch: Optional[str] = None
     commit_message: Optional[str] = None
+    secrets_payload: Optional[SecretsPayload] = None
 
 class PushSecretsRequest(BaseModel):
     credential_ids: list[str]

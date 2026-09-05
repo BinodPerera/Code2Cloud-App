@@ -222,3 +222,18 @@
     box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);
   }
 }
+
+/* Service Setup 2-Column Responsive Layout */
+.service-setup-grid {
+  display: grid;
+  grid-template-columns: minmax(360px, 420px) 1fr;
+  gap: 2rem;
+  align-items: start;
+  width: 100%;
+}
+
+@media (max-width: 1024px) {
+  .service-setup-grid {
+    grid-template-columns: 1fr;
+  }
+}

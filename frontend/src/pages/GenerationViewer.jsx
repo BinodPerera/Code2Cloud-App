@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { FileCode, Folder, Download, Save, ArrowLeft, Check, AlertCircle, RefreshCw, Layers, GitCommit, GitBranch, Database, ShieldCheck, Play, Lock, ExternalLink, CloudLightning } from 'lucide-react';
+import { FileCode, Folder, Download, Save, ArrowLeft, Check, AlertCircle, RefreshCw, Layers, GitCommit, GitBranch, Database, ShieldCheck, Play, Lock, ExternalLink, CloudLightning, Key, Shield, Globe, Zap, Trash2 } from 'lucide-react';
 import { apiClient } from '../utils/api';
 
 function GenerationViewer() {
@@ -44,6 +44,15 @@ function GenerationViewer() {
   const [gcpUseStaticIp, setGcpUseStaticIp] = useState(false);
   const [componentConfigs, setComponentConfigs] = useState({});
 
+  // Advanced Infrastructure states
+  const [genRegion, setGenRegion] = useState('');
+  const [genEnv, setGenEnv] = useState('production');
+  const [genStorage, setGenStorage] = useState(20);
+  const [genSwapEnabled, setGenSwapEnabled] = useState(false);
+  const [genSwapSizeGb, setGenSwapSizeGb] = useState(2);
+  const [genDbEnabled, setGenDbEnabled] = useState(false);
+  const [genDbEngine, setGenDbEngine] = useState('postgres');
+
   const [pushingSecrets, setPushingSecrets] = useState(false);
   const [pushSuccess, setPushSuccess] = useState(false);
   const [pushError, setPushError] = useState('');
@@ -60,6 +69,27 @@ function GenerationViewer() {
   const [commitResult, setCommitResult] = useState(null);
   const [commitError, setCommitError] = useState('');
 
+  // Automated GitHub Actions Cloud Secrets configuration states
+  const [pushSecretsToGitHub, setPushSecretsToGitHub] = useState(true);
+  const [secretsSource, setSecretsSource] = useState('saved'); // 'saved' | 'manual'
+  const [manualAccessKey, setManualAccessKey] = useState('');
+  const [manualSecretKey, setManualSecretKey] = useState('');
+  const [manualRegion, setManualRegion] = useState('');
+  const [manualSessionToken, setManualSessionToken] = useState('');
+  const [manualGcpSaKey, setManualGcpSaKey] = useState('');
+  const [manualGcpProjectId, setManualGcpProjectId] = useState('');
+  const [manualDockerUser, setManualDockerUser] = useState('');
+  const [manualDockerPass, setManualDockerPass] = useState('');
+  const [saveToProfile, setSaveToProfile] = useState(true);
+  const [profileName, setProfileName] = useState('');
+
+  // Teardown Infrastructure (terraform destroy) states
+  const [destroyModalOpen, setDestroyModalOpen] = useState(false);
+  const [destroyConfirmInput, setDestroyConfirmInput] = useState('');
+  const [destroying, setDestroying] = useState(false);
+  const [destroyError, setDestroyError] = useState('');
+  const [destroySuccess, setDestroySuccess] = useState(false);
+
   const getOwnerAndRepo = () => {
     if (!repoUrl) return { owner: '', repo: '' };
     const cleanUrl = repoUrl.replace("https://github.com/", "").replace("http://github.com/", "");
@@ -70,16 +100,79 @@ function GenerationViewer() {
     };
   };
 
+  const handleDestroy = async (e) => {
+    e.preventDefault();
+    if (destroyConfirmInput.trim() !== 'DESTROY') return;
+
+    try {
+      setDestroying(true);
+      setDestroyError('');
+      const res = await apiClient.post(`/repos/generations/${generationId}/destroy`, {
+        branch: commitBranch || 'code2cloud-setup'
+      });
+
+      if (!res.ok) {
+        const errData = await res.json();
+        throw new Error(errData.detail || 'Failed to dispatch teardown workflow.');
+      }
+
+      setDestroySuccess(true);
+      setPolling(true);
+      setTimeout(() => {
+        fetchWorkflowStatus();
+      }, 2000);
+    } catch (err) {
+      setDestroyError(err.message || 'An error occurred while triggering teardown.');
+    } finally {
+      setDestroying(false);
+    }
+  };
+
   const handleCommit = async (e) => {
     e.preventDefault();
     try {
       setCommitting(true);
       setCommitError('');
       setCommitResult(null);
+
+      let secretsPayload = null;
+      if (pushSecretsToGitHub) {
+        const cloudProv = (cloud || 'aws').toLowerCase();
+        let manualData = null;
+        
+        if (secretsSource === 'manual') {
+          if (cloudProv === 'aws') {
+            manualData = {
+              aws_access_key_id: manualAccessKey.trim(),
+              aws_secret_access_key: manualSecretKey.trim(),
+              aws_region: manualRegion.trim() || genRegion || 'us-east-1'
+            };
+            if (manualSessionToken.trim()) {
+              manualData.aws_session_token = manualSessionToken.trim();
+            }
+          } else if (cloudProv === 'gcp') {
+            manualData = {
+              gcp_sa_key: manualGcpSaKey.trim(),
+              gcp_project_id: manualGcpProjectId.trim(),
+              gcp_region: manualRegion.trim() || genRegion || 'us-central1'
+            };
+          }
+        }
+
+        secretsPayload = {
+          push_to_github: true,
+          provider: cloudProv,
+          credential_id: secretsSource === 'saved' ? selectedCloudCred : null,
+          manual_data: manualData,
+          save_to_profile: secretsSource === 'manual' && saveToProfile,
+          profile_name: profileName.trim() || `${(cloud || 'Cloud').toUpperCase()} Deployment Credentials`
+        };
+      }
       
       const res = await apiClient.post(`/repos/generations/${generationId}/commit`, {
         branch: commitBranch,
-        commit_message: commitMessage
+        commit_message: commitMessage,
+        secrets_payload: secretsPayload
       });
       
       if (!res.ok) {
@@ -169,6 +262,13 @@ function GenerationViewer() {
         cloud,
         techStack: null,
         registryType: regType,
+        region: genRegion,
+        environment: genEnv,
+        storageSizeGb: genStorage,
+        swapEnabled: genSwapEnabled,
+        swapSizeGb: genSwapSizeGb,
+        dbEnabled: genDbEnabled,
+        dbEngine: genDbEngine,
         awsComputeChoice,
         awsInstanceType,
         awsUseEip,
@@ -223,6 +323,13 @@ function GenerationViewer() {
         setCloud(data.cloud || '');
         setServiceId(data.service_id || '');
         setRegistryType(data.registry_type || 'native');
+        setGenRegion(data.region || (data.cloud?.toLowerCase() === 'aws' ? 'us-east-1' : 'us-central1'));
+        setGenEnv(data.environment || 'production');
+        setGenStorage(data.storage_size_gb || 20);
+        setGenSwapEnabled(data.swap_enabled || false);
+        setGenSwapSizeGb(data.swap_size_gb || 2);
+        setGenDbEnabled(data.db_enabled || false);
+        setGenDbEngine(data.db_engine || 'postgres');
         setAwsComputeChoice(data.aws_compute_choice || 'ec2');
         setAwsInstanceType(data.aws_instance_type || 't3.micro');
         setAwsUseEip(data.aws_use_eip || false);
@@ -774,6 +881,18 @@ function GenerationViewer() {
 
             <hr style={{ border: 'none', borderTop: '2px solid var(--c2c-border)', margin: 0 }} />
 
+            {/* Infrastructure Specs Summary */}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', background: 'rgba(255,255,255,0.02)', padding: '0.85rem', borderRadius: '12px', border: '1px solid var(--c2c-border)' }}>
+              <span style={{ fontSize: '0.7rem', fontWeight: '700', color: '#a2a2b5', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Infrastructure Specs</span>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.4rem', fontSize: '0.75rem' }}>
+                <div><span style={{ color: '#6e7191' }}>Region:</span> <strong style={{ color: '#fff' }}>{genRegion}</strong></div>
+                <div><span style={{ color: '#6e7191' }}>Env:</span> <strong style={{ color: '#fff', textTransform: 'capitalize' }}>{genEnv}</strong></div>
+                <div><span style={{ color: '#6e7191' }}>Storage:</span> <strong style={{ color: '#fff' }}>{genStorage} GB SSD</strong></div>
+                <div><span style={{ color: '#6e7191' }}>Swap:</span> <strong style={{ color: genSwapEnabled ? '#10B981' : '#a2a2b5' }}>{genSwapEnabled ? `${genSwapSizeGb} GB` : 'None'}</strong></div>
+                <div><span style={{ color: '#6e7191' }}>Database:</span> <strong style={{ color: genDbEnabled ? '#10B981' : '#a2a2b5' }}>{genDbEnabled ? genDbEngine.toUpperCase() : 'None'}</strong></div>
+              </div>
+            </div>
+
             {/* Registry Selection */}
             <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
               <label style={{ fontSize: '0.75rem', fontWeight: '600', color: '#a2a2b5' }}>CONTAINER REGISTRY</label>
@@ -973,11 +1092,271 @@ function GenerationViewer() {
                 </div>
               )}
             </div>
+
+            {/* Danger Zone: Cloud Teardown */}
+            <div style={{
+              background: 'linear-gradient(135deg, rgba(255, 107, 107, 0.04) 0%, rgba(255, 107, 107, 0.01) 100%)',
+              border: '1.5px solid rgba(255, 107, 107, 0.25)',
+              borderRadius: '20px',
+              padding: '1.25rem',
+              display: 'flex',
+              flexDirection: 'column',
+              gap: '0.8rem'
+            }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', color: '#ff6b6b' }}>
+                <Trash2 size={16} />
+                <span style={{ fontSize: '0.88rem', fontWeight: '700' }}>Teardown Cloud Resources</span>
+              </div>
+              <p style={{ margin: 0, fontSize: '0.78rem', color: '#a2a2b5', lineHeight: '1.4' }}>
+                Run <code style={{ color: '#ff8585', background: 'rgba(255,107,107,0.1)', padding: '0.1rem 0.3rem', borderRadius: '4px' }}>terraform destroy</code> via GitHub Actions to delete all provisioned cloud resources and eliminate billing.
+              </p>
+              <button
+                onClick={() => {
+                  setDestroyModalOpen(true);
+                  setDestroyConfirmInput('');
+                  setDestroyError('');
+                  setDestroySuccess(false);
+                }}
+                style={{
+                  background: 'rgba(255, 107, 107, 0.1)',
+                  border: '1px solid rgba(255, 107, 107, 0.4)',
+                  color: '#ff8585',
+                  padding: '0.55rem 0.8rem',
+                  borderRadius: '10px',
+                  fontSize: '0.8rem',
+                  fontWeight: '600',
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  gap: '0.4rem',
+                  transition: 'all 0.2s'
+                }}
+              >
+                <Trash2 size={14} />
+                Destroy Infrastructure
+              </button>
+            </div>
+
           </div>
         )}
       </div>
       
-      {/* Premium Glassmorphic Commit Modal */}
+      {/* Safety-First Teardown Destroy Modal */}
+      {destroyModalOpen && (
+        <div style={{
+          position: 'fixed',
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: 0,
+          background: 'rgba(5, 5, 10, 0.88)',
+          backdropFilter: 'blur(16px)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          zIndex: 9999,
+          padding: '1.5rem'
+        }}>
+          <div style={{
+            width: '100%',
+            maxWidth: '500px',
+            background: 'linear-gradient(135deg, rgba(35, 15, 15, 0.95) 0%, rgba(20, 10, 12, 0.98) 100%)',
+            border: '2px solid rgba(255, 107, 107, 0.35)',
+            borderRadius: '24px',
+            boxShadow: '0 25px 60px rgba(0, 0, 0, 0.85)',
+            padding: '2rem',
+            position: 'relative',
+            display: 'flex',
+            flexDirection: 'column',
+            gap: '1.25rem'
+          }}>
+            
+            {/* Modal Header */}
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+              <div>
+                <h3 style={{ margin: 0, fontSize: '1.3rem', fontWeight: '700', color: '#ff6b6b', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                  <Trash2 size={22} />
+                  Destroy Cloud Infrastructure
+                </h3>
+                <p style={{ margin: '0.35rem 0 0 0', color: '#a2a2b5', fontSize: '0.85rem' }}>
+                  Permanently delete all provisioned cloud resources.
+                </p>
+              </div>
+              <button
+                onClick={() => setDestroyModalOpen(false)}
+                style={{ background: 'transparent', border: 'none', color: '#a2a2b5', fontSize: '1.2rem', cursor: 'pointer' }}
+              >
+                ✕
+              </button>
+            </div>
+
+            {destroySuccess ? (
+              <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', textAlign: 'center', gap: '1rem', padding: '1rem 0' }}>
+                <div style={{ width: '56px', height: '56px', borderRadius: '50%', background: 'rgba(255, 107, 107, 0.15)', border: '2px solid #ff6b6b', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                  <Check size={28} style={{ color: '#ff6b6b' }} />
+                </div>
+                <div>
+                  <h4 style={{ color: '#fff', fontSize: '1.15rem', fontWeight: '600', margin: 0 }}>Teardown Pipeline Dispatched!</h4>
+                  <p style={{ color: '#a2a2b5', fontSize: '0.85rem', margin: '0.4rem 0 0 0' }}>
+                    The <code style={{ color: '#ff8585' }}>destroy.yml</code> workflow was triggered on GitHub Actions. All cloud resources will be safely deleted.
+                  </p>
+                </div>
+                <button
+                  onClick={() => setDestroyModalOpen(false)}
+                  style={{
+                    background: 'rgba(255,255,255,0.05)',
+                    border: '1.5px solid var(--c2c-border)',
+                    color: '#fff',
+                    padding: '0.65rem 1.5rem',
+                    borderRadius: '10px',
+                    fontWeight: '600',
+                    cursor: 'pointer',
+                    marginTop: '0.5rem'
+                  }}
+                >
+                  Close & Monitor Status
+                </button>
+              </div>
+            ) : (
+              <form onSubmit={handleDestroy} style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+                
+                {destroyError && (
+                  <div style={{
+                    display: 'flex',
+                    flexDirection: 'column',
+                    gap: '0.6rem',
+                    background: 'rgba(255, 107, 107, 0.12)',
+                    border: '1.5px solid rgba(255, 107, 107, 0.4)',
+                    color: '#ff8585',
+                    padding: '0.85rem 1rem',
+                    borderRadius: '12px',
+                    fontSize: '0.82rem'
+                  }}>
+                    <div style={{ display: 'flex', alignItems: 'flex-start', gap: '0.5rem' }}>
+                      <AlertCircle size={16} style={{ flexShrink: 0, marginTop: '0.15rem' }} />
+                      <span>{destroyError}</span>
+                    </div>
+                    {repoUrl && (
+                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', borderTop: '1px solid rgba(255,107,107,0.25)', paddingTop: '0.5rem', marginTop: '0.2rem' }}>
+                        <span style={{ fontSize: '0.75rem', color: '#e2e2e9' }}>You can also run teardown directly on GitHub:</span>
+                        <a
+                          href={`https://github.com/${getOwnerAndRepo().owner}/${getOwnerAndRepo().repo}/actions/workflows/destroy.yml`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          style={{
+                            color: '#fff',
+                            background: 'rgba(255, 107, 107, 0.25)',
+                            padding: '0.35rem 0.7rem',
+                            borderRadius: '6px',
+                            fontSize: '0.75rem',
+                            textDecoration: 'none',
+                            fontWeight: '600',
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '0.3rem'
+                          }}
+                        >
+                          Run on GitHub <ExternalLink size={12} />
+                        </a>
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                <div style={{
+                  background: 'rgba(255, 107, 107, 0.06)',
+                  border: '1px solid rgba(255, 107, 107, 0.25)',
+                  borderRadius: '12px',
+                  padding: '0.9rem 1rem',
+                  fontSize: '0.82rem',
+                  color: '#e2e2e9',
+                  lineHeight: '1.45'
+                }}>
+                  <strong style={{ color: '#ff6b6b' }}>Warning:</strong> This will execute <code style={{ color: '#ff8585' }}>terraform destroy</code> to terminate all compute instances, unmount persistent SSD storage, and delete managed databases. This action cannot be undone.
+                </div>
+
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
+                  <label style={{ fontSize: '0.8rem', fontWeight: '600', color: '#a2a2b5' }}>
+                    Type <strong style={{ color: '#ff6b6b' }}>DESTROY</strong> to confirm:
+                  </label>
+                  <input
+                    type="text"
+                    value={destroyConfirmInput}
+                    onChange={(e) => setDestroyConfirmInput(e.target.value)}
+                    placeholder="DESTROY"
+                    required
+                    style={{
+                      background: '#0f0f15',
+                      border: '1.5px solid rgba(255, 107, 107, 0.4)',
+                      color: '#fff',
+                      padding: '0.65rem 0.85rem',
+                      borderRadius: '10px',
+                      fontSize: '0.9rem',
+                      outline: 'none',
+                      fontFamily: 'monospace'
+                    }}
+                  />
+                </div>
+
+                <div style={{ display: 'flex', gap: '0.8rem', marginTop: '0.5rem' }}>
+                  <button
+                    type="button"
+                    disabled={destroying}
+                    onClick={() => setDestroyModalOpen(false)}
+                    style={{
+                      flex: 1,
+                      background: 'rgba(255, 255, 255, 0.03)',
+                      border: '1.5px solid var(--c2c-border)',
+                      color: '#a2a2b5',
+                      padding: '0.7rem',
+                      borderRadius: '10px',
+                      fontWeight: '600',
+                      cursor: destroying ? 'not-allowed' : 'pointer'
+                    }}
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={destroying || destroyConfirmInput.trim() !== 'DESTROY'}
+                    style={{
+                      flex: 1.3,
+                      background: destroyConfirmInput.trim() === 'DESTROY' ? 'linear-gradient(135deg, #ff6b6b, #e05252)' : 'rgba(255, 107, 107, 0.15)',
+                      border: 'none',
+                      color: destroyConfirmInput.trim() === 'DESTROY' ? '#fff' : '#6e7191',
+                      padding: '0.7rem',
+                      borderRadius: '10px',
+                      fontWeight: '700',
+                      cursor: destroying || destroyConfirmInput.trim() !== 'DESTROY' ? 'not-allowed' : 'pointer',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      gap: '0.5rem',
+                      boxShadow: destroyConfirmInput.trim() === 'DESTROY' ? '0 4px 15px rgba(255, 107, 107, 0.3)' : 'none'
+                    }}
+                  >
+                    {destroying ? (
+                      <>
+                        <RefreshCw size={16} className="loading-spinner" />
+                        Dispatching Teardown...
+                      </>
+                    ) : (
+                      <>
+                        <Trash2 size={16} />
+                        Confirm Teardown
+                      </>
+                    )}
+                  </button>
+                </div>
+              </form>
+            )}
+
+          </div>
+        </div>
+      )}
+
+      {/* Premium Glassmorphic Commit & Secrets Modal */}
       {commitModalOpen && (
         <div style={{
           position: 'fixed',
@@ -985,51 +1364,104 @@ function GenerationViewer() {
           left: 0,
           right: 0,
           bottom: 0,
-          background: 'rgba(5, 5, 10, 0.85)',
+          background: 'rgba(5, 5, 10, 0.88)',
           backdropFilter: 'blur(16px)',
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'center',
           zIndex: 9999,
-          padding: '2rem'
+          padding: '1.5rem',
+          overflowY: 'auto'
         }}>
           <div style={{
             width: '100%',
-            maxWidth: '520px',
-            background: 'linear-gradient(135deg, rgba(255,255,255,0.03) 0%, rgba(255,255,255,0.01) 100%)',
+            maxWidth: '580px',
+            maxHeight: '90vh',
+            overflowY: 'auto',
+            background: 'linear-gradient(135deg, rgba(25, 25, 35, 0.95) 0%, rgba(15, 15, 22, 0.98) 100%)',
             border: '2px solid var(--c2c-border)',
             borderRadius: '24px',
-            boxShadow: '0 20px 50px rgba(0, 0, 0, 0.6)',
-            padding: '2.5rem',
+            boxShadow: '0 25px 60px rgba(0, 0, 0, 0.8)',
+            padding: '2rem',
             position: 'relative',
             display: 'flex',
             flexDirection: 'column',
-            gap: '1.5rem'
+            gap: '1.25rem'
           }}>
             
             {/* Modal Title */}
-            <div>
-              <h3 style={{ margin: 0, fontSize: '1.4rem', fontWeight: '700', color: '#fff', display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
-                <GitBranch style={{ color: 'var(--c2c-green)' }} />
-                Commit to GitHub
-              </h3>
-              <p style={{ margin: '0.4rem 0 0 0', color: '#a2a2b5', fontSize: '0.85rem' }}>
-                Overlaying your configurations directly onto your repository.
-              </p>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+              <div>
+                <h3 style={{ margin: 0, fontSize: '1.35rem', fontWeight: '700', color: '#fff', display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
+                  <GitBranch style={{ color: 'var(--c2c-green)' }} />
+                  Commit & Deploy to GitHub
+                </h3>
+                <p style={{ margin: '0.35rem 0 0 0', color: '#a2a2b5', fontSize: '0.85rem' }}>
+                  Overlay configurations and automatically provision GitHub Actions secrets.
+                </p>
+              </div>
+              <button
+                onClick={() => {
+                  setCommitModalOpen(false);
+                  setCommitResult(null);
+                  setCommitError('');
+                }}
+                style={{
+                  background: 'rgba(255, 255, 255, 0.05)',
+                  border: 'none',
+                  color: '#a2a2b5',
+                  width: '32px',
+                  height: '32px',
+                  borderRadius: '50%',
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  fontSize: '1.1rem'
+                }}
+              >
+                ✕
+              </button>
             </div>
 
             {commitResult ? (
               // Success View
               <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', textAlign: 'center', gap: '1.2rem', padding: '1rem 0' }}>
-                <div style={{ width: '56px', height: '56px', borderRadius: '50%', background: 'rgba(16, 185, 129, 0.1)', border: '2px solid #10B981', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                  <Check size={28} style={{ color: '#10B981' }} />
+                <div style={{ width: '60px', height: '60px', borderRadius: '50%', background: 'rgba(16, 185, 129, 0.12)', border: '2px solid #10B981', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                  <Check size={32} style={{ color: '#10B981' }} />
                 </div>
                 <div>
-                  <h4 style={{ color: '#fff', fontSize: '1.15rem', fontWeight: '600', margin: 0 }}>Commit Published Successfully!</h4>
+                  <h4 style={{ color: '#fff', fontSize: '1.2rem', fontWeight: '700', margin: 0 }}>Commit Published Successfully!</h4>
                   <p style={{ color: '#a2a2b5', fontSize: '0.85rem', margin: '0.5rem 0 0 0' }}>
-                    Your generated files have been committed to the <code style={{ background: 'rgba(255,255,255,0.06)', padding: '0.2rem 0.4rem', borderRadius: '4px', color: 'var(--c2c-green)' }}>{commitResult.branch}</code> branch.
+                    Configurations committed to the <code style={{ background: 'rgba(255,255,255,0.06)', padding: '0.2rem 0.45rem', borderRadius: '6px', color: 'var(--c2c-green)', fontWeight: '600' }}>{commitResult.branch}</code> branch.
                   </p>
                 </div>
+
+                {commitResult.secrets_pushed && commitResult.pushed_secrets && commitResult.pushed_secrets.length > 0 && (
+                  <div style={{
+                    width: '100%',
+                    background: 'rgba(16, 185, 129, 0.06)',
+                    border: '1.5px solid rgba(16, 185, 129, 0.3)',
+                    borderRadius: '14px',
+                    padding: '1rem',
+                    textAlign: 'left',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    gap: '0.6rem'
+                  }}>
+                    <span style={{ color: '#10B981', fontSize: '0.85rem', fontWeight: '600', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+                      <ShieldCheck size={16} />
+                      Encrypted & Pushed to GitHub Actions Secrets:
+                    </span>
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.4rem' }}>
+                      {commitResult.pushed_secrets.map((secName) => (
+                        <span key={secName} style={{ background: 'rgba(16, 185, 129, 0.15)', color: '#fff', padding: '0.25rem 0.6rem', borderRadius: '6px', fontSize: '0.75rem', fontFamily: 'monospace', fontWeight: '600' }}>
+                          ✓ {secName}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                )}
                 
                 <div style={{ display: 'flex', width: '100%', gap: '1rem', marginTop: '0.5rem' }}>
                   <a
@@ -1041,7 +1473,7 @@ function GenerationViewer() {
                       textAlign: 'center',
                       background: 'linear-gradient(135deg, var(--c2c-green), var(--c2c-green-hover))',
                       color: '#05050a',
-                      padding: '0.75rem',
+                      padding: '0.8rem',
                       borderRadius: '12px',
                       fontWeight: '700',
                       textDecoration: 'none',
@@ -1061,7 +1493,7 @@ function GenerationViewer() {
                       background: 'rgba(255,255,255,0.05)',
                       border: '2px solid var(--c2c-border)',
                       color: '#fff',
-                      padding: '0.75rem',
+                      padding: '0.8rem',
                       borderRadius: '12px',
                       fontWeight: '600',
                       cursor: 'pointer'
@@ -1092,59 +1524,294 @@ function GenerationViewer() {
                   </div>
                 )}
 
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
-                  <label style={{ fontSize: '0.8rem', fontWeight: '600', color: '#a2a2b5' }}>TARGET BRANCH</label>
-                  <input
-                    type="text"
-                    value={commitBranch}
-                    onChange={(e) => setCommitBranch(e.target.value)}
-                    placeholder="e.g. code2cloud-setup"
-                    required
-                    style={{
-                    background: 'var(--c2c-surface)',
-                    border: '2px solid var(--c2c-border)',
-                    color: '#fff',
-                    padding: '0.75rem 1rem',
-                    borderRadius: '12px',
-                    fontSize: '0.9rem',
-                    outline: 'none',
-                    transition: 'border-color 0.2s'
-                  }}
-                  onFocus={(e) => e.target.style.borderColor = 'var(--c2c-green)'}
-                  onBlur={(e) => e.target.style.borderColor = 'var(--c2c-border)'}
-                />
-                <span style={{ fontSize: '0.75rem', color: 'var(--c2c-text-muted)' }}>
-                  If the branch does not exist, it will be automatically created off your default branch.
-                  </span>
+                {/* Branch & Message Grid */}
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '0.35rem' }}>
+                    <label style={{ fontSize: '0.8rem', fontWeight: '600', color: '#a2a2b5' }}>TARGET BRANCH</label>
+                    <input
+                      type="text"
+                      value={commitBranch}
+                      onChange={(e) => setCommitBranch(e.target.value)}
+                      placeholder="e.g. code2cloud-setup"
+                      required
+                      style={{
+                        background: 'var(--c2c-surface)',
+                        border: '1.5px solid var(--c2c-border)',
+                        color: '#fff',
+                        padding: '0.65rem 0.85rem',
+                        borderRadius: '10px',
+                        fontSize: '0.85rem',
+                        outline: 'none'
+                      }}
+                    />
+                  </div>
+
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '0.35rem' }}>
+                    <label style={{ fontSize: '0.8rem', fontWeight: '600', color: '#a2a2b5' }}>COMMIT MESSAGE</label>
+                    <input
+                      type="text"
+                      value={commitMessage}
+                      onChange={(e) => setCommitMessage(e.target.value)}
+                      placeholder="e.g. ci: add cloud setup"
+                      required
+                      style={{
+                        background: 'var(--c2c-surface)',
+                        border: '1.5px solid var(--c2c-border)',
+                        color: '#fff',
+                        padding: '0.65rem 0.85rem',
+                        borderRadius: '10px',
+                        fontSize: '0.85rem',
+                        outline: 'none'
+                      }}
+                    />
+                  </div>
                 </div>
 
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
-                  <label style={{ fontSize: '0.8rem', fontWeight: '600', color: '#a2a2b5' }}>COMMIT MESSAGE</label>
-                  <textarea
-                    value={commitMessage}
-                    onChange={(e) => setCommitMessage(e.target.value)}
-                    placeholder="Describe your configurations..."
-                    required
-                    rows={3}
-                    style={{
-                    background: 'var(--c2c-surface)',
-                    border: '2px solid var(--c2c-border)',
-                    color: '#fff',
-                    padding: '0.75rem 1rem',
-                    borderRadius: '12px',
-                    fontSize: '0.9rem',
-                    outline: 'none',
-                    resize: 'none',
-                    fontFamily: 'sans-serif',
-                    transition: 'border-color 0.2s'
-                  }}
-                  onFocus={(e) => e.target.style.borderColor = 'var(--c2c-green)'}
-                  onBlur={(e) => e.target.style.borderColor = 'var(--c2c-border)'}
-                  />
+                {/* Cloud Secrets Setup Section */}
+                <div style={{
+                  background: 'rgba(0, 0, 0, 0.25)',
+                  border: pushSecretsToGitHub ? '1.5px solid rgba(16, 185, 129, 0.35)' : '1.5px solid var(--c2c-border)',
+                  borderRadius: '16px',
+                  padding: '1.1rem',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: '0.9rem',
+                  transition: 'all 0.2s'
+                }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                      <Key size={17} style={{ color: pushSecretsToGitHub ? '#10B981' : '#a2a2b5' }} />
+                      <div>
+                        <span style={{ color: '#fff', fontSize: '0.9rem', fontWeight: '600' }}>GitHub Actions Cloud Secrets</span>
+                        <span style={{ display: 'block', color: '#a2a2b5', fontSize: '0.75rem' }}>
+                          Push credentials directly to GitHub repository secrets
+                        </span>
+                      </div>
+                    </div>
+                    <input
+                      type="checkbox"
+                      id="pushSecretsToggle"
+                      checked={pushSecretsToGitHub}
+                      onChange={(e) => setPushSecretsToGitHub(e.target.checked)}
+                      style={{ width: '18px', height: '18px', cursor: 'pointer', accentColor: '#10B981' }}
+                    />
+                  </div>
+
+                  {pushSecretsToGitHub && (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.9rem', borderTop: '1px solid rgba(255,255,255,0.06)', paddingTop: '0.8rem' }}>
+                      
+                      {/* Segmented Mode Selector: Saved vs Manual */}
+                      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.5rem', background: 'rgba(255,255,255,0.02)', padding: '0.25rem', borderRadius: '10px', border: '1px solid var(--c2c-border)' }}>
+                        <button
+                          type="button"
+                          onClick={() => setSecretsSource('saved')}
+                          style={{
+                            background: secretsSource === 'saved' ? 'var(--c2c-selected-bg)' : 'transparent',
+                            border: secretsSource === 'saved' ? '1.5px solid #10B981' : 'none',
+                            color: secretsSource === 'saved' ? '#10B981' : '#a2a2b5',
+                            padding: '0.45rem',
+                            borderRadius: '8px',
+                            fontSize: '0.8rem',
+                            fontWeight: '600',
+                            cursor: 'pointer',
+                            transition: 'all 0.2s'
+                          }}
+                        >
+                          Use Saved Profile
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setSecretsSource('manual')}
+                          style={{
+                            background: secretsSource === 'manual' ? 'var(--c2c-selected-bg)' : 'transparent',
+                            border: secretsSource === 'manual' ? '1.5px solid #10B981' : 'none',
+                            color: secretsSource === 'manual' ? '#10B981' : '#a2a2b5',
+                            padding: '0.45rem',
+                            borderRadius: '8px',
+                            fontSize: '0.8rem',
+                            fontWeight: '600',
+                            cursor: 'pointer',
+                            transition: 'all 0.2s'
+                          }}
+                        >
+                          Enter Credentials Manually
+                        </button>
+                      </div>
+
+                      {/* Saved Profile Mode */}
+                      {secretsSource === 'saved' && (
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                          <label style={{ color: '#fff', fontSize: '0.8rem', fontWeight: '500' }}>Select Saved Cloud Account</label>
+                          {savedCredentials.filter(c => c.provider === (cloud || 'aws').toLowerCase()).length > 0 ? (
+                            <select
+                              value={selectedCloudCred}
+                              onChange={(e) => setSelectedCloudCred(e.target.value)}
+                              style={{ background: '#0f0f15', border: '1.5px solid var(--c2c-border)', borderRadius: '10px', color: '#fff', padding: '0.6rem', fontSize: '0.85rem', outline: 'none', cursor: 'pointer' }}
+                            >
+                              {savedCredentials
+                                .filter(c => c.provider === (cloud || 'aws').toLowerCase())
+                                .map((cred) => (
+                                  <option key={cred.credential_id} value={cred.credential_id}>
+                                    {cred.name} ({cred.provider.toUpperCase()} • {cred.data?.aws_access_key_id || cred.data?.gcp_project_id || 'Configured'})
+                                  </option>
+                                ))}
+                            </select>
+                          ) : (
+                            <div style={{ padding: '0.75rem', background: 'rgba(255,255,255,0.02)', border: '1px dashed var(--c2c-border)', borderRadius: '10px', fontSize: '0.8rem', color: '#a2a2b5', textAlign: 'center' }}>
+                              No saved {(cloud || 'AWS').toUpperCase()} credentials found.
+                              <button
+                                type="button"
+                                onClick={() => setSecretsSource('manual')}
+                                style={{ display: 'block', margin: '0.4rem auto 0 auto', background: 'transparent', border: 'none', color: '#10B981', cursor: 'pointer', fontWeight: '600', fontSize: '0.8rem', textDecoration: 'underline' }}
+                              >
+                                Click here to enter credentials manually
+                              </button>
+                            </div>
+                          )}
+                        </div>
+                      )}
+
+                      {/* Manual Entry Mode */}
+                      {secretsSource === 'manual' && (
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+                          {(cloud || 'aws').toLowerCase() === 'aws' ? (
+                            <>
+                              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.3rem' }}>
+                                <label style={{ color: '#fff', fontSize: '0.78rem', fontWeight: '600' }}>AWS Access Key ID *</label>
+                                <input
+                                  type="text"
+                                  placeholder="AKIAIOSFODNN7EXAMPLE or ASIA..."
+                                  value={manualAccessKey}
+                                  onChange={(e) => setManualAccessKey(e.target.value)}
+                                  required={pushSecretsToGitHub && secretsSource === 'manual'}
+                                  style={{ background: '#0f0f15', border: '1.5px solid var(--c2c-border)', borderRadius: '10px', color: '#fff', padding: '0.55rem 0.75rem', fontSize: '0.85rem', outline: 'none' }}
+                                />
+                              </div>
+
+                              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.3rem' }}>
+                                <label style={{ color: '#fff', fontSize: '0.78rem', fontWeight: '600' }}>AWS Secret Access Key *</label>
+                                <input
+                                  type="password"
+                                  placeholder="wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY"
+                                  value={manualSecretKey}
+                                  onChange={(e) => setManualSecretKey(e.target.value)}
+                                  required={pushSecretsToGitHub && secretsSource === 'manual'}
+                                  style={{ background: '#0f0f15', border: '1.5px solid var(--c2c-border)', borderRadius: '10px', color: '#fff', padding: '0.55rem 0.75rem', fontSize: '0.85rem', outline: 'none' }}
+                                />
+                              </div>
+
+                              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem' }}>
+                                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.3rem' }}>
+                                  <label style={{ color: '#fff', fontSize: '0.78rem', fontWeight: '600' }}>AWS Region</label>
+                                  <select
+                                    value={manualRegion || genRegion || 'us-east-1'}
+                                    onChange={(e) => setManualRegion(e.target.value)}
+                                    style={{ background: '#0f0f15', border: '1.5px solid var(--c2c-border)', borderRadius: '10px', color: '#fff', padding: '0.55rem 0.75rem', fontSize: '0.85rem', outline: 'none', cursor: 'pointer' }}
+                                  >
+                                    <option value="us-east-1">us-east-1 (N. Virginia) [Default]</option>
+                                    <option value="us-west-2">us-west-2 (Oregon)</option>
+                                    <option value="eu-west-1">eu-west-1 (Ireland)</option>
+                                    <option value="ap-southeast-1">ap-southeast-1 (Singapore)</option>
+                                    <option value="ap-south-1">ap-south-1 (Mumbai)</option>
+                                  </select>
+                                </div>
+
+                                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.3rem' }}>
+                                  <label style={{ color: '#fff', fontSize: '0.78rem', fontWeight: '600' }}>Session Token (Optional)</label>
+                                  <input
+                                    type="password"
+                                    placeholder="For AWS Academy / STS"
+                                    value={manualSessionToken}
+                                    onChange={(e) => setManualSessionToken(e.target.value)}
+                                    style={{ background: '#0f0f15', border: '1.5px solid var(--c2c-border)', borderRadius: '10px', color: '#fff', padding: '0.55rem 0.75rem', fontSize: '0.85rem', outline: 'none' }}
+                                  />
+                                </div>
+                              </div>
+                            </>
+                          ) : (
+                            <>
+                              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.3rem' }}>
+                                <label style={{ color: '#fff', fontSize: '0.78rem', fontWeight: '600' }}>GCP Service Account Key (JSON) *</label>
+                                <textarea
+                                  rows={3}
+                                  placeholder='{"type": "service_account", "project_id": "...", ...}'
+                                  value={manualGcpSaKey}
+                                  onChange={(e) => setManualGcpSaKey(e.target.value)}
+                                  required={pushSecretsToGitHub && secretsSource === 'manual'}
+                                  style={{ background: '#0f0f15', border: '1.5px solid var(--c2c-border)', borderRadius: '10px', color: '#fff', padding: '0.55rem 0.75rem', fontSize: '0.8rem', outline: 'none', resize: 'vertical' }}
+                                />
+                              </div>
+                              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem' }}>
+                                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.3rem' }}>
+                                  <label style={{ color: '#fff', fontSize: '0.78rem', fontWeight: '600' }}>GCP Project ID</label>
+                                  <input
+                                    type="text"
+                                    placeholder="my-gcp-project"
+                                    value={manualGcpProjectId}
+                                    onChange={(e) => setManualGcpProjectId(e.target.value)}
+                                    style={{ background: '#0f0f15', border: '1.5px solid var(--c2c-border)', borderRadius: '10px', color: '#fff', padding: '0.55rem 0.75rem', fontSize: '0.85rem', outline: 'none' }}
+                                  />
+                                </div>
+                                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.3rem' }}>
+                                  <label style={{ color: '#fff', fontSize: '0.78rem', fontWeight: '600' }}>GCP Region</label>
+                                  <select
+                                    value={manualRegion || genRegion || 'us-central1'}
+                                    onChange={(e) => setManualRegion(e.target.value)}
+                                    style={{ background: '#0f0f15', border: '1.5px solid var(--c2c-border)', borderRadius: '10px', color: '#fff', padding: '0.55rem 0.75rem', fontSize: '0.85rem', outline: 'none', cursor: 'pointer' }}
+                                  >
+                                    <option value="us-central1">us-central1 (Iowa) [Default]</option>
+                                    <option value="us-east1">us-east1 (S. Carolina)</option>
+                                    <option value="europe-west1">europe-west1 (Belgium)</option>
+                                    <option value="asia-southeast1">asia-southeast1 (Singapore)</option>
+                                    <option value="asia-south1">asia-south1 (Mumbai)</option>
+                                  </select>
+                                </div>
+                              </div>
+                            </>
+                          )}
+
+                          {/* Save to Profile Opt-in */}
+                          <div style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid var(--c2c-border)', borderRadius: '10px', padding: '0.75rem', display: 'flex', flexDirection: 'column', gap: '0.5rem', marginTop: '0.2rem' }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                              <input
+                                type="checkbox"
+                                id="saveToProfileCheck"
+                                checked={saveToProfile}
+                                onChange={(e) => setSaveToProfile(e.target.checked)}
+                                style={{ width: '16px', height: '16px', cursor: 'pointer', accentColor: '#10B981' }}
+                              />
+                              <label htmlFor="saveToProfileCheck" style={{ color: '#fff', fontSize: '0.8rem', fontWeight: '600', cursor: 'pointer', userSelect: 'none' }}>
+                                Save these credentials to my Code2Cloud profile for future deployments
+                              </label>
+                            </div>
+
+                            {saveToProfile ? (
+                              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem', marginLeft: '1.5rem' }}>
+                                <label style={{ color: '#a2a2b5', fontSize: '0.75rem' }}>Profile Name</label>
+                                <input
+                                  type="text"
+                                  placeholder={`e.g. My ${(cloud || 'AWS').toUpperCase()} Account`}
+                                  value={profileName}
+                                  onChange={(e) => setProfileName(e.target.value)}
+                                  style={{ background: '#0f0f15', border: '1px solid var(--c2c-border)', borderRadius: '8px', color: '#fff', padding: '0.4rem 0.6rem', fontSize: '0.8rem', outline: 'none' }}
+                                />
+                              </div>
+                            ) : (
+                              <span style={{ color: '#10B981', fontSize: '0.72rem', marginLeft: '1.5rem' }}>
+                                🔒 Zero-Storage: Secrets are encrypted and pushed directly to GitHub Actions; they will not be stored in our database.
+                              </span>
+                            )}
+                          </div>
+
+                        </div>
+                      )}
+
+                    </div>
+                  )}
                 </div>
 
-                {/* Actions */}
-                <div style={{ display: 'flex', gap: '1rem', marginTop: '0.5rem' }}>
+                {/* Modal Actions */}
+                <div style={{ display: 'flex', gap: '1rem', marginTop: '0.25rem' }}>
                   <button
                     type="button"
                     disabled={committing}
@@ -1153,7 +1820,7 @@ function GenerationViewer() {
                       setCommitError('');
                     }}
                     style={{
-                      flex: 1,
+                      flex: 0.8,
                       background: 'rgba(255, 255, 255, 0.03)',
                       border: '2px solid var(--c2c-border)',
                       color: '#a2a2b5',
@@ -1169,7 +1836,7 @@ function GenerationViewer() {
                     type="submit"
                     disabled={committing}
                     style={{
-                      flex: 1,
+                      flex: 1.2,
                       background: 'linear-gradient(135deg, var(--c2c-green), var(--c2c-green-hover))',
                       border: 'none',
                       color: '#05050a',
@@ -1187,12 +1854,12 @@ function GenerationViewer() {
                     {committing ? (
                       <>
                         <RefreshCw size={16} className="loading-spinner" />
-                        Committing...
+                        Committing & Pushing Secrets...
                       </>
                     ) : (
                       <>
                         <GitCommit size={16} />
-                        Publish Commit
+                        Publish Commit & Push Secrets
                       </>
                     )}
                   </button>

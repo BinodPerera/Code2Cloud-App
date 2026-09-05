@@ -40,23 +40,46 @@ class RecommendationService:
         cloud_upper = (cloud or "AWS").upper()
         choice_lower = (compute_choice or "ec2").lower()
 
-        # Get fallback default for safety
-        fallback_option, fallback_reason = DEFAULT_FALLBACKS.get(cloud_upper, {}).get(
-            choice_lower, ("t3.micro" if cloud_upper == "AWS" else "e2-micro", "Default baseline resource tier selected.")
-        )
+        # Smart FinOps heuristics for fallback and prompt context
+        comp_name_lower = (component_name or "").lower()
+        comp_type_lower = (component_type or "").lower()
+        is_frontend = any(k in comp_name_lower for k in ["frontend", "client", "ui", "web", "app"]) or any(k in comp_type_lower for k in ["react", "vue", "svelte", "vite", "angular", "static"])
+        is_heavy = any(k in comp_type_lower for k in ["java", "spring", "dotnet", "c#", "django", "tensorflow", "pytorch"])
+
+        if is_frontend:
+            fallback_option = "t3.micro" if choice_lower == "ec2" else "0.25 vCPU / 512 MB" if choice_lower == "fargate" else "e2-micro" if choice_lower == "gce" else "1 vCPU / 512 MB"
+            fallback_storage = 10
+            fallback_swap_enabled = True if choice_lower in ["ec2", "gce"] else False
+            fallback_swap_size = 1
+            fallback_reason = f"Lightweight {fallback_option} with {fallback_storage} GB SSD & {fallback_swap_size} GB Swap selected for frontend SPA to maximize cost efficiency while serving compiled static assets."
+        elif not is_heavy:
+            fallback_option = "t3.micro" if choice_lower == "ec2" else "0.25 vCPU / 512 MB" if choice_lower == "fargate" else "e2-micro" if choice_lower == "gce" else "1 vCPU / 512 MB"
+            fallback_storage = 20
+            fallback_swap_enabled = True if choice_lower in ["ec2", "gce"] else False
+            fallback_swap_size = 2
+            fallback_reason = f"Cost-optimized {fallback_option} with {fallback_storage} GB SSD & {fallback_swap_size} GB Swap selected for lightweight backend; virtual RAM handles burst traffic at $0 compute cost."
+        else:
+            fallback_option = "t3.small" if choice_lower == "ec2" else "0.5 vCPU / 1 GB" if choice_lower == "fargate" else "e2-small" if choice_lower == "gce" else "1 vCPU / 1 GB"
+            fallback_storage = 30
+            fallback_swap_enabled = True if choice_lower in ["ec2", "gce"] else False
+            fallback_swap_size = 2
+            fallback_reason = f"{fallback_option} with {fallback_storage} GB SSD & {fallback_swap_size} GB Swap allocated to support memory requirements of JVM / enterprise application framework."
 
         api_key = settings.GEMINI_API_KEY
         if not api_key:
             logger.info("GEMINI_API_KEY not configured. Returning fallback instance recommendation.")
             return {
                 "recommended_instance": fallback_option,
+                "recommended_storage_gb": fallback_storage,
+                "recommended_swap_enabled": fallback_swap_enabled,
+                "recommended_swap_size_gb": fallback_swap_size,
                 "reasoning": fallback_reason,
                 "source": "fallback"
             }
 
         valid_list = VALID_OPTIONS.get(cloud_upper, {}).get(choice_lower, [fallback_option])
 
-        prompt = f"""You are a Cloud Infrastructure Architect AI. Analyze the project details below and select the SINGLE BEST instance/machine type size for deployment.
+        prompt = f"""You are a Cloud Infrastructure Architect and FinOps Optimization AI. Analyze the project details below and select the MOST COST-EFFECTIVE and APPROPRIATE compute sizing, root SSD storage volume size (GB), and Linux swap memory size (GB) for deployment.
 
 Project Information:
 - Cloud Provider: {cloud_upper}
@@ -65,17 +88,40 @@ Project Information:
 - Component Type: {component_type or 'Web Service'}
 - Tech Stack Analytics: {json.dumps(tech_stack or {})}
 
-Valid Options for this target (Select EXACTLY ONE string from this list):
+Valid Options for compute target (Select EXACTLY ONE string from this list):
 {json.dumps(valid_list)}
 
-Instructions:
-1. Select EXACTLY ONE string from the valid options list above.
-2. Provide a clear, concise 1-2 sentence explanation under "reasoning" explaining why this specific sizing was selected based on the tech stack, languages, or framework requirements.
+FinOps Sizing Guidelines:
+1. FRONTEND / SPA (React, Vite, Vue, Svelte, Angular, Static Web):
+   - recommended_instance: 't3.micro' (EC2), '0.25 vCPU / 512 MB' (Fargate), '1 vCPU / 512 MB' (Cloud Run), 'e2-micro' (GCE).
+   - recommended_storage_gb: 10 (Lightweight 10 GB SSD is optimal for static frontends)
+   - recommended_swap_enabled: true (for EC2/GCE) or false (for serverless containers)
+   - recommended_swap_size_gb: 1 (1 GB Swap is ideal for static web delivery)
+2. LIGHTWEIGHT BACKENDS (FastAPI, Express.js, Flask, Go, Node.js, Python, Ruby Sinatra):
+   - recommended_instance: 't3.micro' (EC2) or 'e2-micro' (GCE).
+   - recommended_storage_gb: 20 (Standard 20 GB SSD for backend dependencies & logs)
+   - recommended_swap_enabled: true
+   - recommended_swap_size_gb: 2 (2 GB Swap recommended to absorb memory spikes at $0 cost)
+3. MEDIUM BACKENDS (NestJS, Django with Celery, small Java Spring Boot):
+   - recommended_instance: 't3.small' (EC2) or 'e2-small' (GCE) / '1.0 vCPU / 2 GB' (Fargate) / '1 vCPU / 1 GB' or '2 vCPU / 2 GB' (Cloud Run).
+   - recommended_storage_gb: 30 or 50
+   - recommended_swap_enabled: true
+   - recommended_swap_size_gb: 2 or 3
+4. HEAVY ENTERPRISE MONOLITHS (Large Java Spring monoliths, PyTorch/TensorFlow ML inference):
+   - recommended_instance: 't3.medium' (EC2) / 'e2-medium' (GCE).
+   - recommended_storage_gb: 50 or 100
+   - recommended_swap_enabled: true
+   - recommended_swap_size_gb: 4
+
+Avoid unnecessary over-provisioning! Prioritize cost-efficiency and Free Tier compatibility whenever suitable.
 
 Output strictly valid JSON in the following format:
 {{
   "recommended_instance": "<exact string from valid options>",
-  "reasoning": "<1-2 sentence explanation>"
+  "recommended_storage_gb": <integer: 10, 20, 50, or 100>,
+  "recommended_swap_enabled": <true or false>,
+  "recommended_swap_size_gb": <integer: 1, 2, 3, or 4>,
+  "reasoning": "<1-2 concise sentences explaining why this compute sizing, storage, and swap were chosen>"
 }}
 """
 
@@ -111,13 +157,19 @@ Output strictly valid JSON in the following format:
                             text_content = candidates[0]["content"]["parts"][0]["text"]
                             parsed = json.loads(text_content)
                             rec = parsed.get("recommended_instance")
+                            rec_storage = parsed.get("recommended_storage_gb", fallback_storage)
+                            rec_swap_enabled = parsed.get("recommended_swap_enabled", fallback_swap_enabled)
+                            rec_swap_size = parsed.get("recommended_swap_size_gb", fallback_swap_size)
                             reasoning = parsed.get("reasoning", "")
 
                             # Ensure recommended instance matches one of valid options
                             if rec in valid_list:
                                 return {
                                     "recommended_instance": rec,
-                                    "reasoning": reasoning or f"Gemini AI selected {rec} as the optimal sizing for this tech stack.",
+                                    "recommended_storage_gb": int(rec_storage),
+                                    "recommended_swap_enabled": bool(rec_swap_enabled),
+                                    "recommended_swap_size_gb": int(rec_swap_size),
+                                    "reasoning": reasoning or f"Gemini AI selected {rec} with {rec_storage}GB SSD & {rec_swap_size}GB Swap as the optimal sizing.",
                                     "source": "gemini"
                                 }
                             else:
@@ -125,7 +177,10 @@ Output strictly valid JSON in the following format:
                                     if opt.lower() in str(rec).lower():
                                         return {
                                             "recommended_instance": opt,
-                                            "reasoning": reasoning or f"Gemini AI matched {opt} for this service workload.",
+                                            "recommended_storage_gb": int(rec_storage),
+                                            "recommended_swap_enabled": bool(rec_swap_enabled),
+                                            "recommended_swap_size_gb": int(rec_swap_size),
+                                            "reasoning": reasoning or f"Gemini AI matched {opt} with {rec_storage}GB SSD & {rec_swap_size}GB Swap.",
                                             "source": "gemini"
                                         }
                     elif resp.status_code == 429:
@@ -140,6 +195,9 @@ Output strictly valid JSON in the following format:
 
         return {
             "recommended_instance": fallback_option,
+            "recommended_storage_gb": fallback_storage,
+            "recommended_swap_enabled": fallback_swap_enabled,
+            "recommended_swap_size_gb": fallback_swap_size,
             "reasoning": last_error_reason or fallback_reason,
             "source": "fallback"
         }

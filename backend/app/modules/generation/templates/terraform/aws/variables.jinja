@@ -13,5 +13,29 @@ variable "project_name" {
 variable "environment" {
   description = "Target deployment environment"
   type        = string
-  default     = "production"
+  default     = "{{ environment | default('production') }}"
 }
+
+variable "storage_size_gb" {
+  description = "Root SSD block storage volume size in GB"
+  type        = number
+  default     = {{ storage_size_gb | default(20) }}
+}
+
+{% if db_enabled %}
+variable "db_password" {
+  description = "Master password for the managed RDS database"
+  type        = string
+  default     = "Code2CloudPass123!"
+  sensitive   = true
+}
+{% endif %}
+
+{% if swap_enabled %}
+variable "swap_size_gb" {
+  description = "Linux swap file allocation size in GB"
+  type        = number
+  default     = {{ swap_size_gb | default(2) }}
+}
+{% endif %}
+

@@ -13,8 +13,8 @@ function DashboardLayout() {
       <Sidebar />
 
       {/* Main Page Content injected by the Router */}
-      <main style={{ flex: 1, padding: '4rem', display: 'flex', flexDirection: 'column', position: 'relative', zIndex: 1, overflowY: 'auto' }}>
-        <div style={{ maxWidth: '1100px', width: '100%', margin: '0 auto' }}>
+      <main style={{ flex: 1, padding: '2.5rem 3rem', display: 'flex', flexDirection: 'column', position: 'relative', zIndex: 1, overflowY: 'auto' }}>
+        <div style={{ maxWidth: '1380px', width: '100%', margin: '0 auto' }}>
           <Outlet />
         </div>
       </main>

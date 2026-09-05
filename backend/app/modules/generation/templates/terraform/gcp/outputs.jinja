@@ -1,8 +1,18 @@
+output "gcp_region" {
+  description = "Target deployment region"
+  value       = var.gcp_region
+}
+
+output "environment" {
+  description = "Deployment environment"
+  value       = var.environment
+}
+
 {% for comp in components %}
-{% if compute_choice == 'gce' %}
+{% if comp.gcp_compute_choice == 'gce' or (compute_choice == 'gce' and not comp.gcp_compute_choice) %}
 output "{{ comp.name }}_public_ip" {
   description = "Public IP address of the {{ comp.name }} virtual machine"
-  value       = {% if use_static_ip and loop.first %}google_compute_address.static_ip.address{% else %}google_compute_instance.{{ comp.name }}.network_interface[0].access_config[0].nat_ip{% endif %}
+  value       = {% if comp.use_static_ip or (use_static_ip and loop.first) %}google_compute_address.{{ comp.name }}_static_ip.address{% else %}google_compute_instance.{{ comp.name }}.network_interface[0].access_config[0].nat_ip{% endif %}
 }
 {% else %}
 output "{{ comp.name }}_service_url" {
@@ -11,3 +21,21 @@ output "{{ comp.name }}_service_url" {
 }
 {% endif %}
 {% endfor %}
+
+{% if db_enabled %}
+output "cloud_sql_connection_name" {
+  description = "Connection name for Cloud SQL instance"
+  value       = google_sql_database_instance.db.connection_name
+}
+
+output "cloud_sql_public_ip" {
+  description = "Public IP address of Cloud SQL instance"
+  value       = google_sql_database_instance.db.public_ip_address
+}
+
+output "cloud_sql_database_name" {
+  description = "Database name"
+  value       = google_sql_database.app_db.name
+}
+{% endif %}
+
