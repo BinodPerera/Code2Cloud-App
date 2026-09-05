@@ -319,16 +319,28 @@ class CodeGenerator:
                         environment=environment
                     )
 
-                    # Generate AWS GHA workflows (Deploy and Destroy)
-                    workflow_tmpl = env.get_template("workflows/aws_deploy.jinja")
-                    generated_code[".github/workflows/deploy.yml"] = workflow_tmpl.render(
+                    # Generate AWS GHA workflows (Deploy, Destroy, and CD)
+                    deploy_tmpl = env.get_template("workflows/aws_deploy.jinja")
+                    generated_code[".github/workflows/deploy.yml"] = deploy_tmpl.render(
                         branch="code2cloud-setup",
                         repo_name=repo,
                         registry_type=registry_type,
                         components=tf_components,
+                        compute_choice=aws_compute_choice,
                         aws_region=selected_region,
                         environment=environment
                     )
+
+                    cd_tmpl = env.get_template("workflows/aws_cd.jinja")
+                    generated_code[".github/workflows/cd.yml"] = cd_tmpl.render(
+                        repo_name=repo,
+                        registry_type=registry_type,
+                        components=tf_components,
+                        compute_choice=aws_compute_choice,
+                        aws_region=selected_region,
+                        environment=environment
+                    )
+
                     destroy_tmpl = env.get_template("workflows/aws_destroy.jinja")
                     generated_code[".github/workflows/destroy.yml"] = destroy_tmpl.render(
                         repo_name=repo,
@@ -399,16 +411,28 @@ class CodeGenerator:
                             db_instance_class=db_instance_class
                         )
 
-                    # Generate GCP GHA workflows (Deploy and Destroy)
-                    workflow_tmpl = env.get_template("workflows/gcp_deploy.jinja")
-                    generated_code[".github/workflows/deploy.yml"] = workflow_tmpl.render(
+                    # Generate GCP GHA workflows (Deploy, Destroy, and CD)
+                    deploy_tmpl = env.get_template("workflows/gcp_deploy.jinja")
+                    generated_code[".github/workflows/deploy.yml"] = deploy_tmpl.render(
                         branch="code2cloud-setup",
                         repo_name=repo,
                         registry_type=registry_type,
                         components=tf_components,
+                        compute_choice=gcp_compute_choice,
                         gcp_region=selected_region,
                         environment=environment
                     )
+
+                    cd_tmpl = env.get_template("workflows/gcp_cd.jinja")
+                    generated_code[".github/workflows/cd.yml"] = cd_tmpl.render(
+                        repo_name=repo,
+                        registry_type=registry_type,
+                        components=tf_components,
+                        compute_choice=gcp_compute_choice,
+                        gcp_region=selected_region,
+                        environment=environment
+                    )
+
                     destroy_tmpl = env.get_template("workflows/gcp_destroy.jinja")
                     generated_code[".github/workflows/destroy.yml"] = destroy_tmpl.render(
                         repo_name=repo,

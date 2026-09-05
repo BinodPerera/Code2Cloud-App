@@ -96,7 +96,10 @@ function GenerationViewer() {
   const [envModalOpen, setEnvModalOpen] = useState(false);
   const [postDeployEnvVars, setPostDeployEnvVars] = useState({});
   const [envUpdating, setEnvUpdating] = useState(false);
+  const [envUpdatingAction, setEnvUpdatingAction] = useState(''); // 'push_only' | 'cd' | 'deploy'
   const [envUpdateSuccess, setEnvUpdateSuccess] = useState(false);
+  const [envPushedSecrets, setEnvPushedSecrets] = useState([]);
+  const [envWorkflowTriggered, setEnvWorkflowTriggered] = useState(false);
   const [envUpdateError, setEnvUpdateError] = useState('');
   const [envShowSecretMap, setEnvShowSecretMap] = useState({});
   const [envPasteModalComp, setEnvPasteModalComp] = useState(null);
@@ -166,16 +169,20 @@ function GenerationViewer() {
     setEnvPasteText('');
   };
 
-  const handleSavePostDeployEnvVars = async (redeploy = true) => {
+  const handleSavePostDeployEnvVars = async (redeploy = true, targetWorkflow = 'cd.yml') => {
     try {
       setEnvUpdating(true);
+      setEnvUpdatingAction(redeploy ? (targetWorkflow === 'cd.yml' ? 'cd' : 'deploy') : 'push_only');
       setEnvUpdateError('');
       setEnvUpdateSuccess(false);
+      setEnvPushedSecrets([]);
+      setEnvWorkflowTriggered(false);
 
       const res = await apiClient.post(`/repos/generations/${generationId}/env-vars`, {
         env_vars: postDeployEnvVars,
         redeploy: redeploy,
-        branch: commitBranch || 'code2cloud-setup'
+        branch: commitBranch || 'code2cloud-setup',
+        target_workflow: targetWorkflow
       });
 
       if (!res.ok) {
@@ -185,6 +192,9 @@ function GenerationViewer() {
 
       const data = await res.json();
       setEnvUpdateSuccess(true);
+      setEnvPushedSecrets(data.secrets_pushed || []);
+      setEnvWorkflowTriggered(Boolean(data.workflow_triggered));
+
       if (data.workflow_triggered) {
         setPolling(true);
         setTimeout(() => {
@@ -193,11 +203,12 @@ function GenerationViewer() {
       }
       setTimeout(() => {
         setEnvUpdateSuccess(false);
-      }, 4000);
+      }, 7000);
     } catch (err) {
       setEnvUpdateError(err.message || 'Error updating environment variables');
     } finally {
       setEnvUpdating(false);
+      setEnvUpdatingAction('');
     }
   };
 
@@ -1799,7 +1810,7 @@ function GenerationViewer() {
                         Synchronize with Default Branch (main/master)
                       </div>
                       <div style={{ color: '#a2a2b5', fontSize: '0.75rem', marginTop: '0.1rem' }}>
-                        Pulls latest code from default branch into <code style={{ color: '#60a5fa' }}>{commitBranch || 'code2cloud-setup'}</code> before deploying, and updates default branch with cloud setup.
+                        Pulls latest code from default branch into <code style={{ color: '#60a5fa' }}>{commitBranch || 'code2cloud-setup'}</code> before deploying, and initializes <code style={{ color: '#10B981' }}>Code2Cloud-Deploy</code> for future app CD.
                       </div>
                     </div>
                   </div>
@@ -2196,16 +2207,39 @@ function GenerationViewer() {
                   background: 'rgba(16, 185, 129, 0.12)',
                   border: '1px solid var(--c2c-green)',
                   borderRadius: '12px',
-                  padding: '0.85rem 1rem',
+                  padding: '0.9rem 1.1rem',
                   display: 'flex',
-                  alignItems: 'center',
-                  gap: '0.6rem',
+                  flexDirection: 'column',
+                  gap: '0.45rem',
                   color: '#10B981',
-                  fontSize: '0.85rem',
-                  fontWeight: '600'
+                  fontSize: '0.85rem'
                 }}>
-                  <Check size={18} />
-                  Environment variables saved & encrypted in GitHub Secrets! Zero-downtime redeployment initiated.
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontWeight: '700' }}>
+                    <Check size={18} />
+                    <span>
+                      {envWorkflowTriggered 
+                        ? 'Variables pushed to GitHub Secrets & CD workflow dispatched!' 
+                        : 'Variables successfully encrypted and pushed to GitHub Secrets!'}
+                    </span>
+                  </div>
+                  {envPushedSecrets && envPushedSecrets.length > 0 && (
+                    <div style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: '0.35rem', marginTop: '0.2rem' }}>
+                      <span style={{ fontSize: '0.75rem', color: '#a2a2b5' }}>Secrets encrypted & synced:</span>
+                      {envPushedSecrets.map((sec) => (
+                        <span key={sec} style={{
+                          background: 'rgba(16, 185, 129, 0.2)',
+                          color: '#34d399',
+                          padding: '0.1rem 0.45rem',
+                          borderRadius: '6px',
+                          fontSize: '0.72rem',
+                          fontFamily: 'monospace',
+                          fontWeight: '600'
+                        }}>
+                          {sec}
+                        </span>
+                      ))}
+                    </div>
+                  )}
                 </div>
               )}
 
@@ -2429,13 +2463,15 @@ function GenerationViewer() {
               display: 'flex',
               justifyContent: 'space-between',
               alignItems: 'center',
-              background: 'rgba(0,0,0,0.2)'
+              background: 'rgba(0,0,0,0.2)',
+              flexWrap: 'wrap',
+              gap: '1rem'
             }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', color: '#10B981', fontSize: '0.78rem', fontWeight: '500' }}>
                 <Zap size={14} />
-                <span>Zero-downtime update (~20s) via <code>skip_build: true</code></span>
+                <span>Zero-downtime CD in-place container refresh</span>
               </div>
-              <div style={{ display: 'flex', gap: '0.75rem' }}>
+              <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'center' }}>
                 <button
                   type="button"
                   onClick={() => setEnvModalOpen(false)}
@@ -2444,7 +2480,7 @@ function GenerationViewer() {
                     border: '1px solid var(--c2c-border)',
                     color: '#a2a2b5',
                     borderRadius: '10px',
-                    padding: '0.6rem 1.2rem',
+                    padding: '0.6rem 1.1rem',
                     fontSize: '0.85rem',
                     fontWeight: '600',
                     cursor: 'pointer'
@@ -2454,8 +2490,40 @@ function GenerationViewer() {
                 </button>
                 <button
                   type="button"
-                  onClick={() => handleSavePostDeployEnvVars(true)}
+                  onClick={() => handleSavePostDeployEnvVars(false)}
                   disabled={envUpdating}
+                  title="Encrypt and save secrets in GitHub Actions without triggering redeployment"
+                  style={{
+                    background: 'rgba(255, 255, 255, 0.06)',
+                    border: '1px solid var(--c2c-border)',
+                    color: '#fff',
+                    borderRadius: '10px',
+                    padding: '0.6rem 1.1rem',
+                    fontSize: '0.85rem',
+                    fontWeight: '600',
+                    cursor: envUpdating ? 'not-allowed' : 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '0.4rem'
+                  }}
+                >
+                  {envUpdatingAction === 'push_only' ? (
+                    <>
+                      <RefreshCw size={14} className="loading-spinner" />
+                      Pushing Secrets...
+                    </>
+                  ) : (
+                    <>
+                      <KeyRound size={14} />
+                      Push Secrets Only
+                    </>
+                  )}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleSavePostDeployEnvVars(true, 'cd.yml')}
+                  disabled={envUpdating}
+                  title="Push secrets to GitHub and trigger the fast CD workflow to refresh containers"
                   style={{
                     background: 'linear-gradient(135deg, var(--c2c-green), var(--c2c-green-hover))',
                     border: 'none',
@@ -2471,15 +2539,15 @@ function GenerationViewer() {
                     boxShadow: '0 4px 15px rgba(16, 185, 129, 0.2)'
                   }}
                 >
-                  {envUpdating ? (
+                  {envUpdatingAction === 'cd' ? (
                     <>
                       <RefreshCw size={15} className="loading-spinner" />
-                      Updating & Deploying...
+                      Updating & Deploying CD...
                     </>
                   ) : (
                     <>
                       <Zap size={15} />
-                      Save & Redeploy
+                      Push & Run CD Workflow
                     </>
                   )}
                 </button>

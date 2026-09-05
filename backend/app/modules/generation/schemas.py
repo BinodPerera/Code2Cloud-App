@@ -48,6 +48,7 @@ class UpdateEnvVarsRequest(BaseModel):
     env_vars: Dict[str, List[Dict[str, Any]]]
     redeploy: bool = True
     branch: Optional[str] = "code2cloud-setup"
+    target_workflow: Optional[str] = "cd.yml"
 
 class PushSecretsRequest(BaseModel):
     credential_ids: list[str]

@@ -321,6 +321,19 @@ async def commit_generation_code(
                     for item in var_list
                     if isinstance(item, dict) and item.get("key")
                 }
+                # Also push individual secrets marked with is_secret
+                for item in var_list:
+                    if isinstance(item, dict) and item.get("key") and item.get("is_secret"):
+                        sec_key = item["key"].strip()
+                        sec_val = str(item.get("value", "")).strip()
+                        if sec_key and sec_key not in pushed_secrets:
+                            try:
+                                await GitHubSecretsManager.push_secret(
+                                    owner, repo, sec_key, sec_val, github_access_token
+                                )
+                                pushed_secrets.append(sec_key)
+                            except Exception as sec_e:
+                                print(f"Warning: Failed to push individual secret {sec_key}: {sec_e}")
             elif isinstance(var_list, dict):
                 app_env_json[comp_name] = var_list
 
@@ -383,7 +396,7 @@ async def commit_generation_code(
                     sync_payload = {
                         "base": branch,
                         "head": default_branch,
-                        "commit_message": f"Sync latest changes from '{default_branch}' into '{branch}' via Code2Cloud"
+                        "commit_message": f"Sync latest changes from '{default_branch}' into '{branch}' via Code2Cloud [skip ci]"
                     }
                     sync_res = await client.post(sync_url, headers=headers, json=sync_payload)
                     if sync_res.status_code == 201:
@@ -499,6 +512,19 @@ async def commit_generation_code(
             raise HTTPException(status_code=400, detail=f"Failed to point branch ref to new commit: {update_res.text}")
             
         commit_web_url = f"https://github.com/{owner}/{repo}/commit/{new_commit_sha}"
+        
+        # Step 4b: Ensure Code2Cloud-Deploy branch exists for continuous deployment pipeline
+        try:
+            cd_branch_url = f"https://api.github.com/repos/{owner}/{repo}/git/ref/heads/Code2Cloud-Deploy"
+            cd_check = await client.get(cd_branch_url, headers=headers)
+            if cd_check.status_code == 404:
+                create_cd_ref_url = f"https://api.github.com/repos/{owner}/{repo}/git/refs"
+                await client.post(create_cd_ref_url, headers=headers, json={
+                    "ref": "refs/heads/Code2Cloud-Deploy",
+                    "sha": new_commit_sha
+                })
+        except Exception as cd_err:
+            print(f"Warning: Could not initialize Code2Cloud-Deploy branch: {cd_err}")
 
         # Step 5: Always keep default branch (main/master) updated with deployment setup branch
         merged_to_default = False
@@ -508,7 +534,7 @@ async def commit_generation_code(
                 merge_default_payload = {
                     "base": default_branch,
                     "head": branch,
-                    "commit_message": f"Merge deployment updates from '{branch}' into '{default_branch}' via Code2Cloud"
+                    "commit_message": f"Merge deployment updates from '{branch}' into '{default_branch}' via Code2Cloud [skip ci]"
                 }
                 m_res = await client.post(merge_default_url, headers=headers, json=merge_default_payload)
                 if m_res.status_code in (201, 204):
@@ -823,6 +849,8 @@ async def update_post_deploy_env_vars(
     
     # 2. Serialize and push APP_ENV_VARS_JSON to GitHub Secrets
     app_env_json = {}
+    pushed_secrets = []
+
     for comp_name, var_list in request.env_vars.items():
         if isinstance(var_list, list):
             app_env_json[comp_name] = {
@@ -830,14 +858,32 @@ async def update_post_deploy_env_vars(
                 for item in var_list
                 if isinstance(item, dict) and item.get("key")
             }
+            # Also push individual secrets marked with is_secret
+            for item in var_list:
+                if isinstance(item, dict) and item.get("key") and item.get("is_secret"):
+                    sec_key = item["key"].strip()
+                    sec_val = str(item.get("value", "")).strip()
+                    if sec_key and sec_key not in pushed_secrets:
+                        try:
+                            await GitHubSecretsManager.push_secret(
+                                owner, repo, sec_key, sec_val, github_access_token
+                            )
+                            pushed_secrets.append(sec_key)
+                        except Exception as sec_e:
+                            print(f"Warning: Failed to push individual secret {sec_key}: {sec_e}")
         elif isinstance(var_list, dict):
             app_env_json[comp_name] = var_list
 
-    await GitHubSecretsManager.push_secret(
-        owner, repo, "APP_ENV_VARS_JSON", json.dumps(app_env_json), github_access_token
-    )
+    try:
+        await GitHubSecretsManager.push_secret(
+            owner, repo, "APP_ENV_VARS_JSON", json.dumps(app_env_json), github_access_token
+        )
+        if "APP_ENV_VARS_JSON" not in pushed_secrets:
+            pushed_secrets.insert(0, "APP_ENV_VARS_JSON")
+    except Exception as sec_err:
+        print(f"Warning: Failed to push APP_ENV_VARS_JSON secret: {sec_err}")
     
-    # 3. If redeploy requested, trigger workflow_dispatch on deploy.yml
+    # 3. If redeploy requested, trigger workflow_dispatch on cd.yml or deploy.yml
     workflow_triggered = False
     workflow_error = None
     if request.redeploy:
@@ -846,18 +892,26 @@ async def update_post_deploy_env_vars(
             "Authorization": f"token {github_access_token}",
             "Accept": "application/vnd.github.v3+json"
         }
-        dispatch_url = f"https://api.github.com/repos/{owner}/{repo}/actions/workflows/deploy.yml/dispatches"
-        dispatch_payload = {
-            "ref": branch,
-            "inputs": {
-                "skip_build": True
-            }
-        }
+        target_wf = request.target_workflow or "cd.yml"
+        dispatch_url = f"https://api.github.com/repos/{owner}/{repo}/actions/workflows/{target_wf}/dispatches"
+        dispatch_payload = {"ref": branch}
+        if target_wf == "deploy.yml":
+            dispatch_payload["inputs"] = {"skip_build": True}
+
         async with httpx.AsyncClient(timeout=15.0) as client:
             try:
                 res = await client.post(dispatch_url, headers=headers, json=dispatch_payload)
                 if res.status_code in (200, 204):
                     workflow_triggered = True
+                elif res.status_code == 404 and target_wf == "cd.yml":
+                    # Fallback to deploy.yml if cd.yml is not present in repo
+                    fallback_url = f"https://api.github.com/repos/{owner}/{repo}/actions/workflows/deploy.yml/dispatches"
+                    fallback_payload = {"ref": branch, "inputs": {"skip_build": True}}
+                    res_fb = await client.post(fallback_url, headers=headers, json=fallback_payload)
+                    if res_fb.status_code in (200, 204):
+                        workflow_triggered = True
+                    else:
+                        workflow_error = f"GitHub returned {res_fb.status_code}: {res_fb.text}"
                 else:
                     workflow_error = f"GitHub returned {res.status_code}: {res.text}"
             except Exception as disp_err:
@@ -866,7 +920,7 @@ async def update_post_deploy_env_vars(
     return {
         "status": "success",
         "env_vars": request.env_vars,
-        "secrets_pushed": ["APP_ENV_VARS_JSON"],
+        "secrets_pushed": pushed_secrets,
         "workflow_triggered": workflow_triggered,
         "workflow_error": workflow_error
     }

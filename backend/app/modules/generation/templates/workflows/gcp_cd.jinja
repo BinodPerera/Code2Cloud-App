@@ -1,0 +1,135 @@
+name: Continuous Deployment to GCP (Code2Cloud)
+
+on:
+  push:
+    branches:
+      - Code2Cloud-Deploy
+  workflow_dispatch:
+
+concurrency:
+  group: cd-Code2Cloud-Deploy
+  cancel-in-progress: true
+
+jobs:
+  deploy-app:
+    name: Build & Update Application
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      # Authenticate to Google Cloud
+      - name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@v2
+        with:
+          credentials_json: {% raw %}${{ secrets.GCP_SA_KEY }}{% endraw %}
+
+      - name: Set up Cloud SDK
+        uses: google-github-actions/setup-gcloud@v2
+
+      # Authenticate Docker against Google Artifact Registry
+      - name: Configure Docker for Artifact Registry
+        run: |
+          gcloud auth configure-docker {{ gcp_region | default('us-central1') }}-docker.pkg.dev --quiet
+
+      {% for comp in components %}
+      - name: Build and push {{ comp.name }} image
+        env:
+          IMAGE_TAG: {% raw %}${{ github.sha }}{% endraw %}
+          IMAGE_URI: {{ gcp_region | default('us-central1') }}-docker.pkg.dev/{% raw %}${{ secrets.GCP_PROJECT_ID }}{% endraw %}/{{ repo_name | lower }}-repo/{{ comp.name }}
+        run: |
+          docker build -t $IMAGE_URI:$IMAGE_TAG -t $IMAGE_URI:latest {{ comp.path }}
+          docker push $IMAGE_URI:$IMAGE_TAG
+          docker push $IMAGE_URI:latest
+      {% endfor %}
+
+      # In-Place Server Deployment
+      {% for comp in components %}
+      {% if comp.gcp_compute_choice == 'gce' or (compute_choice == 'gce' and not comp.gcp_compute_choice) %}
+      - name: Refresh {{ comp.name }} on GCE Instance
+        env:
+          APP_ENV_VARS_JSON: {% raw %}${{ secrets.APP_ENV_VARS_JSON }}{% endraw %}
+        run: |
+          ZONE=$(gcloud compute instances list --filter="name~'{{ repo_name }}-{{ comp.name }}'" --format="value(zone)" | head -n 1)
+          if [ -n "$ZONE" ]; then
+            echo "Refreshing container on GCE VM in zone: $ZONE"
+            
+            ENV_B64=$(echo -n "$APP_ENV_VARS_JSON" | base64 | tr -d '\n')
+            PY_SCRIPT_B64=$(cat <<'PYEOF' | base64 | tr -d '\n'
+import json, os, sys
+comp = sys.argv[1] if len(sys.argv) > 1 else "{{ comp.name }}"
+env_file = f"/opt/app/{comp}.env"
+json_file = "/tmp/app_env_vars.json"
+if os.path.exists(json_file):
+    try:
+        with open(json_file, "r") as f:
+            data = json.load(f)
+        new_vars = data.get(comp, data if not any(isinstance(v, dict) for v in data.values()) else {})
+        if isinstance(new_vars, dict) and new_vars:
+            lines = []
+            existing = set()
+            if os.path.exists(env_file):
+                with open(env_file, "r") as f:
+                    for line in f:
+                        stripped = line.strip()
+                        if stripped and not stripped.startswith("#") and "=" in stripped:
+                            k = stripped.split("=", 1)[0].strip()
+                            if k in new_vars:
+                                lines.append(f"{k}={new_vars[k]}\n")
+                                existing.add(k)
+                            else:
+                                lines.append(line)
+                        else:
+                            lines.append(line)
+            for k, v in new_vars.items():
+                if k not in existing:
+                    lines.append(f"{k}={v}\n")
+            os.makedirs("/opt/app", exist_ok=True)
+            with open(env_file, "w") as f:
+                f.writelines(lines)
+            os.chmod(env_file, 0o600)
+    except Exception as e:
+        print(f"Error updating env: {e}")
+    finally:
+        if os.path.exists(json_file):
+            os.remove(json_file)
+PYEOF
+)
+
+            gcloud compute ssh {{ repo_name }}-{{ comp.name }} --zone="$ZONE" --command="
+              if [ -n '$ENV_B64' ]; then echo '$ENV_B64' | base64 -d > /tmp/app_env_vars.json && echo '$PY_SCRIPT_B64' | base64 -d > /tmp/sync_env.py && sudo python3 /tmp/sync_env.py {{ comp.name }} || true; sudo rm -f /tmp/sync_env.py /tmp/app_env_vars.json; fi && \
+              docker pull {{ gcp_region | default('us-central1') }}-docker.pkg.dev/{% raw %}${{ secrets.GCP_PROJECT_ID }}{% endraw %}/{{ repo_name | lower }}-repo/{{ comp.name }}:latest && \
+              docker stop {{ comp.name }} || true && docker rm {{ comp.name }} || true && \
+              docker run -d --name {{ comp.name }} --restart always --env-file /opt/app/{{ comp.name }}.env -p 80:{{ comp.port | default(3000) }} {{ gcp_region | default('us-central1') }}-docker.pkg.dev/{% raw %}${{ secrets.GCP_PROJECT_ID }}{% endraw %}/{{ repo_name | lower }}-repo/{{ comp.name }}:latest
+            " || true
+          fi
+      {% else %}
+      - name: Update Cloud Run Service {{ comp.name }}
+        env:
+          APP_ENV_VARS_JSON: {% raw %}${{ secrets.APP_ENV_VARS_JSON }}{% endraw %}
+        run: |
+          ENV_FLAG=""
+          if [ -n "$APP_ENV_VARS_JSON" ]; then
+            VARS=$(python3 -c "
+import json, os
+try:
+    data = json.loads(os.environ.get('APP_ENV_VARS_JSON', '{}'))
+    comp_vars = data.get('{{ comp.name }}', data if not any(isinstance(v, dict) for v in data.values()) else {})
+    if isinstance(comp_vars, dict) and comp_vars:
+        print(','.join(f'{k}={v}' for k, v in comp_vars.items()))
+except Exception:
+    pass
+")
+            if [ -n "$VARS" ]; then
+              ENV_FLAG="--update-env-vars=$VARS"
+            fi
+          fi
+
+          gcloud run deploy {{ repo_name | lower }}-{{ comp.name }} \
+            --image={{ gcp_region | default('us-central1') }}-docker.pkg.dev/{% raw %}${{ secrets.GCP_PROJECT_ID }}{% endraw %}/{{ repo_name | lower }}-repo/{{ comp.name }}:latest \
+            --region={{ gcp_region | default('us-central1') }} \
+            $ENV_FLAG \
+            --quiet
+      {% endif %}
+      {% endfor %}

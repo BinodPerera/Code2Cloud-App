@@ -1,0 +1,163 @@
+name: Continuous Deployment to AWS (Code2Cloud)
+
+on:
+  push:
+    branches:
+      - Code2Cloud-Deploy
+  workflow_dispatch:
+
+concurrency:
+  group: cd-Code2Cloud-Deploy
+  cancel-in-progress: true
+
+jobs:
+  deploy-app:
+    name: Build & Update Application
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      # Setup AWS credentials
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: {% raw %}${{ secrets.AWS_ACCESS_KEY_ID }}{% endraw %}
+          aws-secret-access-key: {% raw %}${{ secrets.AWS_SECRET_ACCESS_KEY }}{% endraw %}
+          aws-session-token: {% raw %}${{ secrets.AWS_SESSION_TOKEN }}{% endraw %}
+          aws-region: {{ aws_region | default('us-east-1') }}
+
+      {% if registry_type == 'dockerhub' %}
+      # Log in to Docker Hub
+      - name: Log in to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: {% raw %}${{ secrets.DOCKER_USERNAME }}{% endraw %}
+          password: {% raw %}${{ secrets.DOCKER_PASSWORD }}{% endraw %}
+
+      {% for comp in components %}
+      - name: Build and push {{ comp.name }} to Docker Hub
+        env:
+          DOCKER_USERNAME: {% raw %}${{ secrets.DOCKER_USERNAME }}{% endraw %}
+          IMAGE_NAME: {{ repo_name | lower }}-{{ comp.name }}
+          IMAGE_TAG: {% raw %}${{ github.sha }}{% endraw %}
+        run: |
+          docker build -t $DOCKER_USERNAME/$IMAGE_NAME:$IMAGE_TAG -t $DOCKER_USERNAME/$IMAGE_NAME:latest {{ comp.path }}
+          docker push $DOCKER_USERNAME/$IMAGE_NAME:$IMAGE_TAG
+          docker push $DOCKER_USERNAME/$IMAGE_NAME:latest
+      {% endfor %}
+      {% else %}
+      # Log in to Amazon ECR (Default)
+      - name: Login to Amazon ECR
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v2
+
+      {% for comp in components %}
+      - name: Build and push {{ comp.name }} to Amazon ECR
+        env:
+          ECR_REGISTRY: {% raw %}${{ steps.login-ecr.outputs.registry }}{% endraw %}
+          ECR_REPOSITORY: {{ repo_name | lower }}-{{ comp.name }}
+          IMAGE_TAG: {% raw %}${{ github.sha }}{% endraw %}
+        run: |
+          docker build -t $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG -t $ECR_REGISTRY/$ECR_REPOSITORY:latest {{ comp.path }}
+          docker push $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
+          docker push $ECR_REGISTRY/$ECR_REPOSITORY:latest
+      {% endfor %}
+      {% endif %}
+
+      # In-Place Server Deployment (Zero Terraform, Zero Downtime)
+      {% for comp in components %}
+      {% if comp.aws_compute_choice == 'ec2' or (compute_choice == 'ec2' and not comp.aws_compute_choice) %}
+      - name: Refresh {{ comp.name }} Container on EC2 (In-Place via AWS SSM)
+        env:
+          APP_ENV_VARS_JSON: {% raw %}${{ secrets.APP_ENV_VARS_JSON }}{% endraw %}
+        run: |
+          INSTANCE_ID=$(aws ec2 describe-instances \
+            --filters "Name=tag:Name,Values={{ repo_name }}-{{ comp.name }}" "Name=instance-state-name,Values=running" \
+            --query "Reservations[].Instances[].InstanceId" \
+            --output text --region {{ aws_region | default('us-east-1') }})
+          
+          if [ -n "$INSTANCE_ID" ] && [ "$INSTANCE_ID" != "None" ]; then
+            echo "Found running instance for {{ comp.name }}: $INSTANCE_ID"
+            
+            ENV_B64=$(echo -n "$APP_ENV_VARS_JSON" | base64 | tr -d '\n')
+            PY_SCRIPT_B64=$(cat <<'PYEOF' | base64 | tr -d '\n'
+import json, os, sys
+comp = sys.argv[1] if len(sys.argv) > 1 else "{{ comp.name }}"
+env_file = f"/opt/app/{comp}.env"
+json_file = "/tmp/app_env_vars.json"
+if os.path.exists(json_file):
+    try:
+        with open(json_file, "r") as f:
+            data = json.load(f)
+        new_vars = data.get(comp, data if not any(isinstance(v, dict) for v in data.values()) else {})
+        if isinstance(new_vars, dict) and new_vars:
+            lines = []
+            existing = set()
+            if os.path.exists(env_file):
+                with open(env_file, "r") as f:
+                    for line in f:
+                        stripped = line.strip()
+                        if stripped and not stripped.startswith("#") and "=" in stripped:
+                            k = stripped.split("=", 1)[0].strip()
+                            if k in new_vars:
+                                lines.append(f"{k}={new_vars[k]}\n")
+                                existing.add(k)
+                            else:
+                                lines.append(line)
+                        else:
+                            lines.append(line)
+            for k, v in new_vars.items():
+                if k not in existing:
+                    lines.append(f"{k}={v}\n")
+            os.makedirs("/opt/app", exist_ok=True)
+            with open(env_file, "w") as f:
+                f.writelines(lines)
+            os.chmod(env_file, 0o600)
+    except Exception as e:
+        print(f"Error updating env: {e}")
+    finally:
+        if os.path.exists(json_file):
+            os.remove(json_file)
+PYEOF
+)
+
+            COMMAND_ID=$(aws ssm send-command \
+              --instance-ids "$INSTANCE_ID" \
+              --document-name "AWS-RunShellScript" \
+              --comment "Code2Cloud CD: In-Place Refresh {{ comp.name }} with updated env vars" \
+              --parameters "commands=[
+                \"ACCOUNT_ID=\$(aws sts get-caller-identity --query Account --output text)\",
+                \"REGION={{ aws_region | default('us-east-1') }}\",
+                \"if [ -n '$ENV_B64' ]; then echo '$ENV_B64' | base64 -d > /tmp/app_env_vars.json && echo '$PY_SCRIPT_B64' | base64 -d > /tmp/sync_env.py && python3 /tmp/sync_env.py {{ comp.name }} || true; rm -f /tmp/sync_env.py /tmp/app_env_vars.json; fi\",
+                {% if registry_type == 'dockerhub' %}
+                \"docker login --username {% raw %}${{ secrets.DOCKER_USERNAME }}{% endraw %} --password {% raw %}${{ secrets.DOCKER_PASSWORD }}{% endraw %}\",
+                \"docker pull {% raw %}${{ secrets.DOCKER_USERNAME }}{% endraw %}/{{ repo_name | lower }}-{{ comp.name }}:latest\",
+                \"docker stop {{ comp.name }} || true\",
+                \"docker rm {{ comp.name }} || true\",
+                \"docker run -d --name {{ comp.name }} --restart always --env-file /opt/app/{{ comp.name }}.env -p 80:{{ comp.port | default(3000) }} {% raw %}${{ secrets.DOCKER_USERNAME }}{% endraw %}/{{ repo_name | lower }}-{{ comp.name }}:latest\"
+                {% else %}
+                \"aws ecr get-login-password --region \$REGION | docker login --username AWS --password-stdin \$ACCOUNT_ID.dkr.ecr.\$REGION.amazonaws.com\",
+                \"docker pull \$ACCOUNT_ID.dkr.ecr.\$REGION.amazonaws.com/{{ repo_name | lower }}-{{ comp.name }}:latest\",
+                \"docker stop {{ comp.name }} || true\",
+                \"docker rm {{ comp.name }} || true\",
+                \"docker run -d --name {{ comp.name }} --restart always --env-file /opt/app/{{ comp.name }}.env -p 80:{{ comp.port | default(3000) }} \$ACCOUNT_ID.dkr.ecr.\$REGION.amazonaws.com/{{ repo_name | lower }}-{{ comp.name }}:latest\"
+                {% endif %}
+              ]" \
+              --query "Command.CommandId" --output text --region {{ aws_region | default('us-east-1') }})
+            echo "SSM Command dispatched: $COMMAND_ID. Waiting for execution..."
+            aws ssm wait command-executed --command-id "$COMMAND_ID" --instance-id "$INSTANCE_ID" --region {{ aws_region | default('us-east-1') }} || echo "Command dispatched successfully."
+          else
+            echo "No running EC2 instance found with tag Name={{ repo_name }}-{{ comp.name }}."
+          fi
+      {% else %}
+      - name: Trigger Rolling Update on ECS Service {{ comp.name }}
+        run: |
+          aws ecs update-service \
+            --cluster {{ repo_name | lower }}-cluster \
+            --service {{ repo_name | lower }}-{{ comp.name }} \
+            --force-new-deployment \
+            --region {{ aws_region | default('us-east-1') }} || true
+      {% endif %}
+      {% endfor %}
