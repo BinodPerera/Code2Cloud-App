@@ -186,71 +186,83 @@ resource "aws_instance" "backend" {
     }
   }
 
-  user_data_replace_on_change = false
+  user_data_replace_on_change = true
 
   user_data = <<-EOF
-    #!/bin/bash
-    # Wait for any background apt processes (unattended-upgrades) to release locks
-    while fuser /var/lib/dpkg/lock-frontend /var/lib/apt/lists/lock >/dev/null 2>&1; do
-      echo "Waiting for other apt process to finish..."
-      sleep 3
-    done
+#!/bin/bash
+set -ex
+exec > >(tee -a /var/log/user-data.log|logger -t user-data -s 2>/dev/console) 2>&1
 
-    if command -v apt-get &>/dev/null; then
-      export DEBIAN_FRONTEND=noninteractive
-      apt-get update -y
-      apt-get install -y docker.io awscli python3
-      systemctl start docker
-      systemctl enable docker
-      usermod -aG docker ubuntu || true
-    elif command -v dnf &>/dev/null; then
-      dnf update -y
-      dnf install -y docker python3
-      systemctl start docker
-      systemctl enable docker
-      usermod -aG docker ec2-user || true
-    fi
+# Wait for any background apt processes (unattended-upgrades) to release locks
+while fuser /var/lib/dpkg/lock-frontend /var/lib/apt/lists/lock >/dev/null 2>&1; do
+  echo "Waiting for other apt process to finish..."
+  sleep 3
+done
 
-    # Configure Linux Swap Memory
-    fallocate -l 2G /swapfile || dd if=/dev/zero of=/swapfile bs=1M count=$(expr 2 \* 1024)
-    chmod 600 /swapfile
-    mkswap /swapfile
-    swapon /swapfile
-    echo '/swapfile swap swap defaults 0 0' >> /etc/fstab
-    sysctl vm.swappiness=10
-    echo 'vm.swappiness=10' >> /etc/sysctl.conf
-    
-    # Authenticate Docker against ECR
-    aws ecr get-login-password --region ${var.aws_region} | docker login --username AWS --password-stdin ${data.aws_caller_identity.current.account_id}.dkr.ecr.${data.aws_region.current.name}.amazonaws.com/${lower(var.project_name)}-backend
-    
-    # Prepare app env file
-    mkdir -p /opt/app
-    cat <<'ENVEOF' > /opt/app/backend.env
-    PORT=8000
-    ENVIRONMENT=${var.environment}
+if command -v apt-get &>/dev/null; then
+  export DEBIAN_FRONTEND=noninteractive
+  apt-get update -y
+  apt-get install -y docker.io awscli python3
+  systemctl start docker
+  systemctl enable docker
+  usermod -aG docker ubuntu || true
+elif command -v dnf &>/dev/null; then
+  dnf update -y
+  dnf install -y docker python3
+  systemctl start docker
+  systemctl enable docker
+  usermod -aG docker ec2-user || true
+fi
+
+# Configure Linux Swap Memory
+fallocate -l 2G /swapfile || dd if=/dev/zero of=/swapfile bs=1M count=$(expr 2 \* 1024)
+chmod 600 /swapfile
+mkswap /swapfile
+swapon /swapfile
+echo '/swapfile swap swap defaults 0 0' >> /etc/fstab
+sysctl vm.swappiness=10
+echo 'vm.swappiness=10' >> /etc/sysctl.conf
+
+# Authenticate Docker against ECR
+aws ecr get-login-password --region ${var.aws_region} | docker login --username AWS --password-stdin ${data.aws_caller_identity.current.account_id}.dkr.ecr.${data.aws_region.current.name}.amazonaws.com/${lower(var.project_name)}-backend
+
+# Prepare app env file
+mkdir -p /opt/app
+cat <<'ENVEOF' > /opt/app/backend.env
+PORT=8000
+ENVIRONMENT=${var.environment}
 ENVEOF
 
-    cat <<'PYEOF' | python3
+cat <<'APPVARSEOF' > /tmp/app_env_vars.json
+${var.app_env_vars}
+APPVARSEOF
+
+cat <<'PYEOF' | python3
 import json, os
 try:
-    data = json.loads('''${var.app_env_vars}''')
-    comp_vars = data.get("backend", data if not any(isinstance(v, dict) for v in data.values()) else {})
-    if isinstance(comp_vars, dict):
-        with open("/opt/app/backend.env", "a") as f:
-            for k, v in comp_vars.items():
-                f.write(f"{k}={v}\n")
+    if os.path.exists("/tmp/app_env_vars.json"):
+        with open("/tmp/app_env_vars.json") as f:
+            content = f.read().strip()
+            if content:
+                data = json.loads(content)
+                comp_vars = data.get("backend", data if not any(isinstance(v, dict) for v in data.values()) else {})
+                if isinstance(comp_vars, dict):
+                    with open("/opt/app/backend.env", "a") as env_f:
+                        for k, v in comp_vars.items():
+                            env_f.write(f"{k}={v}\n")
 except Exception as e:
     print(f"Error parsing app_env_vars: {e}")
 PYEOF
-    chmod 600 /opt/app/backend.env
+rm -f /tmp/app_env_vars.json
+chmod 600 /opt/app/backend.env
 
-    # Run the container using --env-file
-    docker run -d -p 80:8000 \
-      --name backend \
-      --restart always \
-      --env-file /opt/app/backend.env \
-      ${data.aws_caller_identity.current.account_id}.dkr.ecr.${data.aws_region.current.name}.amazonaws.com/${lower(var.project_name)}-backend:latest
-  EOF
+# Run the container using --env-file
+docker run -d -p 80:8000 \
+  --name backend \
+  --restart always \
+  --env-file /opt/app/backend.env \
+  ${data.aws_caller_identity.current.account_id}.dkr.ecr.${data.aws_region.current.name}.amazonaws.com/${lower(var.project_name)}-backend:latest
+EOF
 
   tags = {
     Name        = "${var.project_name}-backend"
@@ -275,72 +287,84 @@ resource "aws_instance" "frontend" {
     }
   }
 
-  user_data_replace_on_change = false
+  user_data_replace_on_change = true
 
   user_data = <<-EOF
-    #!/bin/bash
-    # Wait for any background apt processes (unattended-upgrades) to release locks
-    while fuser /var/lib/dpkg/lock-frontend /var/lib/apt/lists/lock >/dev/null 2>&1; do
-      echo "Waiting for other apt process to finish..."
-      sleep 3
-    done
+#!/bin/bash
+set -ex
+exec > >(tee -a /var/log/user-data.log|logger -t user-data -s 2>/dev/console) 2>&1
 
-    if command -v apt-get &>/dev/null; then
-      export DEBIAN_FRONTEND=noninteractive
-      apt-get update -y
-      apt-get install -y docker.io awscli python3
-      systemctl start docker
-      systemctl enable docker
-      usermod -aG docker ubuntu || true
-    elif command -v dnf &>/dev/null; then
-      dnf update -y
-      dnf install -y docker python3
-      systemctl start docker
-      systemctl enable docker
-      usermod -aG docker ec2-user || true
-    fi
+# Wait for any background apt processes (unattended-upgrades) to release locks
+while fuser /var/lib/dpkg/lock-frontend /var/lib/apt/lists/lock >/dev/null 2>&1; do
+  echo "Waiting for other apt process to finish..."
+  sleep 3
+done
 
-    # Configure Linux Swap Memory
-    fallocate -l 1G /swapfile || dd if=/dev/zero of=/swapfile bs=1M count=$(expr 1 \* 1024)
-    chmod 600 /swapfile
-    mkswap /swapfile
-    swapon /swapfile
-    echo '/swapfile swap swap defaults 0 0' >> /etc/fstab
-    sysctl vm.swappiness=10
-    echo 'vm.swappiness=10' >> /etc/sysctl.conf
-    
-    # Authenticate Docker against ECR
-    aws ecr get-login-password --region ${var.aws_region} | docker login --username AWS --password-stdin ${data.aws_caller_identity.current.account_id}.dkr.ecr.${data.aws_region.current.name}.amazonaws.com/${lower(var.project_name)}-frontend
-    
-    # Prepare app env file
-    mkdir -p /opt/app
-    cat <<'ENVEOF' > /opt/app/frontend.env
-    PORT=3000
-    ENVIRONMENT=${var.environment}
-    BACKEND_URL=http://localhost:3000
+if command -v apt-get &>/dev/null; then
+  export DEBIAN_FRONTEND=noninteractive
+  apt-get update -y
+  apt-get install -y docker.io awscli python3
+  systemctl start docker
+  systemctl enable docker
+  usermod -aG docker ubuntu || true
+elif command -v dnf &>/dev/null; then
+  dnf update -y
+  dnf install -y docker python3
+  systemctl start docker
+  systemctl enable docker
+  usermod -aG docker ec2-user || true
+fi
+
+# Configure Linux Swap Memory
+fallocate -l 1G /swapfile || dd if=/dev/zero of=/swapfile bs=1M count=$(expr 1 \* 1024)
+chmod 600 /swapfile
+mkswap /swapfile
+swapon /swapfile
+echo '/swapfile swap swap defaults 0 0' >> /etc/fstab
+sysctl vm.swappiness=10
+echo 'vm.swappiness=10' >> /etc/sysctl.conf
+
+# Authenticate Docker against ECR
+aws ecr get-login-password --region ${var.aws_region} | docker login --username AWS --password-stdin ${data.aws_caller_identity.current.account_id}.dkr.ecr.${data.aws_region.current.name}.amazonaws.com/${lower(var.project_name)}-frontend
+
+# Prepare app env file
+mkdir -p /opt/app
+cat <<'ENVEOF' > /opt/app/frontend.env
+PORT=3000
+ENVIRONMENT=${var.environment}
+BACKEND_URL=http://localhost:3000
 ENVEOF
 
-    cat <<'PYEOF' | python3
+cat <<'APPVARSEOF' > /tmp/app_env_vars.json
+${var.app_env_vars}
+APPVARSEOF
+
+cat <<'PYEOF' | python3
 import json, os
 try:
-    data = json.loads('''${var.app_env_vars}''')
-    comp_vars = data.get("frontend", data if not any(isinstance(v, dict) for v in data.values()) else {})
-    if isinstance(comp_vars, dict):
-        with open("/opt/app/frontend.env", "a") as f:
-            for k, v in comp_vars.items():
-                f.write(f"{k}={v}\n")
+    if os.path.exists("/tmp/app_env_vars.json"):
+        with open("/tmp/app_env_vars.json") as f:
+            content = f.read().strip()
+            if content:
+                data = json.loads(content)
+                comp_vars = data.get("frontend", data if not any(isinstance(v, dict) for v in data.values()) else {})
+                if isinstance(comp_vars, dict):
+                    with open("/opt/app/frontend.env", "a") as env_f:
+                        for k, v in comp_vars.items():
+                            env_f.write(f"{k}={v}\n")
 except Exception as e:
     print(f"Error parsing app_env_vars: {e}")
 PYEOF
-    chmod 600 /opt/app/frontend.env
+rm -f /tmp/app_env_vars.json
+chmod 600 /opt/app/frontend.env
 
-    # Run the container using --env-file
-    docker run -d -p 80:3000 \
-      --name frontend \
-      --restart always \
-      --env-file /opt/app/frontend.env \
-      ${data.aws_caller_identity.current.account_id}.dkr.ecr.${data.aws_region.current.name}.amazonaws.com/${lower(var.project_name)}-frontend:latest
-  EOF
+# Run the container using --env-file
+docker run -d -p 80:3000 \
+  --name frontend \
+  --restart always \
+  --env-file /opt/app/frontend.env \
+  ${data.aws_caller_identity.current.account_id}.dkr.ecr.${data.aws_region.current.name}.amazonaws.com/${lower(var.project_name)}-frontend:latest
+EOF
 
   tags = {
     Name        = "${var.project_name}-frontend"
