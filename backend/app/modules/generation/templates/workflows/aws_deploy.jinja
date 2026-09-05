@@ -4,6 +4,13 @@ on:
   push:
     branches:
       - {{ branch }}
+  workflow_dispatch:
+    inputs:
+      skip_build:
+        description: 'Skip Docker image build and only apply infrastructure/env updates'
+        required: false
+        default: false
+        type: boolean
 
 jobs:
   deploy:
@@ -26,6 +33,7 @@ jobs:
       {% if registry_type == 'dockerhub' %}
       # Log in to Docker Hub
       - name: Log in to Docker Hub
+        if: {% raw %}${{ github.event_name != 'workflow_dispatch' || !inputs.skip_build }}{% endraw %}
         uses: docker/login-action@v3
         with:
           username: {% raw %}${{ secrets.DOCKER_USERNAME }}{% endraw %}
@@ -33,6 +41,7 @@ jobs:
 
       {% for comp in components %}
       - name: Build, tag, and push {{ comp.name }} to Docker Hub
+        if: {% raw %}${{ github.event_name != 'workflow_dispatch' || !inputs.skip_build }}{% endraw %}
         env:
           DOCKER_USERNAME: {% raw %}${{ secrets.DOCKER_USERNAME }}{% endraw %}
           IMAGE_NAME: {{ repo_name | lower }}-{{ comp.name }}
@@ -45,11 +54,13 @@ jobs:
       {% else %}
       # Log in and push to Amazon ECR (Default)
       - name: Login to Amazon ECR
+        if: {% raw %}${{ github.event_name != 'workflow_dispatch' || !inputs.skip_build }}{% endraw %}
         id: login-ecr
         uses: aws-actions/amazon-ecr-login@v2
 
       {% for comp in components %}
       - name: Build, tag, and push {{ comp.name }} to Amazon ECR
+        if: {% raw %}${{ github.event_name != 'workflow_dispatch' || !inputs.skip_build }}{% endraw %}
         env:
           ECR_REGISTRY: {% raw %}${{ steps.login-ecr.outputs.registry }}{% endraw %}
           ECR_REPOSITORY: {{ repo_name | lower }}-{{ comp.name }}
@@ -99,8 +110,12 @@ jobs:
 
       - name: Terraform Plan
         working-directory: ./terraform
+        env:
+          TF_VAR_app_env_vars: {% raw %}${{ secrets.APP_ENV_VARS_JSON }}{% endraw %}
         run: terraform plan -no-color
 
       - name: Terraform Apply
         working-directory: ./terraform
+        env:
+          TF_VAR_app_env_vars: {% raw %}${{ secrets.APP_ENV_VARS_JSON }}{% endraw %}
         run: terraform apply -auto-approve -no-color

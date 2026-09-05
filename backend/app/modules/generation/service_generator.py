@@ -38,7 +38,8 @@ class CodeGenerator:
         gcp_compute_choice: str = "cloudrun",
         gcp_machine_type: str = "e2-micro",
         gcp_use_static_ip: bool = False,
-        component_configs: Optional[Dict[str, Dict[str, Any]]] = None
+        component_configs: Optional[Dict[str, Dict[str, Any]]] = None,
+        env_vars: Optional[Dict[str, List[Dict[str, Any]]]] = None
     ) -> Dict[str, Any]:
         components_list = []
         if tech_stack and "components" in tech_stack and tech_stack["components"]:
@@ -95,7 +96,7 @@ class CodeGenerator:
                     tmpl = env.get_template(template_name)
                     generated_code["Dockerfile"] = tmpl.render(port=port)
                 except Exception as e:
-                    generated_code["Dockerfile"] = f"# Fallback Dockerfile\nFROM node:18-alpine\nWORKDIR /app\nCOPY . .\nRUN npm install\nCMD [\"npm\", \"start\"]\n# error: {str(e)}"
+                    generated_code["Dockerfile"] = f"# Fallback Dockerfile\nFROM node:22-alpine\nWORKDIR /app\nCOPY . .\nRUN npm install\nCMD [\"npm\", \"start\"]\n# error: {str(e)}"
 
                 # Generate Docker README
                 try:
@@ -140,7 +141,7 @@ class CodeGenerator:
                         tmpl = env.get_template(template_name)
                         dockerfile_content = tmpl.render(port=port)
                     except Exception as e:
-                        dockerfile_content = f"# Fallback Dockerfile\nFROM node:18-alpine\nWORKDIR /app\n# error: {str(e)}"
+                        dockerfile_content = f"# Fallback Dockerfile\nFROM node:22-alpine\nWORKDIR /app\n# error: {str(e)}"
                     
                     generated_code[f"{comp_path}/Dockerfile"] = dockerfile_content
                     
@@ -512,6 +513,7 @@ class CodeGenerator:
             "gcp_machine_type": gcp_machine_type,
             "gcp_use_static_ip": gcp_use_static_ip,
             "component_configs": component_configs,
+            "env_vars": env_vars,
             "committed": False
         }
         

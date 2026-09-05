@@ -3,7 +3,10 @@ from app.modules.auth.schemas import UserBase
 from app.modules.auth.deps import get_current_user, get_user_repository
 from app.modules.auth.repository import UserRepository
 from app.modules.generation.repository import GenerationRepository
-from app.modules.generation.schemas import GenerateRequest, UpdateCodeRequest, CommitRequest, PushSecretsRequest, InstanceRecommendationRequest
+from app.modules.generation.schemas import (
+    GenerateRequest, UpdateCodeRequest, CommitRequest, 
+    PushSecretsRequest, InstanceRecommendationRequest, UpdateEnvVarsRequest
+)
 from app.modules.credentials.repository import CredentialRepository
 from app.modules.credentials.router import get_credential_repository
 from app.modules.generation.secrets_handler import GitHubSecretsManager
@@ -14,6 +17,8 @@ from app.modules.generation.recommendation_service import RecommendationService
 from app.db.mongodb import get_database
 from app.core.config import settings
 import httpx
+import json
+import asyncio
 from typing import Optional, Dict, Any
 
 router = APIRouter()
@@ -120,7 +125,8 @@ async def generate_deployment_code(
         gcp_compute_choice=request.gcpComputeChoice,
         gcp_machine_type=request.gcpMachineType,
         gcp_use_static_ip=request.gcpUseStaticIp,
-        component_configs=request.componentConfigs
+        component_configs=request.componentConfigs,
+        env_vars=request.envVars
     )
 
 @router.get("/generations/history")
@@ -304,6 +310,36 @@ async def commit_generation_code(
                     await GitHubSecretsManager.push_secret(owner, repo, "DOCKER_PASSWORD", str(cred_data["docker_password"]).strip(), github_access_token)
                     pushed_secrets.append("DOCKER_PASSWORD")
 
+    # Push runtime application environment variables to GitHub Secrets as JSON
+    env_vars_source = request.app_env_vars or gen.get("env_vars")
+    if env_vars_source:
+        app_env_json = {}
+        for comp_name, var_list in env_vars_source.items():
+            if isinstance(var_list, list):
+                app_env_json[comp_name] = {
+                    item["key"]: item["value"]
+                    for item in var_list
+                    if isinstance(item, dict) and item.get("key")
+                }
+            elif isinstance(var_list, dict):
+                app_env_json[comp_name] = var_list
+
+        if app_env_json:
+            try:
+                await GitHubSecretsManager.push_secret(
+                    owner, repo, "APP_ENV_VARS_JSON", json.dumps(app_env_json), github_access_token
+                )
+                pushed_secrets.append("APP_ENV_VARS_JSON")
+                
+                # Ensure MongoDB record stores latest env_vars
+                db = await get_database()
+                await db["generations"].update_one(
+                    {"generation_id": generation_id},
+                    {"$set": {"env_vars": env_vars_source}}
+                )
+            except Exception as sec_err:
+                print(f"Warning: Failed to push APP_ENV_VARS_JSON secret: {sec_err}")
+
     branch = request.branch.strip() if request.branch else ""
     if not branch:
         branch = "code2cloud-setup"
@@ -311,6 +347,8 @@ async def commit_generation_code(
     commit_message = request.commit_message.strip() if request.commit_message else ""
     if not commit_message:
         commit_message = "ci: add generated deployment configurations via Code2Cloud"
+
+    merge_to_default = request.merge_to_default if request.merge_to_default is not None else True
         
     headers = {
         "Authorization": f"token {github_access_token}",
@@ -336,6 +374,27 @@ async def commit_generation_code(
             # Target branch exists
             ref_data = res.json()
             base_commit_sha = ref_data.get("object", {}).get("sha")
+
+            # Always sync latest changes from default branch (e.g. main/master) into target branch
+            # so the target deployment branch is never stale or behind the application codebase
+            if branch != default_branch:
+                try:
+                    sync_url = f"https://api.github.com/repos/{owner}/{repo}/merges"
+                    sync_payload = {
+                        "base": branch,
+                        "head": default_branch,
+                        "commit_message": f"Sync latest changes from '{default_branch}' into '{branch}' via Code2Cloud"
+                    }
+                    sync_res = await client.post(sync_url, headers=headers, json=sync_payload)
+                    if sync_res.status_code == 201:
+                        base_commit_sha = sync_res.json().get("sha")
+                    elif sync_res.status_code == 204:
+                        # Already up-to-date with default branch
+                        pass
+                    elif sync_res.status_code == 409:
+                        print(f"Warning: Merge conflict when syncing '{default_branch}' into '{branch}'")
+                except Exception as sync_err:
+                    print(f"Warning: Error syncing '{default_branch}' into '{branch}': {sync_err}")
         else:
             # Target branch does not exist, create it from the default branch
             default_ref_url = f"https://api.github.com/repos/{owner}/{repo}/git/ref/heads/{default_branch}"
@@ -440,6 +499,24 @@ async def commit_generation_code(
             raise HTTPException(status_code=400, detail=f"Failed to point branch ref to new commit: {update_res.text}")
             
         commit_web_url = f"https://github.com/{owner}/{repo}/commit/{new_commit_sha}"
+
+        # Step 5: Always keep default branch (main/master) updated with deployment setup branch
+        merged_to_default = False
+        if merge_to_default and branch != default_branch:
+            try:
+                merge_default_url = f"https://api.github.com/repos/{owner}/{repo}/merges"
+                merge_default_payload = {
+                    "base": default_branch,
+                    "head": branch,
+                    "commit_message": f"Merge deployment updates from '{branch}' into '{default_branch}' via Code2Cloud"
+                }
+                m_res = await client.post(merge_default_url, headers=headers, json=merge_default_payload)
+                if m_res.status_code in (201, 204):
+                    merged_to_default = True
+                elif m_res.status_code == 409:
+                    print(f"Warning: Could not automatically merge '{branch}' into '{default_branch}' due to merge conflicts.")
+            except Exception as m_err:
+                print(f"Warning: Error merging '{branch}' into '{default_branch}': {m_err}")
         
         # Update committed status to True in MongoDB Hot Tier
         await generation_repo.mark_as_committed(generation_id)
@@ -450,7 +527,10 @@ async def commit_generation_code(
             "commit_sha": new_commit_sha,
             "commit_url": commit_web_url,
             "secrets_pushed": len(pushed_secrets) > 0,
-            "pushed_secrets": pushed_secrets
+            "pushed_secrets": pushed_secrets,
+            "default_branch_synced": True,
+            "merged_to_default": merged_to_default,
+            "default_branch": default_branch
         }
 
 @router.post("/{owner}/{repo}/secrets/push-saved")
@@ -612,42 +692,183 @@ async def destroy_generation_infrastructure(
     github_access_token = user_data["github_access_token"]
 
     branch = (payload or {}).get("branch") or gen.get("branch") or "code2cloud-setup"
+    merge_to_default = (payload or {}).get("merge_to_default", True)
 
     headers = {
         "Authorization": f"token {github_access_token}",
         "Accept": "application/vnd.github.v3+json"
     }
 
-    # Dispatch destroy.yml workflow on GitHub Actions
-    dispatch_url = f"https://api.github.com/repos/{owner}/{repo}/actions/workflows/destroy.yml/dispatches"
-    dispatch_payload = {
-        "ref": branch,
-        "inputs": {
-            "confirm_destroy": "DESTROY"
-        }
-    }
+    async with httpx.AsyncClient(timeout=20.0) as client:
+        # 1. Fetch repository information to get default branch (e.g., main or master)
+        repo_res = await client.get(f"https://api.github.com/repos/{owner}/{repo}", headers=headers)
+        default_branch = "main"
+        if repo_res.status_code == 200:
+            default_branch = repo_res.json().get("default_branch", "main")
 
-    async with httpx.AsyncClient(timeout=15.0) as client:
+        # 2. Check if destroy.yml exists on the default branch
+        check_destroy_res = await client.get(
+            f"https://api.github.com/repos/{owner}/{repo}/contents/.github/workflows/destroy.yml?ref={default_branch}",
+            headers=headers
+        )
+
+        did_merge = False
+        # 3. If destroy.yml does not exist on default branch, merge branch into default branch
+        if check_destroy_res.status_code == 404:
+            if not merge_to_default:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"destroy.yml workflow not found on your repository's default branch '{default_branch}'. GitHub Actions requires the workflow file to exist on '{default_branch}' to run teardown. Please enable 'Merge into {default_branch}' or merge manually on GitHub."
+                )
+
+            # Trigger merge via GitHub API
+            merge_url = f"https://api.github.com/repos/{owner}/{repo}/merges"
+            merge_payload = {
+                "base": default_branch,
+                "head": branch,
+                "commit_message": f"Merge branch '{branch}' into '{default_branch}' via Code2Cloud to enable teardown workflow"
+            }
+            merge_res = await client.post(merge_url, headers=headers, json=merge_payload)
+            if merge_res.status_code == 409:
+                raise HTTPException(
+                    status_code=409,
+                    detail=f"Cannot automatically merge '{branch}' into '{default_branch}' due to merge conflicts. Please merge '{branch}' into '{default_branch}' manually on GitHub, then retry teardown."
+                )
+            elif merge_res.status_code not in (201, 204):
+                raise HTTPException(
+                    status_code=merge_res.status_code,
+                    detail=f"Failed to merge '{branch}' into '{default_branch}': {merge_res.text}"
+                )
+            
+            did_merge = True
+            # Brief pause for GitHub Actions to index the newly merged workflow
+            await asyncio.sleep(2.0)
+
+        # 4. Dispatch destroy.yml workflow on GitHub Actions
+        target_ref = default_branch if (check_destroy_res.status_code == 404 or did_merge) else branch
+        dispatch_url = f"https://api.github.com/repos/{owner}/{repo}/actions/workflows/destroy.yml/dispatches"
+        dispatch_payload = {
+            "ref": target_ref,
+            "inputs": {
+                "confirm_destroy": "DESTROY"
+            }
+        }
+
         res = await client.post(dispatch_url, headers=headers, json=dispatch_payload)
         if res.status_code not in (200, 204):
             if res.status_code == 404:
                 raise HTTPException(
                     status_code=404,
-                    detail=f"destroy.yml workflow not found on branch '{branch}'. Please ensure your generated files have been committed to GitHub."
+                    detail=f"destroy.yml workflow not found on '{target_ref}'. Please ensure your generated files have been committed and merged into '{default_branch}'."
                 )
             if res.status_code == 403:
                 raise HTTPException(
                     status_code=403,
-                    detail="GitHub API returned 403 (Resource not accessible by integration). Your GitHub App requires 'Actions: Read and write' permissions in GitHub App Settings to dispatch workflows via API. You can also trigger teardown directly from GitHub Actions tab."
+                    detail="GitHub API returned 403 (Resource not accessible by integration). Your GitHub App requires 'Actions: Read and write' permissions in GitHub App Settings to dispatch workflows via API."
                 )
             raise HTTPException(
                 status_code=res.status_code,
                 detail=f"GitHub Actions dispatch failed ({res.status_code}): {res.text}"
             )
 
+    msg = f"Teardown workflow dispatched on '{target_ref}'. Cloud resources are being destroyed."
+    if did_merge:
+        msg = f"Successfully merged '{branch}' into '{default_branch}' and dispatched teardown workflow. Cloud resources are being destroyed."
+
     return {
         "status": "triggered",
-        "message": f"Teardown workflow dispatched on branch '{branch}'. Cloud resources are being destroyed.",
-        "branch": branch
+        "message": msg,
+        "branch": target_ref,
+        "merged_to_default": did_merge,
+        "default_branch": default_branch
     }
+
+@router.post("/generations/{generation_id}/env-vars")
+async def update_post_deploy_env_vars(
+    generation_id: str,
+    request: UpdateEnvVarsRequest,
+    current_user: UserBase = Depends(get_current_user),
+    user_repo: UserRepository = Depends(get_user_repository),
+    generation_repo: GenerationRepository = Depends(get_generation_repository)
+):
+    """
+    Update runtime environment variables post-deployment, push updated secrets to GitHub,
+    and optionally trigger zero-downtime fast redeployment (skip_build: true).
+    """
+    gen = await generation_repo.get_by_id(generation_id)
+    if not gen:
+        raise HTTPException(status_code=404, detail="Generation not found")
+        
+    repo_url = gen.get("repo_url")
+    if not repo_url:
+        raise HTTPException(status_code=400, detail="Repository URL not found in generation record")
+        
+    path_part = repo_url.replace("https://github.com/", "").replace("http://github.com/", "")
+    parts = [p for p in path_part.split("/") if p]
+    if len(parts) < 2:
+        raise HTTPException(status_code=400, detail=f"Invalid repository URL format: {repo_url}")
+    owner, repo = parts[0], parts[1]
+    
+    user_data = await user_repo.get_by_login(current_user.login)
+    if not user_data or not user_data.get("github_access_token"):
+        raise HTTPException(status_code=401, detail="GitHub access token not found. Please log in again.")
+    github_access_token = user_data["github_access_token"]
+    
+    # 1. Update in MongoDB
+    db = await get_database()
+    await db["generations"].update_one(
+        {"generation_id": generation_id},
+        {"$set": {"env_vars": request.env_vars}}
+    )
+    
+    # 2. Serialize and push APP_ENV_VARS_JSON to GitHub Secrets
+    app_env_json = {}
+    for comp_name, var_list in request.env_vars.items():
+        if isinstance(var_list, list):
+            app_env_json[comp_name] = {
+                item["key"]: item["value"]
+                for item in var_list
+                if isinstance(item, dict) and item.get("key")
+            }
+        elif isinstance(var_list, dict):
+            app_env_json[comp_name] = var_list
+
+    await GitHubSecretsManager.push_secret(
+        owner, repo, "APP_ENV_VARS_JSON", json.dumps(app_env_json), github_access_token
+    )
+    
+    # 3. If redeploy requested, trigger workflow_dispatch on deploy.yml
+    workflow_triggered = False
+    workflow_error = None
+    if request.redeploy:
+        branch = request.branch or gen.get("branch") or "code2cloud-setup"
+        headers = {
+            "Authorization": f"token {github_access_token}",
+            "Accept": "application/vnd.github.v3+json"
+        }
+        dispatch_url = f"https://api.github.com/repos/{owner}/{repo}/actions/workflows/deploy.yml/dispatches"
+        dispatch_payload = {
+            "ref": branch,
+            "inputs": {
+                "skip_build": True
+            }
+        }
+        async with httpx.AsyncClient(timeout=15.0) as client:
+            try:
+                res = await client.post(dispatch_url, headers=headers, json=dispatch_payload)
+                if res.status_code in (200, 204):
+                    workflow_triggered = True
+                else:
+                    workflow_error = f"GitHub returned {res.status_code}: {res.text}"
+            except Exception as disp_err:
+                workflow_error = str(disp_err)
+                
+    return {
+        "status": "success",
+        "env_vars": request.env_vars,
+        "secrets_pushed": ["APP_ENV_VARS_JSON"],
+        "workflow_triggered": workflow_triggered,
+        "workflow_error": workflow_error
+    }
+
 

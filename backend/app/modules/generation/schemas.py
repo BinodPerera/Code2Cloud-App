@@ -1,5 +1,5 @@
 from pydantic import BaseModel
-from typing import Optional, Dict, Any
+from typing import Optional, Dict, Any, List
 
 class GenerateRequest(BaseModel):
     serviceId: str
@@ -23,6 +23,7 @@ class GenerateRequest(BaseModel):
     gcpMachineType: Optional[str] = 'e2-micro'
     gcpUseStaticIp: Optional[bool] = False
     componentConfigs: Optional[Dict[str, Dict[str, Any]]] = None
+    envVars: Optional[Dict[str, List[Dict[str, Any]]]] = None
 
 
 class UpdateCodeRequest(BaseModel):
@@ -40,6 +41,13 @@ class CommitRequest(BaseModel):
     branch: Optional[str] = None
     commit_message: Optional[str] = None
     secrets_payload: Optional[SecretsPayload] = None
+    app_env_vars: Optional[Dict[str, List[Dict[str, Any]]]] = None
+    merge_to_default: Optional[bool] = True
+
+class UpdateEnvVarsRequest(BaseModel):
+    env_vars: Dict[str, List[Dict[str, Any]]]
+    redeploy: bool = True
+    branch: Optional[str] = "code2cloud-setup"
 
 class PushSecretsRequest(BaseModel):
     credential_ids: list[str]
@@ -51,4 +59,5 @@ class InstanceRecommendationRequest(BaseModel):
     techStack: Optional[Dict[str, Any]] = None
     componentName: Optional[str] = None
     componentType: Optional[str] = None
+
 

@@ -116,54 +116,97 @@ resource "google_compute_instance" "{{ comp.name }}" {
   }
 
   metadata_startup_script = <<-EOT
-    #!/bin/bash
-    while fuser /var/lib/dpkg/lock-frontend /var/lib/apt/lists/lock >/dev/null 2>&1; do
-      echo "Waiting for other apt process to finish..."
-      sleep 3
-    done
-    export DEBIAN_FRONTEND=noninteractive
-    apt-get update
-    apt-get install -y apt-transport-https ca-certificates curl gnupg lsb-release
-    curl -fsSL https://download.docker.com/linux/debian/gpg | gpg --dearmor -o /usr/share/keyrings/docker-archive-keyring.gpg
-    echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/docker-archive-keyring.gpg] https://download.docker.com/linux/debian $(lsb_release -cs) stable" | tee /etc/apt/sources.list.d/docker.list > /dev/null
-    apt-get update
-    apt-get install -y docker-ce docker-ce-cli containerd.io
-    {%- if comp.swap_enabled or (swap_enabled and comp.swap_enabled is not defined) %}
+#!/bin/bash
+set -ex
+exec > >(tee -a /var/log/startup-script.log|logger -t startup-script -s 2>/dev/console) 2>&1
 
-    # Configure Linux Swap Memory
-    fallocate -l {{ comp.swap_size_gb | default('var.swap_size_gb') }}G /swapfile || dd if=/dev/zero of=/swapfile bs=1M count=$(expr {{ comp.swap_size_gb | default('var.swap_size_gb') }} \* 1024)
-    chmod 600 /swapfile
-    mkswap /swapfile
-    swapon /swapfile
-    echo '/swapfile swap swap defaults 0 0' >> /etc/fstab
-    sysctl vm.swappiness=10
-    echo 'vm.swappiness=10' >> /etc/sysctl.conf
-    {%- endif %}
-    
-    # Authenticate Docker to Artifact Registry
-    gcloud auth configure-docker ${var.gcp_region}-docker.pkg.dev --quiet
-    
-    # Run the container mapping host port 80 to container port
-    docker run -d -p 80:{{ comp.port | default(3000) }} \
-      --name {{ comp.name }} \
-      --restart always \
-      -e PORT={{ comp.port | default(3000) }} \
-      -e ENVIRONMENT=${var.environment} \
-      {%- if db_enabled %}
-      -e DB_HOST=${google_sql_database_instance.db.public_ip_address} \
-      -e DB_PORT={{ db_port | default(5432) }} \
-      -e DB_USER={{ db_user | default('c2c_admin') }} \
-      -e DB_PASSWORD=${var.db_password} \
-      -e DB_NAME={{ db_name | default('app_db') }} \
-      -e DATABASE_URL="{{ 'postgres' if db_engine == 'postgres' else 'mysql' }}://{{ db_user | default('c2c_admin') }}:${var.db_password}@${google_sql_database_instance.db.public_ip_address}:{{ db_port | default(5432) }}/{{ db_name | default('app_db') }}" \
-      {%- endif %}
-      {%- if comp.depends_on %}
-      {%- for dep in comp.depends_on %}
-      -e {{ dep | upper }}_URL=http://localhost:{{ comp.port | default(3000) }} \
-      {%- endfor %}
-      {%- endif %}
-      ${var.gcp_region}-docker.pkg.dev/${var.project_id}/${google_artifact_registry_repository.{{ comp.name }}.repository_id}/{{ comp.name }}:latest
-  EOT
+# Prevent concurrent execution
+exec 200>/var/lock/startup-script.lock
+flock -n 200 || { echo "Startup script is already running in background."; exit 0; }
+
+# Force apt to use IPv4
+if [ -d /etc/apt/apt.conf.d ]; then
+  echo 'Acquire::ForceIPv4 "true";' > /etc/apt/apt.conf.d/99force-ipv4
+fi
+{%- if comp.swap_enabled or (swap_enabled and comp.swap_enabled is not defined) %}
+
+# Configure Linux Swap Memory first to avoid OOM killer on small instances
+if [ ! -f /swapfile ]; then
+  fallocate -l {{ comp.swap_size_gb | default('var.swap_size_gb') }}G /swapfile || dd if=/dev/zero of=/swapfile bs=1M count=$(expr {{ comp.swap_size_gb | default('var.swap_size_gb') }} \* 1024)
+  chmod 600 /swapfile
+  mkswap /swapfile
+  swapon /swapfile
+  echo '/swapfile swap swap defaults 0 0' >> /etc/fstab
+  sysctl vm.swappiness=10
+  echo 'vm.swappiness=10' >> /etc/sysctl.conf
+fi
+{%- endif %}
+
+while fuser /var/lib/dpkg/lock-frontend /var/lib/apt/lists/lock >/dev/null 2>&1; do
+  echo "Waiting for other apt process to finish..."
+  sleep 3
+done
+export DEBIAN_FRONTEND=noninteractive
+apt-get update -y || (sleep 5 && apt-get update -y)
+apt-get install -y --no-install-recommends apt-transport-https ca-certificates curl gnupg lsb-release || apt-get install -y --fix-missing --no-install-recommends apt-transport-https ca-certificates curl gnupg lsb-release
+curl -fsSL https://download.docker.com/linux/debian/gpg | gpg --dearmor -o /usr/share/keyrings/docker-archive-keyring.gpg
+echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/docker-archive-keyring.gpg] https://download.docker.com/linux/debian $(lsb_release -cs) stable" | tee /etc/apt/sources.list.d/docker.list > /dev/null
+apt-get update -y || (sleep 5 && apt-get update -y)
+apt-get install -y --no-install-recommends docker-ce docker-ce-cli containerd.io python3 || apt-get install -y --fix-missing --no-install-recommends docker-ce docker-ce-cli containerd.io python3
+
+# Authenticate Docker to Artifact Registry
+gcloud auth configure-docker ${var.gcp_region}-docker.pkg.dev --quiet
+
+# Prepare app env file
+mkdir -p /opt/app
+cat <<'ENVEOF' > /opt/app/{{ comp.name }}.env
+PORT={{ comp.port | default(3000) }}
+ENVIRONMENT=${var.environment}
+{%- if db_enabled %}
+DB_HOST=${google_sql_database_instance.db.public_ip_address}
+DB_PORT={{ db_port | default(5432) }}
+DB_USER={{ db_user | default('c2c_admin') }}
+DB_PASSWORD=${var.db_password}
+DB_NAME={{ db_name | default('app_db') }}
+DATABASE_URL={{ 'postgres' if db_engine == 'postgres' else 'mysql' }}://{{ db_user | default('c2c_admin') }}:${var.db_password}@${google_sql_database_instance.db.public_ip_address}:{{ db_port | default(5432) }}/{{ db_name | default('app_db') }}
+{%- endif %}
+{%- if comp.depends_on %}
+{%- for dep in comp.depends_on %}
+{{ dep | upper }}_URL=http://localhost:{{ comp.port | default(3000) }}
+{%- endfor %}
+{%- endif %}
+ENVEOF
+
+cat <<'APPVARSEOF' > /tmp/app_env_vars.json
+${var.app_env_vars}
+APPVARSEOF
+
+cat <<'PYEOF' | python3
+import json, os
+try:
+    if os.path.exists("/tmp/app_env_vars.json"):
+        with open("/tmp/app_env_vars.json") as f:
+            content = f.read().strip()
+            if content:
+                data = json.loads(content)
+                comp_vars = data.get("{{ comp.name }}", data if not any(isinstance(v, dict) for v in data.values()) else {})
+                if isinstance(comp_vars, dict):
+                    with open("/opt/app/{{ comp.name }}.env", "a") as env_f:
+                        for k, v in comp_vars.items():
+                            env_f.write(f"{k}={v}\n")
+except Exception as e:
+    print(f"Error parsing app_env_vars: {e}")
+PYEOF
+rm -f /tmp/app_env_vars.json
+chmod 600 /opt/app/{{ comp.name }}.env
+
+# Run the container using --env-file
+docker run -d -p 80:{{ comp.port | default(3000) }} \
+  --name {{ comp.name }} \
+  --restart always \
+  --env-file /opt/app/{{ comp.name }}.env \
+  ${var.gcp_region}-docker.pkg.dev/${var.project_id}/${google_artifact_registry_repository.{{ comp.name }}.repository_id}/{{ comp.name }}:latest
+EOT
 }
 {% endfor %}
 

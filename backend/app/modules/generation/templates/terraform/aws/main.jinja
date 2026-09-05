@@ -210,7 +210,7 @@ resource "aws_ecs_task_definition" "{{ comp.name }}" {
       containerPort = {{ comp.port | default(80) }}
       hostPort      = {{ comp.port | default(80) }}
     }]
-    environment = [
+    environment = concat([
       { name = "PORT", value = "{{ comp.port | default(80) }}" },
       { name = "ENVIRONMENT", value = "${var.environment}" }
       {%- if db_enabled %}
@@ -227,7 +227,12 @@ resource "aws_ecs_task_definition" "{{ comp.name }}" {
       , { name = "{{ dep | upper }}_URL", value = "http://${var.project_name}-{{ dep }}.local:{{ comp.port | default(80) }}" }
       {%- endfor %}
       {%- endif %}
-    ]
+    ], [
+      for k, v in (can(jsondecode(var.app_env_vars)["{{ comp.name }}"]) ? jsondecode(var.app_env_vars)["{{ comp.name }}"] : try(jsondecode(var.app_env_vars), {})) : {
+        name  = k
+        value = tostring(v)
+      }
+    ])
   }])
 
   tags = {
