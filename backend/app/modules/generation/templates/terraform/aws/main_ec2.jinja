@@ -259,7 +259,14 @@ resource "aws_instance" "{{ comp.name }}" {
 
   user_data = <<-EOF
     #!/bin/bash
+    # Wait for any background apt processes (unattended-upgrades) to release locks
+    while fuser /var/lib/dpkg/lock-frontend /var/lib/apt/lists/lock >/dev/null 2>&1; do
+      echo "Waiting for other apt process to finish..."
+      sleep 3
+    done
+
     if command -v apt-get &>/dev/null; then
+      export DEBIAN_FRONTEND=noninteractive
       apt-get update -y
       apt-get install -y docker.io awscli
       systemctl start docker
@@ -285,28 +292,28 @@ resource "aws_instance" "{{ comp.name }}" {
     {%- endif %}
     
     # Authenticate Docker against ECR
-    aws ecr get-login-password --region \${var.aws_region} | docker login --username AWS --password-stdin \${data.aws_caller_identity.current.account_id}.dkr.ecr.\${data.aws_region.current.name}.amazonaws.com/\${lower(var.project_name)}-{{ comp.name }}
+    aws ecr get-login-password --region ${var.aws_region} | docker login --username AWS --password-stdin ${data.aws_caller_identity.current.account_id}.dkr.ecr.${data.aws_region.current.name}.amazonaws.com/${lower(var.project_name)}-{{ comp.name }}
     
     # Run the container
     docker run -d -p 80:{{ comp.port | default(3000) }} \
       --name {{ comp.name }} \
       --restart always \
       -e PORT={{ comp.port | default(3000) }} \
-      -e ENVIRONMENT=\${var.environment} \
+      -e ENVIRONMENT=${var.environment} \
       {%- if db_enabled %}
-      -e DB_HOST=\${aws_db_instance.db.address} \
+      -e DB_HOST=${aws_db_instance.db.address} \
       -e DB_PORT={{ db_port | default(5432) }} \
       -e DB_USER={{ db_user | default('c2c_admin') }} \
-      -e DB_PASSWORD=\${var.db_password} \
+      -e DB_PASSWORD=${var.db_password} \
       -e DB_NAME={{ db_name | default('app_db') }} \
-      -e DATABASE_URL="{{ 'postgres' if db_engine == 'postgres' else 'mysql' }}://{{ db_user | default('c2c_admin') }}:\${var.db_password}@\${aws_db_instance.db.address}:{{ db_port | default(5432) }}/{{ db_name | default('app_db') }}" \
+      -e DATABASE_URL="{{ 'postgres' if db_engine == 'postgres' else 'mysql' }}://{{ db_user | default('c2c_admin') }}:${var.db_password}@${aws_db_instance.db.address}:{{ db_port | default(5432) }}/{{ db_name | default('app_db') }}" \
       {%- endif %}
       {%- if comp.depends_on %}
       {%- for dep in comp.depends_on %}
       -e {{ dep | upper }}_URL=http://localhost:{{ comp.port | default(3000) }} \
       {%- endfor %}
       {%- endif %}
-      \${data.aws_caller_identity.current.account_id}.dkr.ecr.\${data.aws_region.current.name}.amazonaws.com/\${lower(var.project_name)}-{{ comp.name }}:latest
+      ${data.aws_caller_identity.current.account_id}.dkr.ecr.${data.aws_region.current.name}.amazonaws.com/${lower(var.project_name)}-{{ comp.name }}:latest
   EOF
 
   tags = {

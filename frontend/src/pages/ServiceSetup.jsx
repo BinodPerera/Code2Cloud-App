@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
-import { BookMarked, ArrowLeft, Settings2, ChevronDown, ChevronUp, HardDrive, Database, Globe, Layers, ShieldCheck, DollarSign, Server, Cpu, Check, Sliders, Zap } from 'lucide-react';
+import { BookMarked, ArrowLeft, Settings2, ChevronDown, ChevronUp, HardDrive, Database, Globe, Layers, ShieldCheck, DollarSign, Server, Cpu, Check, Sliders, Zap, ExternalLink, Sparkles, RefreshCw } from 'lucide-react';
 import { apiClient } from '../utils/api';
 import Preloader from '../components/Preloader';
 
@@ -88,8 +88,12 @@ function ServiceSetup() {
       try {
         setLoadingRepos(true);
         const response = await apiClient.get('/repos/');
-        const data = await response.json();
-        setRepos(data);
+        if (response.ok) {
+          const data = await response.json();
+          setRepos(Array.isArray(data) ? data : []);
+        } else {
+          setRepos([]);
+        }
       } catch (err) {
         if (err.message !== 'Unauthorized') {
           setError('Error loading repositories. Please try again.');
@@ -272,6 +276,27 @@ function ServiceSetup() {
     }));
   };
 
+  const getLangColor = (lang) => {
+    const colors = {
+      JavaScript: '#f1e05a',
+      TypeScript: '#3178c6',
+      Python: '#3572A5',
+      HTML: '#e34c26',
+      CSS: '#563d7c',
+      Jinja: '#a52a22',
+      HCL: '#844FBA',
+      Go: '#00ADD8',
+      Rust: '#dea584',
+      Java: '#b07219',
+      Ruby: '#701516',
+      PHP: '#4F5D95',
+      Dockerfile: '#384d54',
+      Shell: '#89e051'
+    };
+    return colors[lang] || '#10B981';
+  };
+
+
   useEffect(() => {
     if (selectedCloud === 'AWS') {
       setSelectedRegion((prev) => (prev && ['us-east-1', 'us-west-2', 'eu-west-1', 'ap-southeast-1', 'ap-south-1'].includes(prev) ? prev : 'us-east-1'));
@@ -394,45 +419,103 @@ function ServiceSetup() {
     }
   };
 
-  const sortedRepos = [...repos].sort((a, b) => a.full_name.localeCompare(b.full_name));
+  const sortedRepos = (Array.isArray(repos) ? [...repos] : []).sort((a, b) => (a.full_name || '').localeCompare(b.full_name || ''));
 
   return (
-    <>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '2rem' }}>
-        <button 
-          onClick={() => navigate('/services')}
-          style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', background: 'rgba(255,255,255,0.05)', border: '2px solid var(--c2c-border)', color: '#a2a2b5', padding: '0.5rem 1rem', borderRadius: '10px', cursor: 'pointer', transition: 'all 0.2s' }}
-          onMouseOver={(e) => { e.currentTarget.style.color = '#fff'; e.currentTarget.style.background = 'rgba(255,255,255,0.1)'; }}
-          onMouseOut={(e) => { e.currentTarget.style.color = '#a2a2b5'; e.currentTarget.style.background = 'rgba(255,255,255,0.05)'; }}
-        >
-          <ArrowLeft size={16} />
-          Back to Services
-        </button>
-      </div>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '2rem', width: '100%' }}>
+      {/* Top Header Bar */}
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '1rem' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
+          <button 
+            onClick={() => navigate('/services')}
+            style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', background: 'rgba(255,255,255,0.04)', border: '2px solid var(--c2c-border)', color: '#a2a2b5', padding: '0.55rem 1.1rem', borderRadius: '12px', cursor: 'pointer', transition: 'all 0.2s', fontWeight: '500' }}
+            onMouseOver={(e) => { e.currentTarget.style.color = '#fff'; e.currentTarget.style.background = 'rgba(255,255,255,0.08)'; }}
+            onMouseOut={(e) => { e.currentTarget.style.color = '#a2a2b5'; e.currentTarget.style.background = 'rgba(255,255,255,0.04)'; }}
+          >
+            <ArrowLeft size={16} />
+            Back to Services
+          </button>
 
-      <div style={{ maxWidth: '650px', margin: '0 auto', display: 'flex', flexDirection: 'column', gap: '2rem', width: '100%' }}>
-        
-        <div style={{ textAlign: 'center', marginBottom: '1rem' }}>
-          <h2 style={{ fontSize: '2rem', fontWeight: '700', marginBottom: '0.5rem', color: currentConfig.color }}>
-            {currentConfig.title}
-          </h2>
-          <p style={{ color: '#a2a2b5' }}>{currentConfig.description}</p>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '0.9rem', color: '#6e7191' }}>
+            <span>Services</span>
+            <span>/</span>
+            <span style={{ color: currentConfig.color, fontWeight: '600' }}>{currentConfig.title}</span>
+          </div>
         </div>
 
-        {loadingRepos ? (
-          <div style={{ display: 'flex', justifyContent: 'center', padding: '2rem' }}>
-            <div className="loading-spinner" style={{ width: '32px', height: '32px' }}></div>
+        {selectedRepo && (
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', background: 'rgba(255,255,255,0.03)', border: '1px solid var(--c2c-border)', padding: '0.45rem 0.9rem', borderRadius: '12px' }}>
+              <BookMarked size={15} style={{ color: currentConfig.color }} />
+              <span style={{ color: '#fff', fontSize: '0.85rem', fontWeight: '600' }}>{selectedRepo.full_name}</span>
+            </div>
+            <button
+              onClick={() => {
+                setSelectedRepo(null);
+                setSelectedRepoId('');
+                setTechStack(null);
+                setIsOpen(true);
+              }}
+              style={{
+                background: 'rgba(255,255,255,0.03)',
+                border: '1px solid var(--c2c-border)',
+                color: '#a2a2b5',
+                padding: '0.45rem 0.85rem',
+                borderRadius: '12px',
+                cursor: 'pointer',
+                fontSize: '0.8rem',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '0.4rem',
+                transition: 'all 0.2s'
+              }}
+              onMouseOver={(e) => { e.currentTarget.style.color = '#fff'; e.currentTarget.style.borderColor = currentConfig.color; }}
+              onMouseOut={(e) => { e.currentTarget.style.color = '#a2a2b5'; e.currentTarget.style.borderColor = 'var(--c2c-border)'; }}
+            >
+              <RefreshCw size={13} />
+              Switch Repo
+            </button>
           </div>
-        ) : error ? (
-          <div style={{ background: 'rgba(255, 107, 107, 0.1)', border: '2px solid rgba(255, 107, 107, 0.3)', color: '#ff6b6b', padding: '1.2rem', borderRadius: '12px', textAlign: 'center' }}>
-            {error}
+        )}
+      </div>
+
+      {loadingRepos ? (
+        <div style={{ display: 'flex', justifyContent: 'center', padding: '4rem 0' }}>
+          <div className="loading-spinner" style={{ width: '36px', height: '36px' }}></div>
+        </div>
+      ) : error ? (
+        <div style={{ background: 'rgba(255, 107, 107, 0.1)', border: '2px solid rgba(255, 107, 107, 0.3)', color: '#ff6b6b', padding: '1.5rem', borderRadius: '16px', textAlign: 'center', maxWidth: '600px', margin: '2rem auto' }}>
+          {error}
+        </div>
+      ) : !selectedRepo ? (
+        /* Repository Selection Hero View */
+        <div style={{ maxWidth: '780px', margin: '1rem auto 3rem auto', width: '100%', display: 'flex', flexDirection: 'column', gap: '2rem' }}>
+          <div style={{ textAlign: 'center' }}>
+            <div style={{ display: 'inline-flex', alignItems: 'center', gap: '0.5rem', background: `${currentConfig.color}15`, border: `1px solid ${currentConfig.color}35`, color: currentConfig.color, padding: '0.35rem 0.9rem', borderRadius: '20px', fontSize: '0.85rem', fontWeight: '600', marginBottom: '1rem' }}>
+              <Sparkles size={14} />
+              {currentConfig.title}
+            </div>
+            <h2 style={{ fontSize: '2.4rem', fontWeight: '700', marginBottom: '0.6rem', color: '#fff', letterSpacing: '-0.5px' }}>
+              Choose Repository to Configure
+            </h2>
+            <p style={{ color: '#a2a2b5', fontSize: '1.05rem', maxWidth: '600px', margin: '0 auto', lineHeight: '1.5' }}>
+              {currentConfig.description}
+            </p>
           </div>
-        ) : (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-              <label style={{ color: '#a2a2b5', fontSize: '0.95rem', fontWeight: '500' }}>Choose Repository</label>
+
+          <div style={{
+            background: 'var(--c2c-surface)',
+            border: '2px solid var(--c2c-border)',
+            borderRadius: '24px',
+            padding: '2.5rem',
+            boxShadow: '0 20px 40px -15px rgba(0, 0, 0, 0.4)',
+            display: 'flex',
+            flexDirection: 'column',
+            gap: '1.25rem'
+          }}>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.6rem' }}>
+              <label style={{ color: '#fff', fontSize: '1rem', fontWeight: '600' }}>Search & Select Repository</label>
               <div style={{ position: 'relative', zIndex: 995 }}>
-                {/* Click-outside capture overlay */}
                 {isOpen && (
                   <div 
                     onClick={() => {
@@ -467,8 +550,7 @@ function ServiceSetup() {
                     setIsOpen(true);
                   }}
                   style={{
-                    background: 'var(--c2c-surface)',
-                    backdropFilter: 'blur(20px)',
+                    background: 'rgba(255, 255, 255, 0.03)',
                     border: '2px solid var(--c2c-border)',
                     borderRadius: '16px',
                     color: 'var(--c2c-text-primary)',
@@ -515,18 +597,18 @@ function ServiceSetup() {
                     background: 'var(--c2c-surface)',
                     border: '2px solid var(--c2c-border)',
                     borderRadius: '16px',
-                    maxHeight: '260px',
+                    maxHeight: '280px',
                     zIndex: 999,
-                    boxShadow: '0 10px 30px rgba(0,0,0,0.5)',
+                    boxShadow: '0 15px 35px rgba(0,0,0,0.6)',
                     padding: '0.75rem',
                     display: 'flex',
                     flexDirection: 'column',
                     gap: '0.5rem',
                     boxSizing: 'border-box'
                   }}>
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.3rem', overflowY: 'auto', maxHeight: '220px' }}>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.3rem', overflowY: 'auto', maxHeight: '240px' }}>
                       {sortedRepos.filter(repo => repo.full_name.toLowerCase().includes(searchQuery.toLowerCase())).length === 0 ? (
-                        <div style={{ padding: '1rem', color: '#6e7191', fontSize: '0.95rem', textAlign: 'center' }}>
+                        <div style={{ padding: '1.5rem', color: '#6e7191', fontSize: '0.95rem', textAlign: 'center' }}>
                           No repositories found
                         </div>
                       ) : (
@@ -542,29 +624,30 @@ function ServiceSetup() {
                                   setSelectedRepo(repo);
                                   setIsOpen(false);
                                   setTechStack(null);
-                                  setSearchQuery(''); // Reset query on select
+                                  setSearchQuery('');
                                 }}
                                 style={{
                                   padding: '1rem',
-                                  borderRadius: '10px',
+                                  borderRadius: '12px',
                                   cursor: 'pointer',
                                   display: 'flex',
                                   alignItems: 'center',
                                   justifyContent: 'space-between',
                                   color: '#fff',
                                   background: selectedRepoId === repo.id.toString() ? 'var(--c2c-selected-bg)' : 'transparent',
-                                  transition: 'background 0.2s'
+                                  transition: 'all 0.2s'
                                 }}
-                                onMouseOver={(e) => { if (selectedRepoId !== repo.id.toString()) e.currentTarget.style.background = 'rgba(16, 185, 129, 0.05)'; }}
+                                onMouseOver={(e) => { if (selectedRepoId !== repo.id.toString()) e.currentTarget.style.background = 'rgba(16, 185, 129, 0.08)'; }}
                                 onMouseOut={(e) => { if (selectedRepoId !== repo.id.toString()) e.currentTarget.style.background = 'transparent'; }}
                               >
                                 <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
-                                  <span style={{ fontSize: '0.95rem' }}>{repo.full_name}</span>
+                                  <BookMarked size={16} style={{ color: currentConfig.color }} />
+                                  <span style={{ fontSize: '0.95rem', fontWeight: '500' }}>{repo.full_name}</span>
                                   {isCollaborator && (
-                                    <span style={{ fontSize: '0.65rem', background: 'rgba(16, 185, 129, 0.1)', color: 'var(--c2c-green)', padding: '0.1rem 0.35rem', borderRadius: '4px', border: '2px solid rgba(16, 185, 129, 0.3)', fontWeight: '600' }}>Collaborated</span>
+                                    <span style={{ fontSize: '0.65rem', background: 'rgba(16, 185, 129, 0.1)', color: 'var(--c2c-green)', padding: '0.15rem 0.4rem', borderRadius: '4px', border: '1px solid rgba(16, 185, 129, 0.3)', fontWeight: '600' }}>Collaborated</span>
                                   )}
                                 </div>
-                                {repo.private ? <span style={{ color: '#ff6b6b' }}>🔒</span> : <span style={{ color: '#10B981' }}>🌐</span>}
+                                {repo.private ? <span style={{ color: '#ff6b6b', fontSize: '0.85rem' }}>🔒 Private</span> : <span style={{ color: '#10B981', fontSize: '0.85rem' }}>🌐 Public</span>}
                               </div>
                             );
                           })
@@ -573,6 +656,7 @@ function ServiceSetup() {
                   </div>
                 )}
               </div>
+
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '0.35rem', padding: '0 0.25rem' }}>
                 <span style={{ fontSize: '0.8rem', color: '#6e7191' }}>
                   Type owner or repository name to search.
@@ -588,222 +672,417 @@ function ServiceSetup() {
               </div>
             </div>
 
-            {selectedRepo && (
-              <div style={{ background: 'rgba(255, 255, 255, 0.02)', border: '2px solid var(--c2c-border)', borderRadius: '24px', padding: '2rem', display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', color: currentConfig.color }}>
-                    <BookMarked size={24} />
-                    <h3 style={{ fontSize: '1.5rem', fontWeight: '600', color: '#fff', margin: 0 }}>{selectedRepo.full_name}</h3>
-                  </div>
+            {/* Feature Highlights Grid */}
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '1rem', marginTop: '1rem', paddingTop: '1.5rem', borderTop: '1px solid var(--c2c-border)' }}>
+              <div style={{ background: 'rgba(255, 255, 255, 0.02)', padding: '1rem', borderRadius: '12px', border: '1px solid rgba(255, 255, 255, 0.05)' }}>
+                <span style={{ fontSize: '1.2rem', display: 'block', marginBottom: '0.4rem' }}>⚡</span>
+                <span style={{ color: '#fff', fontSize: '0.85rem', fontWeight: '600', display: 'block' }}>Instant Analysis</span>
+                <span style={{ color: '#a2a2b5', fontSize: '0.75rem' }}>Automated language, dependency & monorepo detection</span>
+              </div>
+              <div style={{ background: 'rgba(255, 255, 255, 0.02)', padding: '1rem', borderRadius: '12px', border: '1px solid rgba(255, 255, 255, 0.05)' }}>
+                <span style={{ fontSize: '1.2rem', display: 'block', marginBottom: '0.4rem' }}>☁️</span>
+                <span style={{ color: '#fff', fontSize: '0.85rem', fontWeight: '600', display: 'block' }}>Multi-Cloud Ready</span>
+                <span style={{ color: '#a2a2b5', fontSize: '0.75rem' }}>Tailored configurations for AWS, GCP & Azure</span>
+              </div>
+              <div style={{ background: 'rgba(255, 255, 255, 0.02)', padding: '1rem', borderRadius: '12px', border: '1px solid rgba(255, 255, 255, 0.05)' }}>
+                <span style={{ fontSize: '1.2rem', display: 'block', marginBottom: '0.4rem' }}>💰</span>
+                <span style={{ color: '#fff', fontSize: '0.85rem', fontWeight: '600', display: 'block' }}>Live FinOps</span>
+                <span style={{ color: '#a2a2b5', fontSize: '0.75rem' }}>Real-time cost estimation per instance & resource</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      ) : (
+        /* 2-Column Responsive Workspace Grid */
+        <div className="service-setup-grid">
+          
+          {/* LEFT COLUMN: Repository Context & Tech Stack Insights */}
+          <div style={{ position: 'sticky', top: '1.5rem', display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
+            
+            {/* Repository Info Card */}
+            <div style={{
+              background: 'var(--c2c-surface)',
+              border: '2px solid var(--c2c-border)',
+              borderRadius: '20px',
+              padding: '1.5rem',
+              display: 'flex',
+              flexDirection: 'column',
+              gap: '1rem',
+              boxShadow: '0 10px 25px -5px rgba(0, 0, 0, 0.3)'
+            }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+                <div style={{
+                  width: '42px',
+                  height: '42px',
+                  borderRadius: '12px',
+                  background: `${currentConfig.color}18`,
+                  border: `1px solid ${currentConfig.color}40`,
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  color: currentConfig.color,
+                  flexShrink: 0
+                }}>
+                  <BookMarked size={22} />
                 </div>
-
-                <div style={{ borderTop: '2px solid var(--c2c-border)', paddingTop: '1.5rem' }}>
-                  <h4 style={{ color: '#fff', fontSize: '1.1rem', marginBottom: '0.75rem' }}>Tech Stack Analytics</h4>
-                  
-                  {loadingStack ? (
-                    <Preloader 
-                      message="Analyzing your repository..." 
-                      submessage="Scanning configuration files, mapping dependencies, and identifying sub-project components." 
-                      color={currentConfig.color}
-                    />
-                  ) : techStack ? (
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
-                      {/* Languages */}
-                      <div>
-                        <span style={{ color: '#6e7191', fontSize: '0.85rem', display: 'block', marginBottom: '0.5rem' }}>Languages Distribution</span>
-                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem' }}>
-                          {calculateLanguagePercentages(techStack.languages).map((l, i) => (
-                            <span key={i} style={{ background: 'rgba(255,255,255,0.05)', color: '#fff', padding: '0.3rem 0.6rem', borderRadius: '8px', fontSize: '0.85rem' }}>
-                              {l.name} ({l.percentage}%)
-                            </span>
-                          ))}
-                        </div>
-                      </div>
-
-                      {/* Components */}
-                      <div>
-                        <span style={{ color: '#6e7191', fontSize: '0.85rem', display: 'block', marginBottom: '0.75rem' }}>Sub-Projects Detected</span>
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-                          {techStack.components && techStack.components.length > 0 ? (
-                            techStack.components.map((comp, i) => (
-                              <div key={i} style={{ background: 'rgba(255,255,255,0.02)', border: '2px solid var(--c2c-border)', borderRadius: '14px', padding: '1.2rem' }}>
-                                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.75rem' }}>
-                                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                                    <span style={{ color: currentConfig.color, fontWeight: '600' }}>{comp.name}</span>
-                                    <span style={{ color: '#6e7191', fontSize: '0.75rem' }}>({comp.type})</span>
-                                  </div>
-                                </div>
-                                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.4rem', maxHeight: '100px', overflowY: 'auto' }}>
-                                  {comp.libraries.map((lib, j) => (
-                                    <span key={j} style={{ background: 'rgba(255,255,255,0.05)', color: '#e2e2e9', padding: '0.25rem 0.5rem', borderRadius: '6px', fontSize: '0.75rem' }}>{lib}</span>
-                                  ))}
-                                </div>
-                              </div>
-                            ))
-                          ) : (
-                            <span style={{ color: '#a2a2b5', fontSize: '0.85rem' }}>None detected</span>
-                          )}
-                        </div>
-                      </div>
-                    </div>
-                  ) : <span>Unavailable</span>}
+                <div style={{ minWidth: 0, flex: 1 }}>
+                  <span style={{ color: '#6e7191', fontSize: '0.75rem', fontWeight: '600', textTransform: 'uppercase', letterSpacing: '0.5px', display: 'block' }}>Repository</span>
+                  <h3 style={{ fontSize: '1.1rem', fontWeight: '700', color: '#fff', margin: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={selectedRepo.full_name}>
+                    {selectedRepo.full_name}
+                  </h3>
                 </div>
+              </div>
 
-                {/* Cloud Platform Selection */}
-                {serviceId !== 'docker' && (
-                  <div style={{ borderTop: '2px solid var(--c2c-border)', paddingTop: '1.5rem', display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-                    <label style={{ color: '#fff', fontSize: '1.1rem', fontWeight: '600' }}>Where are you deploying this application?</label>
-                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '1rem' }}>
-                      {[{ id: 'AWS', name: 'AWS' }, { id: 'Azure', name: 'Azure' }, { id: 'GCP', name: 'Google Cloud' }].map((cloud) => (
-                        <div 
-                          key={cloud.id}
-                          onClick={() => setSelectedCloud(cloud.id)}
-                          style={{
-                              background: selectedCloud === cloud.id ? 'var(--c2c-selected-bg)' : 'rgba(255, 255, 255, 0.02)',
-                              border: selectedCloud === cloud.id ? `2px solid ${currentConfig.color}` : '2px solid var(--c2c-border)',
-                            borderRadius: '16px', padding: '1.5rem 1rem', textAlign: 'center', cursor: 'pointer', transition: 'all 0.2s'
-                          }}
-                        >
-                          <div style={{ color: selectedCloud === cloud.id ? currentConfig.color : '#fff', fontWeight: '600' }}>{cloud.name}</div>
-                        </div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
+                <span style={{
+                  fontSize: '0.75rem',
+                  background: selectedRepo.private ? 'rgba(255, 107, 107, 0.1)' : 'rgba(16, 185, 129, 0.1)',
+                  color: selectedRepo.private ? '#ff6b6b' : '#10B981',
+                  padding: '0.2rem 0.6rem',
+                  borderRadius: '6px',
+                  border: selectedRepo.private ? '1px solid rgba(255, 107, 107, 0.3)' : '1px solid rgba(16, 185, 129, 0.3)',
+                  fontWeight: '600'
+                }}>
+                  {selectedRepo.private ? '🔒 Private' : '🌐 Public'}
+                </span>
+
+                {selectedRepo.owner?.login?.toLowerCase() !== user?.login?.toLowerCase() && (
+                  <span style={{
+                    fontSize: '0.75rem',
+                    background: 'rgba(16, 185, 129, 0.1)',
+                    color: 'var(--c2c-green)',
+                    padding: '0.2rem 0.6rem',
+                    borderRadius: '6px',
+                    border: '1px solid rgba(16, 185, 129, 0.3)',
+                    fontWeight: '600'
+                  }}>
+                    Collaborated
+                  </span>
+                )}
+
+                {selectedRepo.html_url && (
+                  <a
+                    href={selectedRepo.html_url}
+                    target="_blank"
+                    rel="noreferrer"
+                    style={{
+                      marginLeft: 'auto',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '0.35rem',
+                      color: '#a2a2b5',
+                      fontSize: '0.75rem',
+                      textDecoration: 'none',
+                      transition: 'color 0.2s'
+                    }}
+                    onMouseOver={(e) => e.currentTarget.style.color = '#fff'}
+                    onMouseOut={(e) => e.currentTarget.style.color = '#a2a2b5'}
+                  >
+                    GitHub <ExternalLink size={12} />
+                  </a>
+                )}
+              </div>
+
+              <button
+                onClick={() => {
+                  setSelectedRepo(null);
+                  setSelectedRepoId('');
+                  setTechStack(null);
+                  setIsOpen(true);
+                }}
+                style={{
+                  width: '100%',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  gap: '0.5rem',
+                  background: 'rgba(255, 255, 255, 0.03)',
+                  border: '1px solid var(--c2c-border)',
+                  borderRadius: '10px',
+                  color: '#a2a2b5',
+                  padding: '0.55rem',
+                  fontSize: '0.8rem',
+                  cursor: 'pointer',
+                  transition: 'all 0.2s'
+                }}
+                onMouseOver={(e) => { e.currentTarget.style.color = '#fff'; e.currentTarget.style.borderColor = currentConfig.color; e.currentTarget.style.background = 'rgba(255, 255, 255, 0.06)'; }}
+                onMouseOut={(e) => { e.currentTarget.style.color = '#a2a2b5'; e.currentTarget.style.borderColor = 'var(--c2c-border)'; e.currentTarget.style.background = 'rgba(255, 255, 255, 0.03)'; }}
+              >
+                <RefreshCw size={13} />
+                Choose Different Repository
+              </button>
+            </div>
+
+            {/* Tech Stack Analytics Card */}
+            <div style={{
+              background: 'var(--c2c-surface)',
+              border: '2px solid var(--c2c-border)',
+              borderRadius: '20px',
+              padding: '1.5rem',
+              display: 'flex',
+              flexDirection: 'column',
+              gap: '1.25rem',
+              boxShadow: '0 10px 25px -5px rgba(0, 0, 0, 0.3)'
+            }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
+                <Cpu size={18} style={{ color: currentConfig.color }} />
+                <h4 style={{ color: '#fff', fontSize: '1.05rem', fontWeight: '600', margin: 0 }}>Tech Stack Analytics</h4>
+              </div>
+
+              {loadingStack ? (
+                <Preloader 
+                  message="Analyzing repository..." 
+                  submessage="Scanning configuration files, dependencies, and monorepo components." 
+                  color={currentConfig.color}
+                />
+              ) : techStack ? (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
+                  {/* Languages */}
+                  <div>
+                    <span style={{ color: '#a2a2b5', fontSize: '0.8rem', fontWeight: '500', display: 'block', marginBottom: '0.6rem' }}>
+                      Languages Distribution
+                    </span>
+                    {techStack.languages && Object.keys(techStack.languages).length > 0 && (
+                      <div style={{ display: 'flex', height: '8px', borderRadius: '4px', overflow: 'hidden', width: '100%', background: 'rgba(255,255,255,0.06)', marginBottom: '0.75rem' }}>
+                        {calculateLanguagePercentages(techStack.languages).map((l, i) => (
+                          <div key={i} style={{ width: `${l.percentage}%`, background: getLangColor(l.name) }} title={`${l.name}: ${l.percentage}%`} />
+                        ))}
+                      </div>
+                    )}
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.4rem' }}>
+                      {calculateLanguagePercentages(techStack.languages).map((l, i) => (
+                        <span key={i} style={{ display: 'inline-flex', alignItems: 'center', gap: '0.35rem', background: 'rgba(255,255,255,0.04)', border: '1px solid var(--c2c-border)', color: '#fff', padding: '0.25rem 0.55rem', borderRadius: '6px', fontSize: '0.78rem' }}>
+                          <span style={{ width: '7px', height: '7px', borderRadius: '50%', background: getLangColor(l.name) }}></span>
+                          <span>{l.name}</span>
+                          <span style={{ color: '#a2a2b5', fontSize: '0.72rem' }}>{l.percentage}%</span>
+                        </span>
                       ))}
                     </div>
                   </div>
-                 )}
 
-                 {/* Monorepo Per-Component Sizing & Resource Selection */}
-                 {serviceId === 'terraform' && selectedCloud && techStack?.components && techStack.components.length > 1 && (
-                   <div style={{ borderTop: '2px solid var(--c2c-border)', paddingTop: '1.5rem', display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
-                     <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
-                       <label style={{ color: '#fff', fontSize: '1.1rem', fontWeight: '600' }}>Monorepo Component Sizing & Resource Selection</label>
-                       <span style={{ color: '#a2a2b5', fontSize: '0.8rem' }}>
-                         Multiple components detected ({techStack.components.map(c => c.name).join(', ')}). Select instance or resource sizing individually for each component.
-                       </span>
-                     </div>
-
-                     <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-                       {techStack.components.map((comp) => {
-                         const rawName = comp.name || 'app';
-                         const compName = rawName.toLowerCase().replace('/', '-').replace('\\', '-');
-                          const compCfg = componentConfigs[compName] || {
-                            enabled: true,
-                            awsComputeChoice: awsComputeChoice,
-                            awsInstanceType: awsComputeChoice === 'fargate' ? '0.25 vCPU / 512 MB' : 't3.micro',
-                            awsUseEip: awsUseEip,
-                            gcpComputeChoice: gcpComputeChoice,
-                            gcpMachineType: gcpComputeChoice === 'cloudrun' ? '1 vCPU / 512 MB' : 'e2-micro',
-                            gcpUseStaticIp: gcpUseStaticIp,
-                            storageSizeGb: storageSizeGb || 20,
-                            swapEnabled: false,
-                            swapSizeGb: 2
-                          };
-
-                          const updateCompCfg = (key, val) => {
-                            setComponentConfigs((prev) => {
-                              const current = prev[compName] || compCfg;
-                              return {
-                                ...prev,
-                                [compName]: {
-                                  ...current,
-                                  [key]: val
-                                }
-                              };
-                            });
-                          };
-
-                          return (
-                            <div key={compName} style={{ 
-                              background: compCfg.enabled !== false ? 'rgba(255, 255, 255, 0.02)' : 'rgba(255, 255, 255, 0.005)', 
-                              border: compCfg.enabled !== false ? '1.5px solid var(--c2c-border)' : '1.5px dashed rgba(255, 255, 255, 0.12)', 
-                              borderRadius: '16px', 
-                              padding: '1.25rem',
-                              opacity: compCfg.enabled !== false ? 1 : 0.65,
-                              transition: 'all 0.2s'
-                            }}>
-                              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: compCfg.enabled !== false ? '1rem' : '0' }}>
-                                <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
-                                  <span style={{ color: compCfg.enabled !== false ? currentConfig.color : '#6e7191', fontWeight: '700', fontSize: '1rem', textTransform: 'capitalize' }}>{comp.name} Component</span>
-                                  <span style={{ background: 'rgba(255, 255, 255, 0.08)', padding: '0.2rem 0.6rem', borderRadius: '8px', color: '#a2a2b5', fontSize: '0.75rem' }}>{comp.type}</span>
-                                  <span style={{ color: '#6b7280', fontSize: '0.75rem', fontFamily: 'monospace' }}>path: {comp.path}</span>
-                                </div>
-                                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                                  <input
-                                    type="checkbox"
-                                    id={`enableComp-${compName}`}
-                                    checked={compCfg.enabled !== false}
-                                    onChange={(e) => updateCompCfg('enabled', e.target.checked)}
-                                    style={{ width: '16px', height: '16px', cursor: 'pointer', accentColor: currentConfig.color }}
-                                  />
-                                  <label htmlFor={`enableComp-${compName}`} style={{ color: compCfg.enabled !== false ? '#fff' : '#a2a2b5', fontSize: '0.8rem', fontWeight: '600', cursor: 'pointer', userSelect: 'none' }}>
-                                    {compCfg.enabled !== false ? 'Include in Deployment' : 'Excluded from Deployment'}
-                                  </label>
-                                </div>
+                  {/* Sub-Projects */}
+                  <div>
+                    <span style={{ color: '#a2a2b5', fontSize: '0.8rem', fontWeight: '500', display: 'block', marginBottom: '0.6rem' }}>
+                      Sub-Projects Detected {techStack.components ? `(${techStack.components.length})` : ''}
+                    </span>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem', maxHeight: '360px', overflowY: 'auto', paddingRight: '0.25rem' }}>
+                      {techStack.components && techStack.components.length > 0 ? (
+                        techStack.components.map((comp, i) => (
+                          <div key={i} style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid var(--c2c-border)', borderRadius: '12px', padding: '0.85rem' }}>
+                            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.5rem' }}>
+                              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                                <span style={{ color: currentConfig.color, fontWeight: '600', fontSize: '0.9rem' }}>{comp.name}</span>
+                                <span style={{ background: 'rgba(255,255,255,0.06)', color: '#a2a2b5', padding: '0.1rem 0.4rem', borderRadius: '4px', fontSize: '0.7rem' }}>{comp.type}</span>
                               </div>
+                            </div>
+                            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.3rem', maxHeight: '80px', overflowY: 'auto' }}>
+                              {comp.libraries && comp.libraries.length > 0 ? (
+                                comp.libraries.map((lib, j) => (
+                                  <span key={j} style={{ background: 'rgba(255,255,255,0.04)', color: '#e2e2e9', padding: '0.15rem 0.4rem', borderRadius: '4px', fontSize: '0.72rem' }}>{lib}</span>
+                                ))
+                              ) : (
+                                <span style={{ color: '#6e7191', fontSize: '0.72rem' }}>No external packages</span>
+                              )}
+                            </div>
+                          </div>
+                        ))
+                      ) : (
+                        <span style={{ color: '#a2a2b5', fontSize: '0.85rem' }}>None detected</span>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              ) : <span style={{ color: '#a2a2b5', fontSize: '0.85rem' }}>Unavailable</span>}
+            </div>
 
-                              {compCfg.enabled !== false && (
-                                <>
-                             {/* AWS Per-Component Configs */}
-                             {selectedCloud === 'AWS' && (
-                               <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-                                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
-                                   <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
-                                     <label style={{ color: '#fff', fontSize: '0.85rem', fontWeight: '600' }}>Compute Target</label>
-                                     <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.5rem' }}>
-                                       {[
-                                         { id: 'fargate', name: 'ECS Fargate' },
-                                         { id: 'ec2', name: 'EC2 Instance' }
-                                       ].map((target) => (
-                                         <div
-                                           key={target.id}
-                                           onClick={() => {
-                                             updateCompCfg('awsComputeChoice', target.id);
-                                             updateCompCfg('awsInstanceType', target.id === 'fargate' ? '0.25 vCPU / 512 MB' : 't3.micro');
-                                             fetchAiRecommendation('AWS', target.id, compName, comp.type);
-                                           }}
-                                           style={{
-                                             background: compCfg.awsComputeChoice === target.id ? 'var(--c2c-selected-bg)' : 'rgba(255, 255, 255, 0.02)',
-                                             border: compCfg.awsComputeChoice === target.id ? `2px solid ${currentConfig.color}` : '1.5px solid var(--c2c-border)',
-                                             borderRadius: '10px',
-                                             padding: '0.65rem 0.5rem',
-                                             textAlign: 'center',
-                                             cursor: 'pointer',
-                                             fontWeight: '600',
-                                             fontSize: '0.85rem',
-                                             color: compCfg.awsComputeChoice === target.id ? currentConfig.color : '#fff',
-                                             transition: 'all 0.2s',
-                                             userSelect: 'none'
-                                           }}
-                                         >
-                                           {target.name}
-                                         </div>
-                                       ))}
-                                     </div>
-                                   </div>
+          </div>
 
-                                   <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
-                                     <label style={{ color: '#fff', fontSize: '0.85rem', fontWeight: '600' }}>Instance / Resource Size</label>
-                                     <select
-                                       value={compCfg.awsInstanceType}
-                                       onChange={(e) => updateCompCfg('awsInstanceType', e.target.value)}
-                                       style={{ background: '#0f0f15', border: '1.5px solid var(--c2c-border)', borderRadius: '10px', color: '#fff', padding: '0.65rem', fontSize: '0.85rem', outline: 'none', cursor: 'pointer' }}
-                                     >
-                                       {compCfg.awsComputeChoice === 'fargate' ? (
-                                         <>
-                                           <option value="0.25 vCPU / 512 MB" style={{ background: '#0f0f15', color: '#fff' }}>0.25 vCPU / 512 MB (Default)</option>
-                                           <option value="0.5 vCPU / 1 GB" style={{ background: '#0f0f15', color: '#fff' }}>0.5 vCPU / 1 GB</option>
-                                           <option value="1.0 vCPU / 2 GB" style={{ background: '#0f0f15', color: '#fff' }}>1.0 vCPU / 2 GB</option>
-                                         </>
-                                       ) : (
-                                         <>
-                                           <option value="t3.micro" style={{ background: '#0f0f15', color: '#fff' }}>t3.micro (1 vCPU / 1 GB - Free Tier)</option>
-                                           <option value="t3.small" style={{ background: '#0f0f15', color: '#fff' }}>t3.small (2 vCPU / 2 GB)</option>
-                                           <option value="t3.medium" style={{ background: '#0f0f15', color: '#fff' }}>t3.medium (2 vCPU / 4 GB)</option>
-                                         </>
-                                       )}
-                                     </select>
-                                   </div>
-                                 </div>
-                                 {compCfg.awsComputeChoice === 'ec2' && (
+          {/* RIGHT COLUMN: Deployment Configuration & Action */}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
+            
+            <div style={{
+              background: 'var(--c2c-surface)',
+              border: '2px solid var(--c2c-border)',
+              borderRadius: '24px',
+              padding: '2rem',
+              display: 'flex',
+              flexDirection: 'column',
+              gap: '1.5rem',
+              boxShadow: '0 10px 30px -10px rgba(0, 0, 0, 0.4)'
+            }}>
+
+              {/* Cloud Platform Selection */}
+              {serviceId !== 'docker' && (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+                  <div>
+                    <label style={{ color: '#fff', fontSize: '1.15rem', fontWeight: '700', display: 'block', marginBottom: '0.25rem' }}>Where are you deploying this application?</label>
+                    <span style={{ color: '#a2a2b5', fontSize: '0.85rem' }}>Choose your target cloud provider to customize infrastructure generation.</span>
+                  </div>
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '1rem' }}>
+                    {[{ id: 'AWS', name: 'AWS' }, { id: 'Azure', name: 'Azure' }, { id: 'GCP', name: 'Google Cloud' }].map((cloud) => (
+                      <div 
+                        key={cloud.id}
+                        onClick={() => setSelectedCloud(cloud.id)}
+                        style={{
+                          background: selectedCloud === cloud.id ? 'var(--c2c-selected-bg)' : 'rgba(255, 255, 255, 0.02)',
+                          border: selectedCloud === cloud.id ? `2px solid ${currentConfig.color}` : '2px solid var(--c2c-border)',
+                          borderRadius: '16px', padding: '1.5rem 1rem', textAlign: 'center', cursor: 'pointer', transition: 'all 0.2s',
+                          boxShadow: selectedCloud === cloud.id ? `0 0 20px ${currentConfig.color}25` : 'none'
+                        }}
+                      >
+                        <div style={{ color: selectedCloud === cloud.id ? currentConfig.color : '#fff', fontWeight: '700', fontSize: '1rem' }}>{cloud.name}</div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Docker Service Banner */}
+              {serviceId === 'docker' && (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem', background: 'rgba(52, 211, 153, 0.05)', border: '1.5px solid rgba(52, 211, 153, 0.25)', borderRadius: '16px', padding: '1.5rem' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', color: '#34d399', fontWeight: '700', fontSize: '1.05rem' }}>
+                    <Sparkles size={20} />
+                    <span>Automated Containerization Pipeline</span>
+                  </div>
+                  <p style={{ color: '#e2e2e9', fontSize: '0.9rem', margin: 0, lineHeight: '1.6' }}>
+                    Code2Cloud will inspect all detected sub-projects and dependencies, then build multi-stage production Dockerfiles and a coordinated <code>docker-compose.yml</code> ready for instant local and cloud deployment.
+                  </p>
+                </div>
+              )}
+
+              {/* Monorepo Per-Component Sizing & Resource Selection */}
+              {serviceId === 'terraform' && selectedCloud && techStack?.components && techStack.components.length > 1 && (
+                <div style={{ borderTop: '2px solid var(--c2c-border)', paddingTop: '1.5rem', display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
+                    <label style={{ color: '#fff', fontSize: '1.1rem', fontWeight: '600' }}>Monorepo Component Sizing & Resource Selection</label>
+                    <span style={{ color: '#a2a2b5', fontSize: '0.8rem' }}>
+                      Multiple components detected ({techStack.components.map(c => c.name).join(', ')}). Select instance or resource sizing individually for each component.
+                    </span>
+                  </div>
+
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+                    {techStack.components.map((comp) => {
+                      const rawName = comp.name || 'app';
+                      const compName = rawName.toLowerCase().replace('/', '-').replace('\\', '-');
+                      const compCfg = componentConfigs[compName] || {
+                        enabled: true,
+                        awsComputeChoice: awsComputeChoice,
+                        awsInstanceType: awsComputeChoice === 'fargate' ? '0.25 vCPU / 512 MB' : 't3.micro',
+                        awsUseEip: awsUseEip,
+                        gcpComputeChoice: gcpComputeChoice,
+                        gcpMachineType: gcpComputeChoice === 'cloudrun' ? '1 vCPU / 512 MB' : 'e2-micro',
+                        gcpUseStaticIp: gcpUseStaticIp,
+                        storageSizeGb: storageSizeGb || 20,
+                        swapEnabled: false,
+                        swapSizeGb: 2
+                      };
+
+                      const updateCompCfg = (key, val) => {
+                        setComponentConfigs((prev) => {
+                          const current = prev[compName] || compCfg;
+                          return {
+                            ...prev,
+                            [compName]: {
+                              ...current,
+                              [key]: val
+                            }
+                          };
+                        });
+                      };
+
+                      return (
+                        <div key={compName} style={{ 
+                          background: compCfg.enabled !== false ? 'rgba(255, 255, 255, 0.02)' : 'rgba(255, 255, 255, 0.005)', 
+                          border: compCfg.enabled !== false ? '1.5px solid var(--c2c-border)' : '1.5px dashed rgba(255, 255, 255, 0.12)', 
+                          borderRadius: '16px', 
+                          padding: '1.25rem',
+                          opacity: compCfg.enabled !== false ? 1 : 0.65,
+                          transition: 'all 0.2s'
+                        }}>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: compCfg.enabled !== false ? '1rem' : '0' }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
+                              <span style={{ color: compCfg.enabled !== false ? currentConfig.color : '#6e7191', fontWeight: '700', fontSize: '1rem', textTransform: 'capitalize' }}>{comp.name} Component</span>
+                              <span style={{ background: 'rgba(255, 255, 255, 0.08)', padding: '0.2rem 0.6rem', borderRadius: '8px', color: '#a2a2b5', fontSize: '0.75rem' }}>{comp.type}</span>
+                              <span style={{ color: '#6b7280', fontSize: '0.75rem', fontFamily: 'monospace' }}>path: {comp.path}</span>
+                            </div>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                              <input
+                                type="checkbox"
+                                id={`enableComp-${compName}`}
+                                checked={compCfg.enabled !== false}
+                                onChange={(e) => updateCompCfg('enabled', e.target.checked)}
+                                style={{ width: '16px', height: '16px', cursor: 'pointer', accentColor: currentConfig.color }}
+                              />
+                              <label htmlFor={`enableComp-${compName}`} style={{ color: compCfg.enabled !== false ? '#fff' : '#a2a2b5', fontSize: '0.8rem', fontWeight: '600', cursor: 'pointer', userSelect: 'none' }}>
+                                {compCfg.enabled !== false ? 'Include in Deployment' : 'Excluded from Deployment'}
+                              </label>
+                            </div>
+                          </div>
+
+                          {compCfg.enabled !== false && (
+                            <>
+                              {/* AWS Per-Component Configs */}
+                              {selectedCloud === 'AWS' && (
+                                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
+                                    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
+                                      <label style={{ color: '#fff', fontSize: '0.85rem', fontWeight: '600' }}>Compute Target</label>
+                                      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.5rem' }}>
+                                        {[
+                                          { id: 'fargate', name: 'ECS Fargate' },
+                                          { id: 'ec2', name: 'EC2 Instance' }
+                                        ].map((target) => (
+                                          <div
+                                            key={target.id}
+                                            onClick={() => {
+                                              updateCompCfg('awsComputeChoice', target.id);
+                                              updateCompCfg('awsInstanceType', target.id === 'fargate' ? '0.25 vCPU / 512 MB' : 't3.micro');
+                                              fetchAiRecommendation('AWS', target.id, compName, comp.type);
+                                            }}
+                                            style={{
+                                              background: compCfg.awsComputeChoice === target.id ? 'var(--c2c-selected-bg)' : 'rgba(255, 255, 255, 0.02)',
+                                              border: compCfg.awsComputeChoice === target.id ? `2px solid ${currentConfig.color}` : '1.5px solid var(--c2c-border)',
+                                              borderRadius: '10px',
+                                              padding: '0.65rem 0.5rem',
+                                              textAlign: 'center',
+                                              cursor: 'pointer',
+                                              fontWeight: '600',
+                                              fontSize: '0.85rem',
+                                              color: compCfg.awsComputeChoice === target.id ? currentConfig.color : '#fff',
+                                              transition: 'all 0.2s',
+                                              userSelect: 'none'
+                                            }}
+                                          >
+                                            {target.name}
+                                          </div>
+                                        ))}
+                                      </div>
+                                    </div>
+
+                                    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
+                                      <label style={{ color: '#fff', fontSize: '0.85rem', fontWeight: '600' }}>Instance / Resource Size</label>
+                                      <select
+                                        value={compCfg.awsInstanceType}
+                                        onChange={(e) => updateCompCfg('awsInstanceType', e.target.value)}
+                                        style={{ background: '#0f0f15', border: '1.5px solid var(--c2c-border)', borderRadius: '10px', color: '#fff', padding: '0.65rem', fontSize: '0.85rem', outline: 'none', cursor: 'pointer' }}
+                                      >
+                                        {compCfg.awsComputeChoice === 'fargate' ? (
+                                          <>
+                                            <option value="0.25 vCPU / 512 MB" style={{ background: '#0f0f15', color: '#fff' }}>0.25 vCPU / 512 MB (Default)</option>
+                                            <option value="0.5 vCPU / 1 GB" style={{ background: '#0f0f15', color: '#fff' }}>0.5 vCPU / 1 GB</option>
+                                            <option value="1.0 vCPU / 2 GB" style={{ background: '#0f0f15', color: '#fff' }}>1.0 vCPU / 2 GB</option>
+                                          </>
+                                        ) : (
+                                          <>
+                                            <option value="t3.micro" style={{ background: '#0f0f15', color: '#fff' }}>t3.micro (1 vCPU / 1 GB - Free Tier)</option>
+                                            <option value="t3.small" style={{ background: '#0f0f15', color: '#fff' }}>t3.small (2 vCPU / 2 GB)</option>
+                                            <option value="t3.medium" style={{ background: '#0f0f15', color: '#fff' }}>t3.medium (2 vCPU / 4 GB)</option>
+                                          </>
+                                        )}
+                                      </select>
+                                    </div>
+                                  </div>
+                                  {compCfg.awsComputeChoice === 'ec2' && (
                                     <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem', marginTop: '0.75rem' }}>
                                       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
                                         <div style={{ display: 'flex', flexDirection: 'column', gap: '0.35rem' }}>
@@ -859,71 +1138,71 @@ function ServiceSetup() {
                                       </div>
                                     </div>
                                   )}
-                                 {renderAiReasoning(compName)}
-                               </div>
-                             )}
+                                  {renderAiReasoning(compName)}
+                                </div>
+                              )}
 
-                             {/* GCP Per-Component Configs */}
-                             {selectedCloud === 'GCP' && (
-                               <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-                                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
-                                   <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
-                                     <label style={{ color: '#fff', fontSize: '0.85rem', fontWeight: '600' }}>Compute Target</label>
-                                     <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.5rem' }}>
-                                       {[
-                                         { id: 'cloudrun', name: 'Cloud Run' },
-                                         { id: 'gce', name: 'Compute Engine' }
-                                       ].map((target) => (
-                                         <div
-                                           key={target.id}
-                                           onClick={() => {
-                                             updateCompCfg('gcpComputeChoice', target.id);
-                                             updateCompCfg('gcpMachineType', target.id === 'cloudrun' ? '1 vCPU / 512 MB' : 'e2-micro');
-                                             fetchAiRecommendation('GCP', target.id, compName, comp.type);
-                                           }}
-                                           style={{
-                                             background: compCfg.gcpComputeChoice === target.id ? 'var(--c2c-selected-bg)' : 'rgba(255, 255, 255, 0.02)',
-                                             border: compCfg.gcpComputeChoice === target.id ? `2px solid ${currentConfig.color}` : '1.5px solid var(--c2c-border)',
-                                             borderRadius: '10px',
-                                             padding: '0.65rem 0.5rem',
-                                             textAlign: 'center',
-                                             cursor: 'pointer',
-                                             fontWeight: '600',
-                                             fontSize: '0.85rem',
-                                             color: compCfg.gcpComputeChoice === target.id ? currentConfig.color : '#fff',
-                                             transition: 'all 0.2s',
-                                             userSelect: 'none'
-                                           }}
-                                         >
-                                           {target.name}
-                                         </div>
-                                       ))}
-                                     </div>
-                                   </div>
+                              {/* GCP Per-Component Configs */}
+                              {selectedCloud === 'GCP' && (
+                                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
+                                    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
+                                      <label style={{ color: '#fff', fontSize: '0.85rem', fontWeight: '600' }}>Compute Target</label>
+                                      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.5rem' }}>
+                                        {[
+                                          { id: 'cloudrun', name: 'Cloud Run' },
+                                          { id: 'gce', name: 'Compute Engine' }
+                                        ].map((target) => (
+                                          <div
+                                            key={target.id}
+                                            onClick={() => {
+                                              updateCompCfg('gcpComputeChoice', target.id);
+                                              updateCompCfg('gcpMachineType', target.id === 'cloudrun' ? '1 vCPU / 512 MB' : 'e2-micro');
+                                              fetchAiRecommendation('GCP', target.id, compName, comp.type);
+                                            }}
+                                            style={{
+                                              background: compCfg.gcpComputeChoice === target.id ? 'var(--c2c-selected-bg)' : 'rgba(255, 255, 255, 0.02)',
+                                              border: compCfg.gcpComputeChoice === target.id ? `2px solid ${currentConfig.color}` : '1.5px solid var(--c2c-border)',
+                                              borderRadius: '10px',
+                                              padding: '0.65rem 0.5rem',
+                                              textAlign: 'center',
+                                              cursor: 'pointer',
+                                              fontWeight: '600',
+                                              fontSize: '0.85rem',
+                                              color: compCfg.gcpComputeChoice === target.id ? currentConfig.color : '#fff',
+                                              transition: 'all 0.2s',
+                                              userSelect: 'none'
+                                            }}
+                                          >
+                                            {target.name}
+                                          </div>
+                                        ))}
+                                      </div>
+                                    </div>
 
-                                   <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
-                                     <label style={{ color: '#fff', fontSize: '0.85rem', fontWeight: '600' }}>Instance / Machine Type</label>
-                                     <select
-                                       value={compCfg.gcpMachineType}
-                                       onChange={(e) => updateCompCfg('gcpMachineType', e.target.value)}
-                                       style={{ background: '#0f0f15', border: '1.5px solid var(--c2c-border)', borderRadius: '10px', color: '#fff', padding: '0.65rem', fontSize: '0.85rem', outline: 'none', cursor: 'pointer' }}
-                                     >
-                                       {compCfg.gcpComputeChoice === 'cloudrun' ? (
-                                         <>
-                                           <option value="1 vCPU / 512 MB" style={{ background: '#0f0f15', color: '#fff' }}>1 vCPU / 512 MB (Default)</option>
-                                           <option value="1 vCPU / 1 GB" style={{ background: '#0f0f15', color: '#fff' }}>1 vCPU / 1 GB</option>
-                                           <option value="2 vCPU / 2 GB" style={{ background: '#0f0f15', color: '#fff' }}>2 vCPU / 2 GB</option>
-                                         </>
-                                       ) : (
-                                         <>
-                                           <option value="e2-micro" style={{ background: '#0f0f15', color: '#fff' }}>e2-micro (2 vCPU / 1 GB - Free Tier)</option>
-                                           <option value="e2-small" style={{ background: '#0f0f15', color: '#fff' }}>e2-small (2 vCPU / 2 GB)</option>
-                                           <option value="e2-medium" style={{ background: '#0f0f15', color: '#fff' }}>e2-medium (2 vCPU / 4 GB)</option>
-                                         </>
-                                       )}
-                                     </select>
-                                   </div>
-                                 </div>
+                                    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
+                                      <label style={{ color: '#fff', fontSize: '0.85rem', fontWeight: '600' }}>Instance / Machine Type</label>
+                                      <select
+                                        value={compCfg.gcpMachineType}
+                                        onChange={(e) => updateCompCfg('gcpMachineType', e.target.value)}
+                                        style={{ background: '#0f0f15', border: '1.5px solid var(--c2c-border)', borderRadius: '10px', color: '#fff', padding: '0.65rem', fontSize: '0.85rem', outline: 'none', cursor: 'pointer' }}
+                                      >
+                                        {compCfg.gcpComputeChoice === 'cloudrun' ? (
+                                          <>
+                                            <option value="1 vCPU / 512 MB" style={{ background: '#0f0f15', color: '#fff' }}>1 vCPU / 512 MB (Default)</option>
+                                            <option value="1 vCPU / 1 GB" style={{ background: '#0f0f15', color: '#fff' }}>1 vCPU / 1 GB</option>
+                                            <option value="2 vCPU / 2 GB" style={{ background: '#0f0f15', color: '#fff' }}>2 vCPU / 2 GB</option>
+                                          </>
+                                        ) : (
+                                          <>
+                                            <option value="e2-micro" style={{ background: '#0f0f15', color: '#fff' }}>e2-micro (2 vCPU / 1 GB - Free Tier)</option>
+                                            <option value="e2-small" style={{ background: '#0f0f15', color: '#fff' }}>e2-small (2 vCPU / 2 GB)</option>
+                                            <option value="e2-medium" style={{ background: '#0f0f15', color: '#fff' }}>e2-medium (2 vCPU / 4 GB)</option>
+                                          </>
+                                        )}
+                                      </select>
+                                    </div>
+                                  </div>
                                   {compCfg.gcpComputeChoice === 'gce' && (
                                     <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem', marginTop: '0.75rem' }}>
                                       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
@@ -980,583 +1259,590 @@ function ServiceSetup() {
                                       </div>
                                     </div>
                                   )}
-                                 {renderAiReasoning(compName)}
-                               </div>
-                             )}
-                                </>
+                                  {renderAiReasoning(compName)}
+                                </div>
                               )}
-                            </div>
-                         );
-                       })}
-                     </div>
-                   </div>
-                 )}
-
-                 {/* Single Component AWS Compute & Network Configurations */}
-                 {selectedCloud === 'AWS' && serviceId === 'terraform' && (!techStack?.components || techStack.components.length <= 1) && (
-                   <div style={{ borderTop: '2px solid var(--c2c-border)', paddingTop: '1.5rem', display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
-                     <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
-                       <label style={{ color: '#fff', fontSize: '1.1rem', fontWeight: '600' }}>AWS Compute Choice</label>
-                       <span style={{ color: '#a2a2b5', fontSize: '0.8rem' }}>Choose between standard virtual machines or container orchestration.</span>
-                     </div>
-                     <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
-                       {[
-                         { id: 'fargate', name: 'ECS Fargate (Container)', desc: 'Deploy serverless docker container stacks.' },
-                         { id: 'ec2', name: 'EC2 Instance (VM)', desc: 'Deploy app on a single AWS virtual server instance.' }
-                       ].map((target) => (
-                         <div
-                           key={target.id}
-                           onClick={() => {
-                             setAwsComputeChoice(target.id);
-                             setAwsInstanceType(target.id === 'fargate' ? '0.25 vCPU / 512 MB' : 't3.micro');
-                             fetchAiRecommendation('AWS', target.id, 'global');
-                           }}
-                           style={{
-                              background: awsComputeChoice === target.id ? 'var(--c2c-selected-bg)' : 'rgba(255, 255, 255, 0.02)',
-                              border: awsComputeChoice === target.id ? `2px solid ${currentConfig.color}` : '2px solid var(--c2c-border)',
-                             borderRadius: '16px', padding: '1.25rem 1rem', cursor: 'pointer', transition: 'all 0.2s', textAlign: 'left'
-                           }}
-                         >
-                           <div style={{ color: awsComputeChoice === target.id ? currentConfig.color : '#fff', fontWeight: '600', marginBottom: '0.25rem', fontSize: '0.9rem' }}>{target.name}</div>
-                           <div style={{ color: '#a2a2b5', fontSize: '0.75rem', lineHeight: '1.3' }}>{target.desc}</div>
-                         </div>
-                       ))}
-                     </div>
-                     
-                     <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem', alignItems: 'center' }}>
-                       <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
-                         <label style={{ color: '#fff', fontSize: '0.95rem', fontWeight: '600' }}>Resource Size / Sizing</label>
-                         <select
-                           value={awsInstanceType}
-                           onChange={(e) => setAwsInstanceType(e.target.value)}
-                           style={{ background: 'rgba(255,255,255,0.02)', border: '2px solid var(--c2c-border)', borderRadius: '12px', color: '#fff', padding: '0.75rem', fontSize: '0.85rem', outline: 'none', cursor: 'pointer' }}
-                         >
-                           {awsComputeChoice === 'fargate' ? (
-                             <>
-                               <option value="0.25 vCPU / 512 MB" style={{ background: '#0f0f15' }}>0.25 vCPU / 512 MB (Default)</option>
-                               <option value="0.5 vCPU / 1 GB" style={{ background: '#0f0f15' }}>0.5 vCPU / 1 GB</option>
-                               <option value="1.0 vCPU / 2 GB" style={{ background: '#0f0f15' }}>1.0 vCPU / 2 GB</option>
-                             </>
-                           ) : (
-                             <>
-                               <option value="t3.micro" style={{ background: '#0f0f15' }}>t3.micro (1 vCPU / 1 GB - Free Tier)</option>
-                               <option value="t3.small" style={{ background: '#0f0f15' }}>t3.small (2 vCPU / 2 GB)</option>
-                               <option value="t3.medium" style={{ background: '#0f0f15' }}>t3.medium (2 vCPU / 4 GB)</option>
-                             </>
-                           )}
-                         </select>
-                       </div>
-
-                       {awsComputeChoice === 'ec2' && (
-                         <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginTop: '1.25rem' }}>
-                           <input
-                             type="checkbox"
-                             id="awsUseEip"
-                             checked={awsUseEip}
-                             onChange={(e) => setAwsUseEip(e.target.checked)}
-                             style={{ width: '16px', height: '16px', cursor: 'pointer', accentColor: currentConfig.color }}
-                           />
-                           <label htmlFor="awsUseEip" style={{ color: '#fff', fontSize: '0.85rem', cursor: 'pointer', userSelect: 'none' }}>
-                             Allocate Elastic IP (Static Public IP)
-                           </label>
-                         </div>
-                       )}
-                     </div>
-                     {renderAiReasoning('global')}
-                   </div>
-                 )}
-
-                 {/* Single Component GCP Compute & Network Configurations */}
-                 {selectedCloud === 'GCP' && serviceId === 'terraform' && (!techStack?.components || techStack.components.length <= 1) && (
-                   <div style={{ borderTop: '2px solid var(--c2c-border)', paddingTop: '1.5rem', display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
-                     <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
-                       <label style={{ color: '#fff', fontSize: '1.1rem', fontWeight: '600' }}>Google Cloud Compute Choice</label>
-                       <span style={{ color: '#a2a2b5', fontSize: '0.8rem' }}>Choose serverless Cloud Run scaling or dedicated Compute Engine VMs.</span>
-                     </div>
-                     <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
-                       {[
-                         { id: 'cloudrun', name: 'Cloud Run (Serverless)', desc: 'Run serverless containers scale-to-zero.' },
-                         { id: 'gce', name: 'Compute Engine (VM)', desc: 'Run containers on GCE virtual machine hosts.' }
-                       ].map((target) => (
-                         <div
-                           key={target.id}
-                           onClick={() => {
-                             setGcpComputeChoice(target.id);
-                             setGcpMachineType(target.id === 'cloudrun' ? '1 vCPU / 512 MB' : 'e2-micro');
-                             fetchAiRecommendation('GCP', target.id, 'global');
-                           }}
-                           style={{
-                              background: gcpComputeChoice === target.id ? 'var(--c2c-selected-bg)' : 'rgba(255, 255, 255, 0.02)',
-                              border: gcpComputeChoice === target.id ? `2px solid ${currentConfig.color}` : '2px solid var(--c2c-border)',
-                             borderRadius: '16px', padding: '1.25rem 1rem', cursor: 'pointer', transition: 'all 0.2s', textAlign: 'left'
-                           }}
-                         >
-                           <div style={{ color: gcpComputeChoice === target.id ? currentConfig.color : '#fff', fontWeight: '600', marginBottom: '0.25rem', fontSize: '0.9rem' }}>{target.name}</div>
-                           <div style={{ color: '#a2a2b5', fontSize: '0.75rem', lineHeight: '1.3' }}>{target.desc}</div>
-                         </div>
-                       ))}
-                     </div>
-
-                     <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem', alignItems: 'center' }}>
-                       <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
-                         <label style={{ color: '#fff', fontSize: '0.95rem', fontWeight: '600' }}>Resource Size / Sizing</label>
-                         <select
-                           value={gcpMachineType}
-                           onChange={(e) => setGcpMachineType(e.target.value)}
-                           style={{ background: 'rgba(255,255,255,0.02)', border: '2px solid var(--c2c-border)', borderRadius: '12px', color: '#fff', padding: '0.75rem', fontSize: '0.85rem', outline: 'none', cursor: 'pointer' }}
-                         >
-                           {gcpComputeChoice === 'cloudrun' ? (
-                             <>
-                               <option value="1 vCPU / 512 MB" style={{ background: '#0f0f15' }}>1 vCPU / 512 MB (Default)</option>
-                               <option value="1 vCPU / 1 GB" style={{ background: '#0f0f15' }}>1 vCPU / 1 GB</option>
-                               <option value="2 vCPU / 2 GB" style={{ background: '#0f0f15' }}>2 vCPU / 2 GB</option>
-                             </>
-                           ) : (
-                             <>
-                               <option value="e2-micro" style={{ background: '#0f0f15' }}>e2-micro (2 vCPU / 1 GB - Free Tier)</option>
-                               <option value="e2-small" style={{ background: '#0f0f15' }}>e2-small (2 vCPU / 2 GB)</option>
-                               <option value="e2-medium" style={{ background: '#0f0f15' }}>e2-medium (2 vCPU / 4 GB)</option>
-                             </>
-                           )}
-                         </select>
-                       </div>
-
-                       {gcpComputeChoice === 'gce' && (
-                         <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginTop: '1.25rem' }}>
-                           <input
-                             type="checkbox"
-                             id="gcpUseStaticIp"
-                             checked={gcpUseStaticIp}
-                             onChange={(e) => setGcpUseStaticIp(e.target.checked)}
-                             style={{ width: '16px', height: '16px', cursor: 'pointer', accentColor: currentConfig.color }}
-                           />
-                           <label htmlFor="gcpUseStaticIp" style={{ color: '#fff', fontSize: '0.85rem', cursor: 'pointer', userSelect: 'none' }}>
-                             Reserve Static External IP Address
-                           </label>
-                         </div>
-                       )}
-                     </div>
-                     {renderAiReasoning('global')}
-                   </div>
-                 )}
-
-                  {/* FinOps Real-time Cost Estimation Card */}
-                  {selectedCloud && serviceId !== 'docker' && (
-                    <div style={{
-                      borderTop: '2px solid var(--c2c-border)',
-                      paddingTop: '1.5rem',
-                      display: 'flex',
-                      flexDirection: 'column',
-                      gap: '0.8rem'
-                    }}>
-                      <div style={{
-                        background: 'linear-gradient(135deg, rgba(16, 185, 129, 0.08) 0%, rgba(5, 150, 105, 0.03) 100%)',
-                        border: '1.5px solid rgba(16, 185, 129, 0.3)',
-                        borderRadius: '16px',
-                        padding: '1.25rem',
-                        display: 'flex',
-                        flexDirection: 'column',
-                        gap: '0.75rem'
-                      }}>
-                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                            <DollarSign size={18} style={{ color: '#10B981' }} />
-                            <span style={{ color: '#fff', fontWeight: '700', fontSize: '0.95rem' }}>Live FinOps Cost Estimation</span>
-                          </div>
-                          <div style={{
-                            background: 'rgba(16, 185, 129, 0.2)',
-                            color: '#10B981',
-                            padding: '0.3rem 0.8rem',
-                            borderRadius: '20px',
-                            fontWeight: '700',
-                            fontSize: '0.9rem',
-                            border: '1px solid rgba(16, 185, 129, 0.4)'
-                          }}>
-                            ${calculateCostBreakdown().totalCost} / month
-                          </div>
-                        </div>
-
-                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem', fontSize: '0.75rem' }}>
-                          <span style={{ background: 'rgba(255, 255, 255, 0.05)', color: '#e2e2e9', padding: '0.3rem 0.6rem', borderRadius: '8px', border: '1px solid var(--c2c-border)' }}>
-                            Compute: <strong>${calculateCostBreakdown().computeCost}/mo</strong>
-                          </span>
-                          <span style={{ background: 'rgba(255, 255, 255, 0.05)', color: '#e2e2e9', padding: '0.3rem 0.6rem', borderRadius: '8px', border: '1px solid var(--c2c-border)' }}>
-                            Storage ({storageSizeGb}GB): <strong>${calculateCostBreakdown().storageCost}/mo</strong>
-                          </span>
-                          {(awsUseEip || gcpUseStaticIp || Object.values(componentConfigs).some(c => c.awsUseEip || c.gcpUseStaticIp)) && (
-                            <span style={{ background: 'rgba(255, 255, 255, 0.05)', color: '#e2e2e9', padding: '0.3rem 0.6rem', borderRadius: '8px', border: '1px solid var(--c2c-border)' }}>
-                              Static IP: <strong>+${calculateCostBreakdown().ipCost}/mo</strong>
-                            </span>
-                          )}
-                          {dbEnabled && (
-                            <span style={{ background: 'rgba(16, 185, 129, 0.15)', color: '#34d399', padding: '0.3rem 0.6rem', borderRadius: '8px', border: '1px solid rgba(16, 185, 129, 0.3)' }}>
-                              Managed DB ({dbEngine.toUpperCase()}): <strong>+${calculateCostBreakdown().dbCost}/mo</strong>
-                            </span>
+                            </>
                           )}
                         </div>
-                      </div>
-                    </div>
-                  )}
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
 
-                  {/* Advanced Infrastructure Settings Accordion */}
-                  {selectedCloud && serviceId === 'terraform' && (
-                    <div style={{
-                      borderTop: '2px solid var(--c2c-border)',
-                      paddingTop: '1.25rem',
-                      display: 'flex',
-                      flexDirection: 'column',
-                      gap: '0.75rem'
-                    }}>
-                      <div 
-                        onClick={() => setIsAdvancedOpen(!isAdvancedOpen)}
+              {/* Single Component AWS Compute & Network Configurations */}
+              {selectedCloud === 'AWS' && serviceId === 'terraform' && (!techStack?.components || techStack.components.length <= 1) && (
+                <div style={{ borderTop: '2px solid var(--c2c-border)', paddingTop: '1.5rem', display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
+                    <label style={{ color: '#fff', fontSize: '1.1rem', fontWeight: '600' }}>AWS Compute Choice</label>
+                    <span style={{ color: '#a2a2b5', fontSize: '0.8rem' }}>Choose between standard virtual machines or container orchestration.</span>
+                  </div>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
+                    {[
+                      { id: 'fargate', name: 'ECS Fargate (Container)', desc: 'Deploy serverless docker container stacks.' },
+                      { id: 'ec2', name: 'EC2 Instance (VM)', desc: 'Deploy app on a single AWS virtual server instance.' }
+                    ].map((target) => (
+                      <div
+                        key={target.id}
+                        onClick={() => {
+                          setAwsComputeChoice(target.id);
+                          setAwsInstanceType(target.id === 'fargate' ? '0.25 vCPU / 512 MB' : 't3.micro');
+                          fetchAiRecommendation('AWS', target.id, 'global');
+                        }}
                         style={{
-                          background: 'rgba(255, 255, 255, 0.02)',
-                          border: isAdvancedOpen ? `1.5px solid ${currentConfig.color}` : '1.5px solid var(--c2c-border)',
-                          borderRadius: '16px',
-                          padding: '1rem 1.25rem',
-                          cursor: 'pointer',
-                          display: 'flex',
-                          justifyContent: 'space-between',
-                          alignItems: 'center',
-                          transition: 'all 0.2s'
+                          background: awsComputeChoice === target.id ? 'var(--c2c-selected-bg)' : 'rgba(255, 255, 255, 0.02)',
+                          border: awsComputeChoice === target.id ? `2px solid ${currentConfig.color}` : '2px solid var(--c2c-border)',
+                          borderRadius: '16px', padding: '1.25rem 1rem', cursor: 'pointer', transition: 'all 0.2s', textAlign: 'left'
                         }}
                       >
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
-                          <Sliders size={18} style={{ color: currentConfig.color }} />
-                          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.2rem' }}>
-                            <span style={{ color: '#fff', fontWeight: '600', fontSize: '0.95rem' }}>Advanced Infrastructure Settings</span>
-                            <span style={{ color: '#a2a2b5', fontSize: '0.75rem' }}>
-                              Region: <strong style={{ color: '#fff' }}>{selectedRegion}</strong> • Registry: <strong style={{ color: '#fff' }}>{selectedRegistry === 'native' ? (selectedCloud === 'AWS' ? 'ECR' : 'GAR') : 'DockerHub'}</strong> • Env: <strong style={{ color: '#fff' }}>{selectedEnvironment}</strong> {techStack?.components && techStack.components.length > 1 ? (<>• Storage & Swap: <strong style={{ color: '#fff' }}>Per-Component</strong></>) : (<>• Storage: <strong style={{ color: '#fff' }}>{storageSizeGb}GB</strong> {swapEnabled && `• Swap: ${swapSizeGb}GB`}</>)} {dbEnabled && `• DB: ${dbEngine.toUpperCase()}`}
-                            </span>
-                          </div>
-                        </div>
-                        {isAdvancedOpen ? <ChevronUp size={18} style={{ color: '#a2a2b5' }} /> : <ChevronDown size={18} style={{ color: '#a2a2b5' }} />}
+                        <div style={{ color: awsComputeChoice === target.id ? currentConfig.color : '#fff', fontWeight: '600', marginBottom: '0.25rem', fontSize: '0.9rem' }}>{target.name}</div>
+                        <div style={{ color: '#a2a2b5', fontSize: '0.75rem', lineHeight: '1.3' }}>{target.desc}</div>
+                      </div>
+                    ))}
+                  </div>
+                  
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem', alignItems: 'center' }}>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
+                      <label style={{ color: '#fff', fontSize: '0.95rem', fontWeight: '600' }}>Resource Size / Sizing</label>
+                      <select
+                        value={awsInstanceType}
+                        onChange={(e) => setAwsInstanceType(e.target.value)}
+                        style={{ background: 'rgba(255,255,255,0.02)', border: '2px solid var(--c2c-border)', borderRadius: '12px', color: '#fff', padding: '0.75rem', fontSize: '0.85rem', outline: 'none', cursor: 'pointer' }}
+                      >
+                        {awsComputeChoice === 'fargate' ? (
+                          <>
+                            <option value="0.25 vCPU / 512 MB" style={{ background: '#0f0f15' }}>0.25 vCPU / 512 MB (Default)</option>
+                            <option value="0.5 vCPU / 1 GB" style={{ background: '#0f0f15' }}>0.5 vCPU / 1 GB</option>
+                            <option value="1.0 vCPU / 2 GB" style={{ background: '#0f0f15' }}>1.0 vCPU / 2 GB</option>
+                          </>
+                        ) : (
+                          <>
+                            <option value="t3.micro" style={{ background: '#0f0f15' }}>t3.micro (1 vCPU / 1 GB - Free Tier)</option>
+                            <option value="t3.small" style={{ background: '#0f0f15' }}>t3.small (2 vCPU / 2 GB)</option>
+                            <option value="t3.medium" style={{ background: '#0f0f15' }}>t3.medium (2 vCPU / 4 GB)</option>
+                          </>
+                        )}
+                      </select>
+                    </div>
+
+                    {awsComputeChoice === 'ec2' && (
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginTop: '1.25rem' }}>
+                        <input
+                          type="checkbox"
+                          id="awsUseEip"
+                          checked={awsUseEip}
+                          onChange={(e) => setAwsUseEip(e.target.checked)}
+                          style={{ width: '16px', height: '16px', cursor: 'pointer', accentColor: currentConfig.color }}
+                        />
+                        <label htmlFor="awsUseEip" style={{ color: '#fff', fontSize: '0.85rem', cursor: 'pointer', userSelect: 'none' }}>
+                          Allocate Elastic IP (Static Public IP)
+                        </label>
+                      </div>
+                    )}
+                  </div>
+                  {renderAiReasoning('global')}
+                </div>
+              )}
+
+              {/* Single Component GCP Compute & Network Configurations */}
+              {selectedCloud === 'GCP' && serviceId === 'terraform' && (!techStack?.components || techStack.components.length <= 1) && (
+                <div style={{ borderTop: '2px solid var(--c2c-border)', paddingTop: '1.5rem', display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
+                    <label style={{ color: '#fff', fontSize: '1.1rem', fontWeight: '600' }}>Google Cloud Compute Choice</label>
+                    <span style={{ color: '#a2a2b5', fontSize: '0.8rem' }}>Choose serverless Cloud Run scaling or dedicated Compute Engine VMs.</span>
+                  </div>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
+                    {[
+                      { id: 'cloudrun', name: 'Cloud Run (Serverless)', desc: 'Run serverless containers scale-to-zero.' },
+                      { id: 'gce', name: 'Compute Engine (VM)', desc: 'Run containers on GCE virtual machine hosts.' }
+                    ].map((target) => (
+                      <div
+                        key={target.id}
+                        onClick={() => {
+                          setGcpComputeChoice(target.id);
+                          setGcpMachineType(target.id === 'cloudrun' ? '1 vCPU / 512 MB' : 'e2-micro');
+                          fetchAiRecommendation('GCP', target.id, 'global');
+                        }}
+                        style={{
+                          background: gcpComputeChoice === target.id ? 'var(--c2c-selected-bg)' : 'rgba(255, 255, 255, 0.02)',
+                          border: gcpComputeChoice === target.id ? `2px solid ${currentConfig.color}` : '2px solid var(--c2c-border)',
+                          borderRadius: '16px', padding: '1.25rem 1rem', cursor: 'pointer', transition: 'all 0.2s', textAlign: 'left'
+                        }}
+                      >
+                        <div style={{ color: gcpComputeChoice === target.id ? currentConfig.color : '#fff', fontWeight: '600', marginBottom: '0.25rem', fontSize: '0.9rem' }}>{target.name}</div>
+                        <div style={{ color: '#a2a2b5', fontSize: '0.75rem', lineHeight: '1.3' }}>{target.desc}</div>
+                      </div>
+                    ))}
+                  </div>
+
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem', alignItems: 'center' }}>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
+                      <label style={{ color: '#fff', fontSize: '0.95rem', fontWeight: '600' }}>Resource Size / Sizing</label>
+                      <select
+                        value={gcpMachineType}
+                        onChange={(e) => setGcpMachineType(e.target.value)}
+                        style={{ background: 'rgba(255,255,255,0.02)', border: '2px solid var(--c2c-border)', borderRadius: '12px', color: '#fff', padding: '0.75rem', fontSize: '0.85rem', outline: 'none', cursor: 'pointer' }}
+                      >
+                        {gcpComputeChoice === 'cloudrun' ? (
+                          <>
+                            <option value="1 vCPU / 512 MB" style={{ background: '#0f0f15' }}>1 vCPU / 512 MB (Default)</option>
+                            <option value="1 vCPU / 1 GB" style={{ background: '#0f0f15' }}>1 vCPU / 1 GB</option>
+                            <option value="2 vCPU / 2 GB" style={{ background: '#0f0f15' }}>2 vCPU / 2 GB</option>
+                          </>
+                        ) : (
+                          <>
+                            <option value="e2-micro" style={{ background: '#0f0f15' }}>e2-micro (2 vCPU / 1 GB - Free Tier)</option>
+                            <option value="e2-small" style={{ background: '#0f0f15' }}>e2-small (2 vCPU / 2 GB)</option>
+                            <option value="e2-medium" style={{ background: '#0f0f15' }}>e2-medium (2 vCPU / 4 GB)</option>
+                          </>
+                        )}
+                      </select>
+                    </div>
+
+                    {gcpComputeChoice === 'gce' && (
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginTop: '1.25rem' }}>
+                        <input
+                          type="checkbox"
+                          id="gcpUseStaticIp"
+                          checked={gcpUseStaticIp}
+                          onChange={(e) => setGcpUseStaticIp(e.target.checked)}
+                          style={{ width: '16px', height: '16px', cursor: 'pointer', accentColor: currentConfig.color }}
+                        />
+                        <label htmlFor="gcpUseStaticIp" style={{ color: '#fff', fontSize: '0.85rem', cursor: 'pointer', userSelect: 'none' }}>
+                          Reserve Static External IP Address
+                        </label>
+                      </div>
+                    )}
+                  </div>
+                  {renderAiReasoning('global')}
+                </div>
+              )}
+
+              {/* FinOps Real-time Cost Estimation Card */}
+              {selectedCloud && serviceId !== 'docker' && (
+                <div style={{
+                  borderTop: '2px solid var(--c2c-border)',
+                  paddingTop: '1.5rem',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: '0.8rem'
+                }}>
+                  <div style={{
+                    background: 'linear-gradient(135deg, rgba(16, 185, 129, 0.08) 0%, rgba(5, 150, 105, 0.03) 100%)',
+                    border: '1.5px solid rgba(16, 185, 129, 0.3)',
+                    borderRadius: '16px',
+                    padding: '1.25rem',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    gap: '0.75rem'
+                  }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                        <DollarSign size={18} style={{ color: '#10B981' }} />
+                        <span style={{ color: '#fff', fontWeight: '700', fontSize: '0.95rem' }}>Live FinOps Cost Estimation</span>
+                      </div>
+                      <div style={{
+                        background: 'rgba(16, 185, 129, 0.2)',
+                        color: '#10B981',
+                        padding: '0.3rem 0.8rem',
+                        borderRadius: '20px',
+                        fontWeight: '700',
+                        fontSize: '0.9rem',
+                        border: '1px solid rgba(16, 185, 129, 0.4)'
+                      }}>
+                        ${calculateCostBreakdown().totalCost} / month
+                      </div>
+                    </div>
+
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem', fontSize: '0.75rem' }}>
+                      <span style={{ background: 'rgba(255, 255, 255, 0.05)', color: '#e2e2e9', padding: '0.3rem 0.6rem', borderRadius: '8px', border: '1px solid var(--c2c-border)' }}>
+                        Compute: <strong>${calculateCostBreakdown().computeCost}/mo</strong>
+                      </span>
+                      <span style={{ background: 'rgba(255, 255, 255, 0.05)', color: '#e2e2e9', padding: '0.3rem 0.6rem', borderRadius: '8px', border: '1px solid var(--c2c-border)' }}>
+                        Storage ({storageSizeGb}GB): <strong>${calculateCostBreakdown().storageCost}/mo</strong>
+                      </span>
+                      {(awsUseEip || gcpUseStaticIp || Object.values(componentConfigs).some(c => c.awsUseEip || c.gcpUseStaticIp)) && (
+                        <span style={{ background: 'rgba(255, 255, 255, 0.05)', color: '#e2e2e9', padding: '0.3rem 0.6rem', borderRadius: '8px', border: '1px solid var(--c2c-border)' }}>
+                          Static IP: <strong>+${calculateCostBreakdown().ipCost}/mo</strong>
+                        </span>
+                      )}
+                      {dbEnabled && (
+                        <span style={{ background: 'rgba(16, 185, 129, 0.15)', color: '#34d399', padding: '0.3rem 0.6rem', borderRadius: '8px', border: '1px solid rgba(16, 185, 129, 0.3)' }}>
+                          Managed DB ({dbEngine.toUpperCase()}): <strong>+${calculateCostBreakdown().dbCost}/mo</strong>
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Advanced Infrastructure Settings Accordion */}
+              {selectedCloud && serviceId === 'terraform' && (
+                <div style={{
+                  borderTop: '2px solid var(--c2c-border)',
+                  paddingTop: '1.25rem',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: '0.75rem'
+                }}>
+                  <div 
+                    onClick={() => setIsAdvancedOpen(!isAdvancedOpen)}
+                    style={{
+                      background: 'rgba(255, 255, 255, 0.02)',
+                      border: isAdvancedOpen ? `1.5px solid ${currentConfig.color}` : '1.5px solid var(--c2c-border)',
+                      borderRadius: '16px',
+                      padding: '1rem 1.25rem',
+                      cursor: 'pointer',
+                      display: 'flex',
+                      justifyContent: 'space-between',
+                      alignItems: 'center',
+                      transition: 'all 0.2s'
+                    }}
+                  >
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+                      <Sliders size={18} style={{ color: currentConfig.color }} />
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '0.2rem' }}>
+                        <span style={{ color: '#fff', fontWeight: '600', fontSize: '0.95rem' }}>Advanced Infrastructure Settings</span>
+                        <span style={{ color: '#a2a2b5', fontSize: '0.75rem' }}>
+                          Region: <strong style={{ color: '#fff' }}>{selectedRegion}</strong> • Registry: <strong style={{ color: '#fff' }}>{selectedRegistry === 'native' ? (selectedCloud === 'AWS' ? 'ECR' : 'GAR') : 'DockerHub'}</strong> • Env: <strong style={{ color: '#fff' }}>{selectedEnvironment}</strong> {techStack?.components && techStack.components.length > 1 ? (<>• Storage & Swap: <strong style={{ color: '#fff' }}>Per-Component</strong></>) : (<>• Storage: <strong style={{ color: '#fff' }}>{storageSizeGb}GB</strong> {swapEnabled && `• Swap: ${swapSizeGb}GB`}</>)} {dbEnabled && `• DB: ${dbEngine.toUpperCase()}`}
+                        </span>
+                      </div>
+                    </div>
+                    {isAdvancedOpen ? <ChevronUp size={18} style={{ color: '#a2a2b5' }} /> : <ChevronDown size={18} style={{ color: '#a2a2b5' }} />}
+                  </div>
+
+                  {isAdvancedOpen && (
+                    <div style={{
+                      background: 'rgba(0, 0, 0, 0.2)',
+                      border: '1.5px solid var(--c2c-border)',
+                      borderRadius: '16px',
+                      padding: '1.25rem',
+                      display: 'flex',
+                      flexDirection: 'column',
+                      gap: '1.25rem',
+                      marginTop: '0.25rem'
+                    }}>
+                      {/* 1. Region Selector */}
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
+                        <label style={{ color: '#fff', fontSize: '0.85rem', fontWeight: '600', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+                          <Globe size={15} style={{ color: currentConfig.color }} />
+                          Deployment Region
+                        </label>
+                        <select
+                          value={selectedRegion}
+                          onChange={(e) => setSelectedRegion(e.target.value)}
+                          style={{ background: '#0f0f15', border: '1.5px solid var(--c2c-border)', borderRadius: '10px', color: '#fff', padding: '0.65rem', fontSize: '0.85rem', outline: 'none', cursor: 'pointer' }}
+                        >
+                          {selectedCloud === 'AWS' ? (
+                            <>
+                              <option value="us-east-1">us-east-1 (US East - N. Virginia) [Default]</option>
+                              <option value="us-west-2">us-west-2 (US West - Oregon)</option>
+                              <option value="eu-west-1">eu-west-1 (Europe - Ireland)</option>
+                              <option value="ap-southeast-1">ap-southeast-1 (Asia Pacific - Singapore)</option>
+                              <option value="ap-south-1">ap-south-1 (Asia Pacific - Mumbai)</option>
+                            </>
+                          ) : (
+                            <>
+                              <option value="us-central1">us-central1 (US Central - Iowa) [Default]</option>
+                              <option value="us-east1">us-east1 (US East - S. Carolina)</option>
+                              <option value="europe-west1">europe-west1 (Europe - Belgium)</option>
+                              <option value="asia-southeast1">asia-southeast1 (Asia Pacific - Singapore)</option>
+                              <option value="asia-south1">asia-south1 (Asia Pacific - Mumbai)</option>
+                            </>
+                          )}
+                        </select>
                       </div>
 
-                      {isAdvancedOpen && (
-                        <div style={{
-                          background: 'rgba(0, 0, 0, 0.2)',
-                          border: '1.5px solid var(--c2c-border)',
-                          borderRadius: '16px',
-                          padding: '1.25rem',
-                          display: 'flex',
-                          flexDirection: 'column',
-                          gap: '1.25rem',
-                          marginTop: '0.25rem'
-                        }}>
-                          {/* 1. Region Selector */}
-                          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
-                            <label style={{ color: '#fff', fontSize: '0.85rem', fontWeight: '600', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
-                              <Globe size={15} style={{ color: currentConfig.color }} />
-                              Deployment Region
-                            </label>
-                            <select
-                              value={selectedRegion}
-                              onChange={(e) => setSelectedRegion(e.target.value)}
-                              style={{ background: '#0f0f15', border: '1.5px solid var(--c2c-border)', borderRadius: '10px', color: '#fff', padding: '0.65rem', fontSize: '0.85rem', outline: 'none', cursor: 'pointer' }}
+                      {/* 2. Container Registry Selector */}
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
+                        <label style={{ color: '#fff', fontSize: '0.85rem', fontWeight: '600', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+                          <Layers size={15} style={{ color: currentConfig.color }} />
+                          Container Image Registry
+                        </label>
+                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.6rem' }}>
+                          {[
+                            { id: 'native', name: selectedCloud === 'AWS' ? 'Amazon ECR (Native)' : 'Google Artifact Registry (Native)' },
+                            { id: 'dockerhub', name: 'Docker Hub' }
+                          ].map((reg) => (
+                            <div
+                              key={reg.id}
+                              onClick={() => setSelectedRegistry(reg.id)}
+                              style={{
+                                background: selectedRegistry === reg.id ? 'var(--c2c-selected-bg)' : 'rgba(255, 255, 255, 0.02)',
+                                border: selectedRegistry === reg.id ? `2px solid ${currentConfig.color}` : '1.5px solid var(--c2c-border)',
+                                borderRadius: '10px',
+                                padding: '0.65rem 0.5rem',
+                                textAlign: 'center',
+                                cursor: 'pointer',
+                                fontWeight: '600',
+                                fontSize: '0.82rem',
+                                color: selectedRegistry === reg.id ? currentConfig.color : '#fff',
+                                transition: 'all 0.2s',
+                                userSelect: 'none'
+                              }}
                             >
-                              {selectedCloud === 'AWS' ? (
-                                <>
-                                  <option value="us-east-1">us-east-1 (US East - N. Virginia) [Default]</option>
-                                  <option value="us-west-2">us-west-2 (US West - Oregon)</option>
-                                  <option value="eu-west-1">eu-west-1 (Europe - Ireland)</option>
-                                  <option value="ap-southeast-1">ap-southeast-1 (Asia Pacific - Singapore)</option>
-                                  <option value="ap-south-1">ap-south-1 (Asia Pacific - Mumbai)</option>
-                                </>
-                              ) : (
-                                <>
-                                  <option value="us-central1">us-central1 (US Central - Iowa) [Default]</option>
-                                  <option value="us-east1">us-east1 (US East - S. Carolina)</option>
-                                  <option value="europe-west1">europe-west1 (Europe - Belgium)</option>
-                                  <option value="asia-southeast1">asia-southeast1 (Asia Pacific - Singapore)</option>
-                                  <option value="asia-south1">asia-south1 (Asia Pacific - Mumbai)</option>
-                                </>
-                              )}
-                            </select>
-                          </div>
-
-                          {/* 2. Container Registry Selector */}
-                          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
-                            <label style={{ color: '#fff', fontSize: '0.85rem', fontWeight: '600', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
-                              <Layers size={15} style={{ color: currentConfig.color }} />
-                              Container Image Registry
-                            </label>
-                            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.6rem' }}>
-                              {[
-                                { id: 'native', name: selectedCloud === 'AWS' ? 'Amazon ECR (Native)' : 'Google Artifact Registry (Native)' },
-                                { id: 'dockerhub', name: 'Docker Hub' }
-                              ].map((reg) => (
-                                <div
-                                  key={reg.id}
-                                  onClick={() => setSelectedRegistry(reg.id)}
-                                  style={{
-                                    background: selectedRegistry === reg.id ? 'var(--c2c-selected-bg)' : 'rgba(255, 255, 255, 0.02)',
-                                    border: selectedRegistry === reg.id ? `2px solid ${currentConfig.color}` : '1.5px solid var(--c2c-border)',
-                                    borderRadius: '10px',
-                                    padding: '0.65rem 0.5rem',
-                                    textAlign: 'center',
-                                    cursor: 'pointer',
-                                    fontWeight: '600',
-                                    fontSize: '0.82rem',
-                                    color: selectedRegistry === reg.id ? currentConfig.color : '#fff',
-                                    transition: 'all 0.2s',
-                                    userSelect: 'none'
-                                  }}
-                                >
-                                  {reg.name}
-                                </div>
-                              ))}
+                              {reg.name}
                             </div>
-                          </div>
+                          ))}
+                        </div>
+                      </div>
 
-                          {/* 3. Deployment Environment Selector */}
-                          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
-                            <label style={{ color: '#fff', fontSize: '0.85rem', fontWeight: '600', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
-                              <ShieldCheck size={15} style={{ color: currentConfig.color }} />
-                              Deployment Environment
-                            </label>
-                            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '0.6rem' }}>
-                              {[
-                                { id: 'production', name: 'Production' },
-                                { id: 'staging', name: 'Staging' },
-                                { id: 'development', name: 'Development' }
-                              ].map((envOption) => (
-                                <div
-                                  key={envOption.id}
-                                  onClick={() => setSelectedEnvironment(envOption.id)}
-                                  style={{
-                                    background: selectedEnvironment === envOption.id ? 'var(--c2c-selected-bg)' : 'rgba(255, 255, 255, 0.02)',
-                                    border: selectedEnvironment === envOption.id ? `2px solid ${currentConfig.color}` : '1.5px solid var(--c2c-border)',
-                                    borderRadius: '10px',
-                                    padding: '0.65rem 0.5rem',
-                                    textAlign: 'center',
-                                    cursor: 'pointer',
-                                    fontWeight: '600',
-                                    fontSize: '0.82rem',
-                                    color: selectedEnvironment === envOption.id ? currentConfig.color : '#fff',
-                                    transition: 'all 0.2s',
-                                    userSelect: 'none'
-                                  }}
-                                >
-                                  {envOption.name}
-                                </div>
-                              ))}
+                      {/* 3. Deployment Environment Selector */}
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
+                        <label style={{ color: '#fff', fontSize: '0.85rem', fontWeight: '600', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+                          <ShieldCheck size={15} style={{ color: currentConfig.color }} />
+                          Deployment Environment
+                        </label>
+                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '0.6rem' }}>
+                          {[
+                            { id: 'production', name: 'Production' },
+                            { id: 'staging', name: 'Staging' },
+                            { id: 'development', name: 'Development' }
+                          ].map((envOption) => (
+                            <div
+                              key={envOption.id}
+                              onClick={() => setSelectedEnvironment(envOption.id)}
+                              style={{
+                                background: selectedEnvironment === envOption.id ? 'var(--c2c-selected-bg)' : 'rgba(255, 255, 255, 0.02)',
+                                border: selectedEnvironment === envOption.id ? `2px solid ${currentConfig.color}` : '1.5px solid var(--c2c-border)',
+                                borderRadius: '10px',
+                                padding: '0.65rem 0.5rem',
+                                textAlign: 'center',
+                                cursor: 'pointer',
+                                fontWeight: '600',
+                                fontSize: '0.82rem',
+                                color: selectedEnvironment === envOption.id ? currentConfig.color : '#fff',
+                                transition: 'all 0.2s',
+                                userSelect: 'none'
+                              }}
+                            >
+                              {envOption.name}
                             </div>
-                          </div>
+                          ))}
+                        </div>
+                      </div>
 
-                          {/* 4. Storage Sizing Option (Single-Component Repos) */}
-                          {(!techStack?.components || techStack.components.length <= 1) ? (
-                            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
-                              <label style={{ color: '#fff', fontSize: '0.85rem', fontWeight: '600', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
-                                <HardDrive size={15} style={{ color: currentConfig.color }} />
-                                Root SSD Storage Volume
-                              </label>
-                              <select
-                                value={isCustomStorage ? 'custom' : storageSizeGb}
+                      {/* 4. Storage Sizing Option (Single-Component Repos) */}
+                      {(!techStack?.components || techStack.components.length <= 1) ? (
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
+                          <label style={{ color: '#fff', fontSize: '0.85rem', fontWeight: '600', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+                            <HardDrive size={15} style={{ color: currentConfig.color }} />
+                            Root SSD Storage Volume
+                          </label>
+                          <select
+                            value={isCustomStorage ? 'custom' : storageSizeGb}
+                            onChange={(e) => {
+                              const val = e.target.value;
+                              if (val === 'custom') {
+                                setIsCustomStorage(true);
+                              } else {
+                                setIsCustomStorage(false);
+                                setStorageSizeGb(Number(val));
+                              }
+                            }}
+                            style={{ background: '#0f0f15', border: '1.5px solid var(--c2c-border)', borderRadius: '10px', color: '#fff', padding: '0.65rem', fontSize: '0.85rem', outline: 'none', cursor: 'pointer' }}
+                          >
+                            <option value={10}>10 GB SSD (Lightweight / Frontend Only - ${ (10 * 0.08).toFixed(2) }/mo)</option>
+                            <option value={20}>20 GB SSD (Standard Baseline - ${ (20 * 0.08).toFixed(2) }/mo)</option>
+                            <option value={50}>50 GB SSD (Medium App - ${ (50 * 0.08).toFixed(2) }/mo)</option>
+                            <option value={100}>100 GB SSD (High Capacity - ${ (100 * 0.08).toFixed(2) }/mo)</option>
+                            <option value={200}>200 GB SSD (Heavy Workload - ${ (200 * 0.08).toFixed(2) }/mo)</option>
+                            <option value="custom">⚙️ Custom Size (Define your own GB)...</option>
+                          </select>
+
+                          {isCustomStorage && (
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', marginTop: '0.3rem', background: 'rgba(255,255,255,0.02)', padding: '0.5rem 0.8rem', borderRadius: '10px', border: '1px solid var(--c2c-border)' }}>
+                              <span style={{ color: '#a2a2b5', fontSize: '0.8rem' }}>Custom Storage:</span>
+                              <input
+                                type="number"
+                                min="10"
+                                max="2000"
+                                value={storageSizeGb}
                                 onChange={(e) => {
-                                  const val = e.target.value;
-                                  if (val === 'custom') {
-                                    setIsCustomStorage(true);
-                                  } else {
-                                    setIsCustomStorage(false);
-                                    setStorageSizeGb(Number(val));
-                                  }
+                                  const num = Math.max(10, Math.min(2000, Number(e.target.value) || 10));
+                                  setStorageSizeGb(num);
                                 }}
-                                style={{ background: '#0f0f15', border: '1.5px solid var(--c2c-border)', borderRadius: '10px', color: '#fff', padding: '0.65rem', fontSize: '0.85rem', outline: 'none', cursor: 'pointer' }}
-                              >
-                                <option value={10}>10 GB SSD (Lightweight / Frontend Only - ${ (10 * 0.08).toFixed(2) }/mo)</option>
-                                <option value={20}>20 GB SSD (Standard Baseline - ${ (20 * 0.08).toFixed(2) }/mo)</option>
-                                <option value={50}>50 GB SSD (Medium App - ${ (50 * 0.08).toFixed(2) }/mo)</option>
-                                <option value={100}>100 GB SSD (High Capacity - ${ (100 * 0.08).toFixed(2) }/mo)</option>
-                                <option value={200}>200 GB SSD (Heavy Workload - ${ (200 * 0.08).toFixed(2) }/mo)</option>
-                                <option value="custom">⚙️ Custom Size (Define your own GB)...</option>
-                              </select>
-
-                              {isCustomStorage && (
-                                <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', marginTop: '0.3rem', background: 'rgba(255,255,255,0.02)', padding: '0.5rem 0.8rem', borderRadius: '10px', border: '1px solid var(--c2c-border)' }}>
-                                  <span style={{ color: '#a2a2b5', fontSize: '0.8rem' }}>Custom Storage:</span>
-                                  <input
-                                    type="number"
-                                    min="10"
-                                    max="2000"
-                                    value={storageSizeGb}
-                                    onChange={(e) => {
-                                      const num = Math.max(10, Math.min(2000, Number(e.target.value) || 10));
-                                      setStorageSizeGb(num);
-                                    }}
-                                    style={{
-                                      background: '#0f0f15',
-                                      border: '1.5px solid var(--c2c-border)',
-                                      borderRadius: '8px',
-                                      color: '#fff',
-                                      padding: '0.4rem 0.6rem',
-                                      fontSize: '0.85rem',
-                                      width: '80px',
-                                      outline: 'none'
-                                    }}
-                                  />
-                                  <span style={{ color: '#fff', fontSize: '0.85rem', fontWeight: '600' }}>GB SSD</span>
-                                  <span style={{ color: '#10B981', fontSize: '0.8rem', marginLeft: 'auto', fontWeight: '600' }}>
-                                    +${(Number(storageSizeGb || 10) * 0.08).toFixed(2)}/mo
-                                  </span>
-                                </div>
-                              )}
-                            </div>
-                          ) : (
-                            <div style={{ background: 'rgba(255, 255, 255, 0.02)', border: '1px dashed var(--c2c-border)', borderRadius: '12px', padding: '0.85rem 1.1rem', display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
-                              <span style={{ fontSize: '1.2rem' }}>💾</span>
-                              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.15rem' }}>
-                                <span style={{ color: '#fff', fontSize: '0.85rem', fontWeight: '600' }}>Per-Component Storage & Virtual RAM Active</span>
-                                <span style={{ color: '#a2a2b5', fontSize: '0.75rem' }}>Root SSD storage sizes (10GB–200GB) and Linux swap memory (1GB–4GB) are tuned independently on each component card above.</span>
-                              </div>
+                                style={{
+                                  background: '#0f0f15',
+                                  border: '1.5px solid var(--c2c-border)',
+                                  borderRadius: '8px',
+                                  color: '#fff',
+                                  padding: '0.4rem 0.6rem',
+                                  fontSize: '0.85rem',
+                                  width: '80px',
+                                  outline: 'none'
+                                }}
+                              />
+                              <span style={{ color: '#fff', fontSize: '0.85rem', fontWeight: '600' }}>GB SSD</span>
+                              <span style={{ color: '#10B981', fontSize: '0.8rem', marginLeft: 'auto', fontWeight: '600' }}>
+                                +${(Number(storageSizeGb || 10) * 0.08).toFixed(2)}/mo
+                              </span>
                             </div>
                           )}
+                        </div>
+                      ) : (
+                        <div style={{ background: 'rgba(255, 255, 255, 0.02)', border: '1px dashed var(--c2c-border)', borderRadius: '12px', padding: '0.85rem 1.1rem', display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+                          <span style={{ fontSize: '1.2rem' }}>💾</span>
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.15rem' }}>
+                            <span style={{ color: '#fff', fontSize: '0.85rem', fontWeight: '600' }}>Per-Component Storage & Virtual RAM Active</span>
+                            <span style={{ color: '#a2a2b5', fontSize: '0.75rem' }}>Root SSD storage sizes (10GB–200GB) and Linux swap memory (1GB–4GB) are tuned independently on each component card above.</span>
+                          </div>
+                        </div>
+                      )}
 
-                          {/* 5. Managed Database Add-On */}
-                          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem', borderTop: '1px solid var(--c2c-border)', paddingTop: '1rem' }}>
-                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.2rem' }}>
-                                <label style={{ color: '#fff', fontSize: '0.9rem', fontWeight: '600', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
-                                  <Database size={16} style={{ color: currentConfig.color }} />
-                                  Managed Database Add-On
-                                </label>
-                                <span style={{ color: '#a2a2b5', fontSize: '0.75rem' }}>
-                                  Provision high-availability {selectedCloud === 'AWS' ? 'Amazon RDS' : 'Google Cloud SQL'} instance
-                                </span>
-                              </div>
-                              <input
-                                type="checkbox"
-                                id="dbEnabledToggle"
-                                checked={dbEnabled}
-                                onChange={(e) => setDbEnabled(e.target.checked)}
-                                style={{ width: '18px', height: '18px', cursor: 'pointer', accentColor: currentConfig.color }}
-                              />
-                            </div>
+                      {/* 5. Managed Database Add-On */}
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem', borderTop: '1px solid var(--c2c-border)', paddingTop: '1rem' }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.2rem' }}>
+                            <label style={{ color: '#fff', fontSize: '0.9rem', fontWeight: '600', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+                              <Database size={16} style={{ color: currentConfig.color }} />
+                              Managed Database Add-On
+                            </label>
+                            <span style={{ color: '#a2a2b5', fontSize: '0.75rem' }}>
+                              Provision high-availability {selectedCloud === 'AWS' ? 'Amazon RDS' : 'Google Cloud SQL'} instance
+                            </span>
+                          </div>
+                          <input
+                            type="checkbox"
+                            id="dbEnabledToggle"
+                            checked={dbEnabled}
+                            onChange={(e) => setDbEnabled(e.target.checked)}
+                            style={{ width: '18px', height: '18px', cursor: 'pointer', accentColor: currentConfig.color }}
+                          />
+                        </div>
 
-                            {dbEnabled && (
-                              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.6rem', marginTop: '0.4rem' }}>
-                                <label style={{ color: '#a2a2b5', fontSize: '0.8rem', fontWeight: '500' }}>Select Database Engine</label>
-                                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.6rem' }}>
-                                  {[
-                                    { id: 'postgres', name: 'PostgreSQL 15', port: 'Port 5432' },
-                                    { id: 'mysql', name: 'MySQL 8.0', port: 'Port 3306' }
-                                  ].map((engine) => (
-                                    <div
-                                      key={engine.id}
-                                      onClick={() => setDbEngine(engine.id)}
-                                      style={{
-                                        background: dbEngine === engine.id ? 'var(--c2c-selected-bg)' : 'rgba(255, 255, 255, 0.02)',
-                                        border: dbEngine === engine.id ? `2px solid ${currentConfig.color}` : '1.5px solid var(--c2c-border)',
-                                        borderRadius: '10px',
-                                        padding: '0.75rem',
-                                        cursor: 'pointer',
-                                        transition: 'all 0.2s',
-                                        userSelect: 'none'
-                                      }}
-                                    >
-                                      <div style={{ color: dbEngine === engine.id ? currentConfig.color : '#fff', fontWeight: '600', fontSize: '0.85rem' }}>{engine.name}</div>
-                                      <div style={{ color: '#a2a2b5', fontSize: '0.75rem', marginTop: '0.15rem' }}>{engine.port} • ~$14.50/mo</div>
-                                    </div>
-                                  ))}
+                        {dbEnabled && (
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.6rem', marginTop: '0.4rem' }}>
+                            <label style={{ color: '#a2a2b5', fontSize: '0.8rem', fontWeight: '500' }}>Select Database Engine</label>
+                            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.6rem' }}>
+                              {[
+                                { id: 'postgres', name: 'PostgreSQL 15', port: 'Port 5432' },
+                                { id: 'mysql', name: 'MySQL 8.0', port: 'Port 3306' }
+                              ].map((engine) => (
+                                <div
+                                  key={engine.id}
+                                  onClick={() => setDbEngine(engine.id)}
+                                  style={{
+                                    background: dbEngine === engine.id ? 'var(--c2c-selected-bg)' : 'rgba(255, 255, 255, 0.02)',
+                                    border: dbEngine === engine.id ? `2px solid ${currentConfig.color}` : '1.5px solid var(--c2c-border)',
+                                    borderRadius: '10px',
+                                    padding: '0.75rem',
+                                    cursor: 'pointer',
+                                    transition: 'all 0.2s',
+                                    userSelect: 'none'
+                                  }}
+                                >
+                                  <div style={{ color: dbEngine === engine.id ? currentConfig.color : '#fff', fontWeight: '600', fontSize: '0.85rem' }}>{engine.name}</div>
+                                  <div style={{ color: '#a2a2b5', fontSize: '0.75rem', marginTop: '0.15rem' }}>{engine.port} • ~$14.50/mo</div>
                                 </div>
-                                <span style={{ color: '#10B981', fontSize: '0.75rem', marginTop: '0.2rem' }}>
-                                  ✨ DATABASE_URL and credentials will be auto-injected into your application container.
-                                </span>
-                              </div>
-                            )}
+                              ))}
+                            </div>
+                            <span style={{ color: '#10B981', fontSize: '0.75rem', marginTop: '0.2rem' }}>
+                              ✨ DATABASE_URL and credentials will be auto-injected into your application container.
+                            </span>
+                          </div>
+                        )}
+                      </div>
+
+                      {/* 6. Linux Swap Memory Option (Single-Component Repos) */}
+                      {(!techStack?.components || techStack.components.length <= 1) && (
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem', borderTop: '1px solid var(--c2c-border)', paddingTop: '1rem' }}>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.2rem' }}>
+                              <label style={{ color: '#fff', fontSize: '0.9rem', fontWeight: '600', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+                                <Zap size={16} style={{ color: currentConfig.color }} />
+                                Linux Swap Memory (Virtual RAM)
+                              </label>
+                              <span style={{ color: '#a2a2b5', fontSize: '0.75rem' }}>
+                                Prevent Out-Of-Memory (OOM) crashes on burstable instances ($0 compute charge)
+                              </span>
+                            </div>
+                            <input
+                              type="checkbox"
+                              id="swapEnabledToggle"
+                              checked={swapEnabled}
+                              onChange={(e) => setSwapEnabled(e.target.checked)}
+                              style={{ width: '18px', height: '18px', cursor: 'pointer', accentColor: currentConfig.color }}
+                            />
                           </div>
 
-                          {/* 6. Linux Swap Memory Option (Single-Component Repos) */}
-                          {(!techStack?.components || techStack.components.length <= 1) && (
-                            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem', borderTop: '1px solid var(--c2c-border)', paddingTop: '1rem' }}>
-                              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.2rem' }}>
-                                  <label style={{ color: '#fff', fontSize: '0.9rem', fontWeight: '600', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
-                                    <Zap size={16} style={{ color: currentConfig.color }} />
-                                    Linux Swap Memory (Virtual RAM)
-                                  </label>
-                                  <span style={{ color: '#a2a2b5', fontSize: '0.75rem' }}>
-                                    Prevent Out-Of-Memory (OOM) crashes on burstable instances ($0 compute charge)
-                                  </span>
-                                </div>
-                                <input
-                                  type="checkbox"
-                                  id="swapEnabledToggle"
-                                  checked={swapEnabled}
-                                  onChange={(e) => setSwapEnabled(e.target.checked)}
-                                  style={{ width: '18px', height: '18px', cursor: 'pointer', accentColor: currentConfig.color }}
-                                />
-                              </div>
-
-                              {swapEnabled && (
-                                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.6rem', marginTop: '0.4rem' }}>
-                                  <label style={{ color: '#a2a2b5', fontSize: '0.8rem', fontWeight: '500' }}>Select Swap Allocation Size</label>
-                                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '0.5rem' }}>
-                                    {[
-                                      { size: 1, label: '1 GB' },
-                                      { size: 2, label: '2 GB (Default)' },
-                                      { size: 3, label: '3 GB' },
-                                      { size: 4, label: '4 GB' }
-                                    ].map((item) => (
-                                      <div
-                                        key={item.size}
-                                        onClick={() => setSwapSizeGb(item.size)}
-                                        style={{
-                                          background: swapSizeGb === item.size ? 'var(--c2c-selected-bg)' : 'rgba(255, 255, 255, 0.02)',
-                                          border: swapSizeGb === item.size ? `2px solid ${currentConfig.color}` : '1.5px solid var(--c2c-border)',
-                                          borderRadius: '10px',
-                                          padding: '0.6rem 0.4rem',
-                                          textAlign: 'center',
-                                          cursor: 'pointer',
-                                          fontWeight: '600',
-                                          fontSize: '0.78rem',
-                                          color: swapSizeGb === item.size ? currentConfig.color : '#fff',
-                                          transition: 'all 0.2s',
-                                          userSelect: 'none'
-                                        }}
-                                      >
-                                        {item.label}
-                                      </div>
-                                    ))}
+                          {swapEnabled && (
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.6rem', marginTop: '0.4rem' }}>
+                              <label style={{ color: '#a2a2b5', fontSize: '0.8rem', fontWeight: '500' }}>Select Swap Allocation Size</label>
+                              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '0.5rem' }}>
+                                {[
+                                  { size: 1, label: '1 GB' },
+                                  { size: 2, label: '2 GB (Default)' },
+                                  { size: 3, label: '3 GB' },
+                                  { size: 4, label: '4 GB' }
+                                ].map((item) => (
+                                  <div
+                                    key={item.size}
+                                    onClick={() => setSwapSizeGb(item.size)}
+                                    style={{
+                                      background: swapSizeGb === item.size ? 'var(--c2c-selected-bg)' : 'rgba(255, 255, 255, 0.02)',
+                                      border: swapSizeGb === item.size ? `2px solid ${currentConfig.color}` : '1.5px solid var(--c2c-border)',
+                                      borderRadius: '10px',
+                                      padding: '0.6rem 0.4rem',
+                                      textAlign: 'center',
+                                      cursor: 'pointer',
+                                      fontWeight: '600',
+                                      fontSize: '0.78rem',
+                                      color: swapSizeGb === item.size ? currentConfig.color : '#fff',
+                                      transition: 'all 0.2s',
+                                      userSelect: 'none'
+                                    }}
+                                  >
+                                    {item.label}
                                   </div>
-                                  <span style={{ color: '#10B981', fontSize: '0.75rem', marginTop: '0.2rem' }}>
-                                    ✨ Allocates an optimized swapfile (`/swapfile`) with `swappiness=10` on the root disk during boot.
-                                  </span>
-                                </div>
-                              )}
+                                ))}
+                              </div>
+                              <span style={{ color: '#10B981', fontSize: '0.75rem', marginTop: '0.2rem' }}>
+                                ✨ Allocates an optimized swapfile (`/swapfile`) with `swappiness=10` on the root disk during boot.
+                              </span>
                             </div>
                           )}
                         </div>
                       )}
                     </div>
                   )}
+                </div>
+              )}
 
-                <button 
-                  onClick={handleProceed}
-                  disabled={serviceId === 'docker' ? (generating || loadingStack) : (!selectedCloud || generating || loadingStack)}
-                  style={{
-                    background: (serviceId === 'docker' ? (!generating && !loadingStack) : (selectedCloud && !generating && !loadingStack))
-                      ? `linear-gradient(135deg, ${currentConfig.color}, #000)` 
-                      : 'rgba(255,255,255,0.05)',
-                    color: (serviceId === 'docker' ? (!generating && !loadingStack) : (selectedCloud && !generating && !loadingStack))
-                      ? '#0a0a0f' 
-                      : '#6e7191',
-                    padding: '1.1rem', borderRadius: '16px', fontWeight: '700', 
-                    cursor: (serviceId === 'docker' ? (!generating && !loadingStack) : (selectedCloud && !generating && !loadingStack))
-                      ? 'pointer' 
-                      : 'not-allowed',
-                    display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '0.5rem', width: '100%', border: 'none'
-                  }}
-                >
-                  {loadingStack ? 'Analyzing your tech stack...' : generating ? 'Generating your scripts...' : `${currentConfig.buttonText} →`}
-                </button>
+              {/* Proceed CTA Button */}
+              <button 
+                onClick={handleProceed}
+                disabled={serviceId === 'docker' ? (generating || loadingStack) : (!selectedCloud || generating || loadingStack)}
+                style={{
+                  background: (serviceId === 'docker' ? (!generating && !loadingStack) : (selectedCloud && !generating && !loadingStack))
+                    ? `linear-gradient(135deg, ${currentConfig.color}, #000)` 
+                    : 'rgba(255,255,255,0.05)',
+                  color: (serviceId === 'docker' ? (!generating && !loadingStack) : (selectedCloud && !generating && !loadingStack))
+                    ? '#0a0a0f' 
+                    : '#6e7191',
+                  padding: '1.2rem', borderRadius: '16px', fontWeight: '700', 
+                  fontSize: '1rem',
+                  cursor: (serviceId === 'docker' ? (!generating && !loadingStack) : (selectedCloud && !generating && !loadingStack))
+                    ? 'pointer' 
+                    : 'not-allowed',
+                  display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '0.5rem', width: '100%', border: 'none',
+                  boxShadow: (serviceId === 'docker' ? (!generating && !loadingStack) : (selectedCloud && !generating && !loadingStack))
+                    ? `0 10px 25px -5px ${currentConfig.color}40`
+                    : 'none',
+                  transition: 'all 0.2s'
+                }}
+              >
+                {loadingStack ? 'Analyzing your tech stack...' : generating ? 'Generating your scripts...' : `${currentConfig.buttonText} →`}
+              </button>
 
-              </div>
-            )}
+            </div>
+
           </div>
-        )}
-      </div>
-    </>
+
+        </div>
+      )}
+    </div>
   );
 }
 

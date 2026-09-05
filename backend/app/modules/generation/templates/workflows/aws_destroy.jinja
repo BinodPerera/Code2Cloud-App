@@ -51,3 +51,20 @@ jobs:
       - name: Terraform Destroy
         working-directory: ./terraform
         run: terraform destroy -auto-approve -no-color
+
+      # Teardown ECR Container Repositories
+      {% if components %}
+      {% for comp in components %}
+      - name: Delete ECR Repository ({{ comp.name }})
+        run: |
+          ECR_REPO="{{ repo_name | lower }}-{{ comp.name }}"
+          echo "Deleting ECR repository $ECR_REPO and all contained images..."
+          aws ecr delete-repository --repository-name "$ECR_REPO" --force || true
+      {% endfor %}
+      {% else %}
+      - name: Delete ECR Repository
+        run: |
+          ECR_REPO="{{ repo_name | lower }}-app"
+          echo "Deleting ECR repository $ECR_REPO and all contained images..."
+          aws ecr delete-repository --repository-name "$ECR_REPO" --force || true
+      {% endif %}

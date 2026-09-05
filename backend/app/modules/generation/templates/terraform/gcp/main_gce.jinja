@@ -117,6 +117,11 @@ resource "google_compute_instance" "{{ comp.name }}" {
 
   metadata_startup_script = <<-EOT
     #!/bin/bash
+    while fuser /var/lib/dpkg/lock-frontend /var/lib/apt/lists/lock >/dev/null 2>&1; do
+      echo "Waiting for other apt process to finish..."
+      sleep 3
+    done
+    export DEBIAN_FRONTEND=noninteractive
     apt-get update
     apt-get install -y apt-transport-https ca-certificates curl gnupg lsb-release
     curl -fsSL https://download.docker.com/linux/debian/gpg | gpg --dearmor -o /usr/share/keyrings/docker-archive-keyring.gpg
@@ -136,28 +141,28 @@ resource "google_compute_instance" "{{ comp.name }}" {
     {%- endif %}
     
     # Authenticate Docker to Artifact Registry
-    gcloud auth configure-docker \${var.gcp_region}-docker.pkg.dev --quiet
+    gcloud auth configure-docker ${var.gcp_region}-docker.pkg.dev --quiet
     
     # Run the container mapping host port 80 to container port
     docker run -d -p 80:{{ comp.port | default(3000) }} \
       --name {{ comp.name }} \
       --restart always \
       -e PORT={{ comp.port | default(3000) }} \
-      -e ENVIRONMENT=\${var.environment} \
+      -e ENVIRONMENT=${var.environment} \
       {%- if db_enabled %}
-      -e DB_HOST=\${google_sql_database_instance.db.public_ip_address} \
+      -e DB_HOST=${google_sql_database_instance.db.public_ip_address} \
       -e DB_PORT={{ db_port | default(5432) }} \
       -e DB_USER={{ db_user | default('c2c_admin') }} \
-      -e DB_PASSWORD=\${var.db_password} \
+      -e DB_PASSWORD=${var.db_password} \
       -e DB_NAME={{ db_name | default('app_db') }} \
-      -e DATABASE_URL="{{ 'postgres' if db_engine == 'postgres' else 'mysql' }}://{{ db_user | default('c2c_admin') }}:\${var.db_password}@\${google_sql_database_instance.db.public_ip_address}:{{ db_port | default(5432) }}/{{ db_name | default('app_db') }}" \
+      -e DATABASE_URL="{{ 'postgres' if db_engine == 'postgres' else 'mysql' }}://{{ db_user | default('c2c_admin') }}:${var.db_password}@${google_sql_database_instance.db.public_ip_address}:{{ db_port | default(5432) }}/{{ db_name | default('app_db') }}" \
       {%- endif %}
       {%- if comp.depends_on %}
       {%- for dep in comp.depends_on %}
       -e {{ dep | upper }}_URL=http://localhost:{{ comp.port | default(3000) }} \
       {%- endfor %}
       {%- endif %}
-      \${var.gcp_region}-docker.pkg.dev/\${var.project_id}/\${google_artifact_registry_repository.{{ comp.name }}.repository_id}/{{ comp.name }}:latest
+      ${var.gcp_region}-docker.pkg.dev/${var.project_id}/${google_artifact_registry_repository.{{ comp.name }}.repository_id}/{{ comp.name }}:latest
   EOT
 }
 {% endfor %}

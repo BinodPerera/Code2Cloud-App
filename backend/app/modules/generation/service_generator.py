@@ -331,7 +331,8 @@ class CodeGenerator:
                     destroy_tmpl = env.get_template("workflows/aws_destroy.jinja")
                     generated_code[".github/workflows/destroy.yml"] = destroy_tmpl.render(
                         repo_name=repo,
-                        aws_region=selected_region
+                        aws_region=selected_region,
+                        components=tf_components
                     )
                 except Exception as e:
                     generated_code["terraform/main.tf"] = f"# Error generating AWS Terraform/GHA: {str(e)}"
