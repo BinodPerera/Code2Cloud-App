@@ -1,0 +1,374 @@
+data "aws_caller_identity" "current" {}
+data "aws_region" "current" {}
+
+# Dynamically lookup the latest official Ubuntu 22.04 LTS AMI for the target region
+data "aws_ami" "ubuntu" {
+  most_recent = true
+  owners      = ["099720109477"] # Canonical
+
+  filter {
+    name   = "name"
+    values = ["ubuntu/images/hvm-ssd/ubuntu-jammy-22.04-amd64-server-*"]
+  }
+
+  filter {
+    name   = "virtualization-type"
+    values = ["hvm"]
+  }
+}
+
+# --- Networking (VPC Setup) ---
+resource "aws_vpc" "main" {
+  cidr_block           = "10.0.0.0/16"
+  enable_dns_hostnames = true
+  enable_dns_support   = true
+
+  tags = {
+    Name        = "${var.project_name}-vpc"
+    Environment = var.environment
+  }
+}
+
+resource "aws_subnet" "public_1" {
+  vpc_id            = aws_vpc.main.id
+  cidr_block        = "10.0.1.0/24"
+  availability_zone = "${var.aws_region}a"
+  map_public_ip_on_launch = true
+
+  tags = {
+    Name        = "${var.project_name}-public-subnet-1"
+    Environment = var.environment
+  }
+}
+
+resource "aws_subnet" "public_2" {
+  vpc_id            = aws_vpc.main.id
+  cidr_block        = "10.0.2.0/24"
+  availability_zone = "${var.aws_region}b"
+  map_public_ip_on_launch = true
+
+  tags = {
+    Name        = "${var.project_name}-public-subnet-2"
+    Environment = var.environment
+  }
+}
+
+resource "aws_internet_gateway" "gw" {
+  vpc_id = aws_vpc.main.id
+
+  tags = {
+    Name        = "${var.project_name}-igw"
+    Environment = var.environment
+  }
+}
+
+resource "aws_route_table" "public" {
+  vpc_id = aws_vpc.main.id
+
+  route {
+    cidr_block = "0.0.0.0/0"
+    gateway_id = aws_internet_gateway.gw.id
+  }
+
+  tags = {
+    Name        = "${var.project_name}-public-rt"
+    Environment = var.environment
+  }
+}
+
+resource "aws_route_table_association" "a1" {
+  subnet_id      = aws_subnet.public_1.id
+  route_table_id = aws_route_table.public.id
+}
+
+resource "aws_route_table_association" "a2" {
+  subnet_id      = aws_subnet.public_2.id
+  route_table_id = aws_route_table.public.id
+}
+
+# --- IAM Role for EC2 ECR Read Access ---
+resource "aws_iam_role" "ec2_role" {
+  name_prefix = "${lower(var.project_name)}-ec2-role-"
+
+  assume_role_policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Action = "sts:AssumeRole"
+        Effect = "Allow"
+        Principal = {
+          Service = "ec2.amazonaws.com"
+        }
+      }
+    ]
+  })
+
+  tags = {
+    Environment = var.environment
+  }
+}
+
+resource "aws_iam_role_policy_attachment" "ecr_read" {
+  role       = aws_iam_role.ec2_role.name
+  policy_arn = "arn:aws:iam::aws:policy/AmazonEC2ContainerRegistryReadOnly"
+}
+
+resource "aws_iam_instance_profile" "ec2_profile" {
+  name_prefix = "${lower(var.project_name)}-ec2-profile-"
+  role        = aws_iam_role.ec2_role.name
+}
+
+# --- Security Group ---
+resource "aws_security_group" "web_sg" {
+  name_prefix = "${lower(var.project_name)}-web-sg-"
+  description = "Allow SSH and HTTP inbound traffic"
+  vpc_id      = aws_vpc.main.id
+
+  ingress {
+    from_port   = 22
+    to_port     = 22
+    protocol    = "tcp"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+
+  ingress {
+    from_port   = 80
+    to_port     = 80
+    protocol    = "tcp"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+
+  ingress {
+    from_port   = 0
+    to_port     = 0
+    protocol    = "-1"
+    cidr_blocks = [aws_vpc.main.cidr_block]
+  }
+
+  egress {
+    from_port   = 0
+    to_port     = 0
+    protocol    = "-1"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+
+  tags = {
+    Name        = "${var.project_name}-web-sg"
+    Environment = var.environment
+  }
+}
+
+
+
+# --- Elastic IP (Conditional) ---
+
+
+
+
+
+
+# --- EC2 Instances ---
+
+resource "aws_instance" "backend" {
+  ami                  = data.aws_ami.ubuntu.id
+  instance_type        = "t3.micro"
+  subnet_id            = aws_subnet.public_1.id
+  vpc_security_group_ids = [aws_security_group.web_sg.id]
+  iam_instance_profile = aws_iam_instance_profile.ec2_profile.name
+
+  root_block_device {
+    volume_size           = 20
+    volume_type           = "gp3"
+    delete_on_termination = true
+    tags = {
+      Name        = "${var.project_name}-backend-root-disk"
+      Environment = var.environment
+    }
+  }
+
+  user_data_replace_on_change = true
+
+  user_data = <<-EOF
+#!/bin/bash
+set -ex
+exec > >(tee -a /var/log/user-data.log|logger -t user-data -s 2>/dev/console) 2>&1
+
+# Wait for any background apt processes (unattended-upgrades) to release locks
+while fuser /var/lib/dpkg/lock-frontend /var/lib/apt/lists/lock >/dev/null 2>&1; do
+  echo "Waiting for other apt process to finish..."
+  sleep 3
+done
+
+if command -v apt-get &>/dev/null; then
+  export DEBIAN_FRONTEND=noninteractive
+  apt-get update -y
+  apt-get install -y docker.io awscli python3
+  systemctl start docker
+  systemctl enable docker
+  usermod -aG docker ubuntu || true
+elif command -v dnf &>/dev/null; then
+  dnf update -y
+  dnf install -y docker python3
+  systemctl start docker
+  systemctl enable docker
+  usermod -aG docker ec2-user || true
+fi
+
+# Configure Linux Swap Memory
+fallocate -l 2G /swapfile || dd if=/dev/zero of=/swapfile bs=1M count=$(expr 2 \* 1024)
+chmod 600 /swapfile
+mkswap /swapfile
+swapon /swapfile
+echo '/swapfile swap swap defaults 0 0' >> /etc/fstab
+sysctl vm.swappiness=10
+echo 'vm.swappiness=10' >> /etc/sysctl.conf
+
+# Authenticate Docker against ECR
+aws ecr get-login-password --region ${var.aws_region} | docker login --username AWS --password-stdin ${data.aws_caller_identity.current.account_id}.dkr.ecr.${data.aws_region.current.name}.amazonaws.com/${lower(var.project_name)}-backend
+
+# Prepare app env file
+mkdir -p /opt/app
+cat <<'ENVEOF' > /opt/app/backend.env
+PORT=8000
+ENVIRONMENT=${var.environment}
+ENVEOF
+
+cat <<'APPVARSEOF' > /tmp/app_env_vars.json
+${var.app_env_vars}
+APPVARSEOF
+
+cat <<'PYEOF' | python3
+import json, os
+try:
+    if os.path.exists("/tmp/app_env_vars.json"):
+        with open("/tmp/app_env_vars.json") as f:
+            content = f.read().strip()
+            if content:
+                data = json.loads(content)
+                comp_vars = data.get("backend", data if not any(isinstance(v, dict) for v in data.values()) else {})
+                if isinstance(comp_vars, dict):
+                    with open("/opt/app/backend.env", "a") as env_f:
+                        for k, v in comp_vars.items():
+                            env_f.write(f"{k}={v}\n")
+except Exception as e:
+    print(f"Error parsing app_env_vars: {e}")
+PYEOF
+rm -f /tmp/app_env_vars.json
+chmod 600 /opt/app/backend.env
+
+# Run the container using --env-file
+docker run -d -p 80:8000 \
+  --name backend \
+  --restart always \
+  --env-file /opt/app/backend.env \
+  ${data.aws_caller_identity.current.account_id}.dkr.ecr.${data.aws_region.current.name}.amazonaws.com/${lower(var.project_name)}-backend:latest
+EOF
+
+  tags = {
+    Name        = "${var.project_name}-backend"
+    Environment = var.environment
+  }
+}
+
+resource "aws_instance" "frontend" {
+  ami                  = data.aws_ami.ubuntu.id
+  instance_type        = "t3.micro"
+  subnet_id            = aws_subnet.public_1.id
+  vpc_security_group_ids = [aws_security_group.web_sg.id]
+  iam_instance_profile = aws_iam_instance_profile.ec2_profile.name
+
+  root_block_device {
+    volume_size           = 10
+    volume_type           = "gp3"
+    delete_on_termination = true
+    tags = {
+      Name        = "${var.project_name}-frontend-root-disk"
+      Environment = var.environment
+    }
+  }
+
+  user_data_replace_on_change = true
+
+  user_data = <<-EOF
+#!/bin/bash
+set -ex
+exec > >(tee -a /var/log/user-data.log|logger -t user-data -s 2>/dev/console) 2>&1
+
+# Wait for any background apt processes (unattended-upgrades) to release locks
+while fuser /var/lib/dpkg/lock-frontend /var/lib/apt/lists/lock >/dev/null 2>&1; do
+  echo "Waiting for other apt process to finish..."
+  sleep 3
+done
+
+if command -v apt-get &>/dev/null; then
+  export DEBIAN_FRONTEND=noninteractive
+  apt-get update -y
+  apt-get install -y docker.io awscli python3
+  systemctl start docker
+  systemctl enable docker
+  usermod -aG docker ubuntu || true
+elif command -v dnf &>/dev/null; then
+  dnf update -y
+  dnf install -y docker python3
+  systemctl start docker
+  systemctl enable docker
+  usermod -aG docker ec2-user || true
+fi
+
+# Configure Linux Swap Memory
+fallocate -l 1G /swapfile || dd if=/dev/zero of=/swapfile bs=1M count=$(expr 1 \* 1024)
+chmod 600 /swapfile
+mkswap /swapfile
+swapon /swapfile
+echo '/swapfile swap swap defaults 0 0' >> /etc/fstab
+sysctl vm.swappiness=10
+echo 'vm.swappiness=10' >> /etc/sysctl.conf
+
+# Authenticate Docker against ECR
+aws ecr get-login-password --region ${var.aws_region} | docker login --username AWS --password-stdin ${data.aws_caller_identity.current.account_id}.dkr.ecr.${data.aws_region.current.name}.amazonaws.com/${lower(var.project_name)}-frontend
+
+# Prepare app env file
+mkdir -p /opt/app
+cat <<'ENVEOF' > /opt/app/frontend.env
+PORT=3000
+ENVIRONMENT=${var.environment}
+BACKEND_URL=http://localhost:3000
+ENVEOF
+
+cat <<'APPVARSEOF' > /tmp/app_env_vars.json
+${var.app_env_vars}
+APPVARSEOF
+
+cat <<'PYEOF' | python3
+import json, os
+try:
+    if os.path.exists("/tmp/app_env_vars.json"):
+        with open("/tmp/app_env_vars.json") as f:
+            content = f.read().strip()
+            if content:
+                data = json.loads(content)
+                comp_vars = data.get("frontend", data if not any(isinstance(v, dict) for v in data.values()) else {})
+                if isinstance(comp_vars, dict):
+                    with open("/opt/app/frontend.env", "a") as env_f:
+                        for k, v in comp_vars.items():
+                            env_f.write(f"{k}={v}\n")
+except Exception as e:
+    print(f"Error parsing app_env_vars: {e}")
+PYEOF
+rm -f /tmp/app_env_vars.json
+chmod 600 /opt/app/frontend.env
+
+# Run the container using --env-file
+docker run -d -p 80:3000 \
+  --name frontend \
+  --restart always \
+  --env-file /opt/app/frontend.env \
+  ${data.aws_caller_identity.current.account_id}.dkr.ecr.${data.aws_region.current.name}.amazonaws.com/${lower(var.project_name)}-frontend:latest
+EOF
+
+  tags = {
+    Name        = "${var.project_name}-frontend"
+    Environment = var.environment
+  }
+}
+

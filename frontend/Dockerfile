@@ -2,12 +2,18 @@
 FROM node:22-alpine AS build
 WORKDIR /app
 COPY package*.json ./
-RUN npm install
+RUN npm ci
 COPY . .
+# Optional: run build if a frontend asset or typescript build script exists
+RUN npm run build --if-present
 
-# Embed build ARGS for Vite to consume from process.env mapped strings
-ARG VITE_API_BASE_URL
-ENV VITE_API_BASE_URL=$VITE_API_BASE_URL
+# --- Production Stage ---
+FROM node:18-alpine
+WORKDIR /app
+ENV NODE_ENV=production
+COPY package*.json ./
+RUN npm ci --only=production
+COPY --from=builder /app ./
 
 RUN npm run build
 
