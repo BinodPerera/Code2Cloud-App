@@ -23,12 +23,12 @@ async def get_current_user(
         username: str = payload.get("sub")
         if username is None:
             raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
+                status_code=status.HTTP_401_UNAUTHORIZED,
                 detail="Could not validate credentials",
             )
     except JWTError:
         raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
+            status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Could not validate credentials",
         )
     

@@ -3,7 +3,7 @@ server {
     listen 3000;
 
     location /api/ {
-        proxy_pass http://localhost:8000/api/;
+        proxy_pass ${BACKEND_PROXY}/api/;
         proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
@@ -11,7 +11,7 @@ server {
     }
 
     location /repos/ {
-        proxy_pass http://localhost:8000/api/v1/repos/;
+        proxy_pass ${BACKEND_PROXY}/api/v1/repos/;
         proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
@@ -19,7 +19,7 @@ server {
     }
 
     location /auth/ {
-        proxy_pass http://localhost:8000/api/v1/auth/;
+        proxy_pass ${BACKEND_PROXY}/api/v1/auth/;
         proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
@@ -27,7 +27,7 @@ server {
     }
 
     location /users/ {
-        proxy_pass http://localhost:8000/api/v1/users/;
+        proxy_pass ${BACKEND_PROXY}/api/v1/users/;
         proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
@@ -35,7 +35,7 @@ server {
     }
 
     location /credentials/ {
-        proxy_pass http://localhost:8000/api/v1/credentials/;
+        proxy_pass ${BACKEND_PROXY}/api/v1/credentials/;
         proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
@@ -43,7 +43,7 @@ server {
     }
 
     location /undefined/auth/ {
-        proxy_pass http://localhost:8000/api/v1/auth/;
+        proxy_pass ${BACKEND_PROXY}/api/v1/auth/;
         proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;

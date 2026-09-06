@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { getApiBaseUrl } from '../utils/api';
 
 function Login() {
   const [isLoading, setIsLoading] = useState(false);
@@ -7,8 +8,9 @@ function Login() {
   const handleGithubLogin = async () => {
     setIsLoading(true);
     setErrorMsg('');
+    const apiBase = getApiBaseUrl();
     try {
-      const response = await fetch(`${import.meta.env.VITE_API_BASE_URL}/auth/github/login`, {
+      const response = await fetch(`${apiBase}/auth/github/login`, {
         method: 'GET',
         headers: {
           'accept': 'application/json'
@@ -26,11 +28,11 @@ function Login() {
       } else if (data.url) {
         window.location.href = data.url;
       } else {
-        window.location.href = `${import.meta.env.VITE_API_BASE_URL}/auth/github/login`;
+        window.location.href = `${apiBase}/auth/github/login`;
       }
     } catch (err) {
       console.error(err);
-      window.location.href = `${import.meta.env.VITE_API_BASE_URL}/auth/github/login`;
+      window.location.href = `${apiBase}/auth/github/login`;
     } finally {
       setTimeout(() => setIsLoading(false), 2000);
     }
