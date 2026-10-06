@@ -183,3 +183,29 @@ jobs:
             --force-new-deployment || true
       {% endif %}
       {% endfor %}
+
+      # Capture and publish live deployment endpoints for Code2Cloud
+      - name: Publish Live Deployment Endpoints
+        working-directory: ./terraform
+        run: |
+          echo "### 🚀 Live Cloud Deployment Endpoints" >> $GITHUB_STEP_SUMMARY
+          
+          {% for comp in components %}
+          {% if comp.aws_compute_choice == 'ec2' or (compute_choice == 'ec2' and not comp.aws_compute_choice) %}
+          IP_{{ comp.name | replace('-', '_') | upper }}=$(terraform output -raw {{ comp.name }}_public_ip 2>/dev/null || echo "")
+          if [ -n "$IP_{{ comp.name | replace('-', '_') | upper }}" ] && [ "$IP_{{ comp.name | replace('-', '_') | upper }}" != "null" ]; then
+            URL="http://$IP_{{ comp.name | replace('-', '_') | upper }}"
+            echo "::notice title={{ comp.name }} Endpoint::$URL"
+            echo "::notice title={{ comp.name }} IP::$IP_{{ comp.name | replace('-', '_') | upper }}"
+            echo "- **{{ comp.name }}** (\`{{ comp.type }}\`): [$URL]($URL) (IP: \`$IP_{{ comp.name | replace('-', '_') | upper }}\`)" >> $GITHUB_STEP_SUMMARY
+          fi
+          {% endif %}
+          {% endfor %}
+
+          {% if db_enabled %}
+          RDS_EP=$(terraform output -raw rds_endpoint 2>/dev/null || echo "")
+          if [ -n "$RDS_EP" ] && [ "$RDS_EP" != "null" ]; then
+            echo "::notice title=Database Endpoint::$RDS_EP"
+            echo "- **Managed Database ({{ db_engine | upper }})**: \`$RDS_EP\`" >> $GITHUB_STEP_SUMMARY
+          fi
+          {% endif %}

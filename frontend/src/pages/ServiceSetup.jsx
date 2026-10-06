@@ -2437,7 +2437,7 @@ function ServiceSetup() {
               )}
 
               {/* Application Environment Variables Section */}
-              {selectedCloud && techStack && (
+              {selectedCloud && serviceId === 'terraform' && techStack && (
                 <div style={{
                   background: 'rgba(255, 255, 255, 0.02)',
                   border: isEnvOpen ? `1.5px solid ${currentConfig.color}80` : '1.5px solid var(--c2c-border)',

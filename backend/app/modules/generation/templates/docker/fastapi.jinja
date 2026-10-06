@@ -14,4 +14,12 @@ ENV PATH="/opt/venv/bin:$PATH"
 COPY . .
 
 EXPOSE {{ port | default(8000) }}
-CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "{{ port | default(8000) }}"]
+{% if entrypoint and entrypoint.endswith('.py') and not is_fastapi %}
+CMD ["python", "{{ entrypoint }}"]
+{% elif is_flask %}
+CMD ["gunicorn", "--bind", "0.0.0.0:{{ port | default(5000) }}", "app:app"]
+{% elif is_django %}
+CMD ["gunicorn", "--bind", "0.0.0.0:{{ port | default(8000) }}", "{{ project_name | default('app') }}.wsgi:application"]
+{% else %}
+CMD ["uvicorn", "{{ entrypoint | default('main:app') }}", "--host", "0.0.0.0", "--port", "{{ port | default(8000) }}"]
+{% endif %}

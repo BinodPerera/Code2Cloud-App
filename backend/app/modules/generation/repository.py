@@ -59,3 +59,26 @@ class GenerationRepository:
             {"generation_id": generation_id},
             {"$set": {"committed": True}}
         )
+
+    async def update_endpoints(
+        self,
+        generation_id: str,
+        endpoints: List[Dict[str, Any]],
+        server_url: Optional[str] = None,
+        server_ip: Optional[str] = None
+    ) -> None:
+        """
+        Update live deployment endpoints and server URL/IP for a generation.
+        """
+        update_fields: Dict[str, Any] = {
+            "endpoints": endpoints
+        }
+        if server_url:
+            update_fields["server_url"] = server_url
+        if server_ip:
+            update_fields["server_ip"] = server_ip
+
+        await self.collection.update_one(
+            {"generation_id": generation_id},
+            {"$set": update_fields}
+        )

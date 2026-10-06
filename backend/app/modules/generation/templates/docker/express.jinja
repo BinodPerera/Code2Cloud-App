@@ -2,7 +2,7 @@
 FROM node:{{ node_version | default('22-alpine') }} AS builder
 WORKDIR /app
 COPY package*.json ./
-RUN npm ci
+RUN if [ -f package-lock.json ]; then npm ci; else npm install; fi
 COPY . .
 # Optional: run build if a frontend asset or typescript build script exists
 RUN npm run build --if-present
@@ -12,7 +12,7 @@ FROM node:{{ node_version | default('22-alpine') }}
 WORKDIR /app
 ENV NODE_ENV=production
 COPY package*.json ./
-RUN npm ci --only=production
+RUN if [ -f package-lock.json ]; then npm ci --only=production; else npm install --omit=dev; fi
 COPY --from=builder /app ./
 
 EXPOSE {{ port | default(3000) }}

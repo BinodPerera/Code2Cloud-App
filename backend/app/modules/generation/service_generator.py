@@ -1,5 +1,6 @@
 import os
 import io
+import json
 import uuid
 import zipfile
 import boto3
@@ -55,13 +56,18 @@ class CodeGenerator:
         # Clean paths of all components to be directories instead of manifest files
         for comp in components_list:
             comp_path = comp.get("path", ".")
+            had_manifest_in_path = False
             for suffix in ["/package.json", "/pom.xml", "/requirements.txt", "/build.gradle", "/build.gradle.kts"]:
                 if comp_path.endswith(suffix):
+                    had_manifest_in_path = True
                     comp_path = comp_path[:-len(suffix)]
                     break
             if comp_path in ["package.json", "pom.xml", "requirements.txt", "build.gradle", "build.gradle.kts"]:
+                had_manifest_in_path = True
                 comp_path = "."
             comp["path"] = comp_path
+            if "has_manifest" not in comp:
+                comp["has_manifest"] = had_manifest_in_path
             
         # Filter out root-level folder component in monorepos to avoid building wrapper package.json
         if len(components_list) > 1:
@@ -94,7 +100,18 @@ class CodeGenerator:
                     
                 try:
                     tmpl = env.get_template(template_name)
-                    generated_code["Dockerfile"] = tmpl.render(port=port)
+                    is_flask = "flask" in [l.lower() for l in comp.get("libraries", [])]
+                    is_django = "django" in [l.lower() for l in comp.get("libraries", [])]
+                    is_fastapi = "fastapi" in [l.lower() for l in comp.get("libraries", [])]
+                    entrypoint = comp.get("entrypoint")
+                    generated_code["Dockerfile"] = tmpl.render(
+                        port=port,
+                        entrypoint=entrypoint,
+                        is_flask=is_flask,
+                        is_django=is_django,
+                        is_fastapi=is_fastapi,
+                        project_name=repo
+                    )
                 except Exception as e:
                     generated_code["Dockerfile"] = f"# Fallback Dockerfile\nFROM node:22-alpine\nWORKDIR /app\nCOPY . .\nRUN npm install\nCMD [\"npm\", \"start\"]\n# error: {str(e)}"
 
@@ -139,7 +156,18 @@ class CodeGenerator:
                     
                     try:
                         tmpl = env.get_template(template_name)
-                        dockerfile_content = tmpl.render(port=port)
+                        is_flask = "flask" in [l.lower() for l in comp.get("libraries", [])]
+                        is_django = "django" in [l.lower() for l in comp.get("libraries", [])]
+                        is_fastapi = "fastapi" in [l.lower() for l in comp.get("libraries", [])]
+                        entrypoint = comp.get("entrypoint")
+                        dockerfile_content = tmpl.render(
+                            port=port,
+                            entrypoint=entrypoint,
+                            is_flask=is_flask,
+                            is_django=is_django,
+                            is_fastapi=is_fastapi,
+                            project_name=repo
+                        )
                     except Exception as e:
                         dockerfile_content = f"# Fallback Dockerfile\nFROM node:22-alpine\nWORKDIR /app\n# error: {str(e)}"
                     
@@ -169,6 +197,9 @@ class CodeGenerator:
                     )
                 except Exception as e:
                     generated_code["README.md"] = f"# Error generating Docker README: {str(e)}"
+
+            # Ensure required manifest files exist for all components (fallback requirements.txt / package.json)
+            CodeGenerator._generate_fallback_manifests(components_list, generated_code, repo)
 
         # Terraform Configurations
         elif service_id == "terraform":
@@ -475,6 +506,9 @@ class CodeGenerator:
             except Exception as e:
                 generated_code["terraform/README.md"] = f"# Error generating Terraform README: {str(e)}"
 
+            # Ensure required manifest files exist for all components (fallback requirements.txt / package.json)
+            CodeGenerator._generate_fallback_manifests(components_list, generated_code, repo)
+
         else:
             generated_code["finops_budget.json"] = "{\n  \"budget_name\": \"" + repo + "-monthly-budget\",\n  \"limit_amount\": \"100\"\n}"
 
@@ -550,6 +584,79 @@ class CodeGenerator:
             "url": cloudinary_url,
             "project_name": repo
         }
+
+    @staticmethod
+    def _generate_fallback_manifests(
+        components_list: List[Dict[str, Any]], 
+        generated_code: Dict[str, str], 
+        repo: str
+    ):
+        """
+        If a component was detected without an existing manifest file (e.g. no requirements.txt for Python,
+        or no package.json for Node.js), generate a minimal, valid fallback manifest so Docker build steps
+        (e.g. COPY requirements.txt .) succeed unconditionally.
+        """
+        for comp in components_list:
+            comp_path = comp.get("path", ".")
+            comp_type = comp.get("type", "")
+            has_manifest = comp.get("has_manifest", False)
+            
+            # If the component already had a manifest in the repo, skip
+            if has_manifest:
+                continue
+
+            prefix = f"{comp_path}/" if comp_path not in (".", "", "app") else ""
+            libs = comp.get("libraries", [])
+            
+            # 1. Python fallback requirements.txt
+            if "Python" in comp_type:
+                req_key = f"{prefix}requirements.txt"
+                if req_key not in generated_code:
+                    dep_lines = []
+                    lower_libs = [l.lower() for l in libs]
+                    if "fastapi" in lower_libs:
+                        dep_lines.extend(["fastapi>=0.100.0", "uvicorn>=0.23.0"])
+                    elif "flask" in lower_libs:
+                        dep_lines.extend(["flask>=2.3.0", "gunicorn>=21.0.0"])
+                    elif "django" in lower_libs:
+                        dep_lines.extend(["django>=4.2.0", "gunicorn>=21.0.0"])
+                    
+                    for lib in libs:
+                        if lib.strip() and lib.lower() not in [d.split(">=")[0].lower() for d in dep_lines]:
+                            dep_lines.append(lib.strip())
+
+                    if dep_lines:
+                        content = "# Minimal requirements generated by Code2Cloud\n" + "\n".join(dep_lines) + "\n"
+                    else:
+                        content = (
+                            "# Minimal requirements generated by Code2Cloud\n"
+                            "# Application uses Python standard libraries.\n"
+                            "# Add any third-party packages below:\n"
+                        )
+                    generated_code[req_key] = content
+
+            # 2. Node.js fallback package.json
+            elif "NodeJS" in comp_type or "Javascript" in comp_type:
+                pkg_key = f"{prefix}package.json"
+                if pkg_key not in generated_code:
+                    entrypoint = comp.get("entrypoint") or "index.js"
+                    pkg_deps = {}
+                    for lib in libs:
+                        if lib in ("express", "koa", "fastify", "cors", "dotenv"):
+                            pkg_deps[lib] = "latest"
+                    
+                    app_name = (comp.get("name") or repo or "app").lower().replace(" ", "-").replace("/", "-")
+                    pkg_data = {
+                        "name": app_name,
+                        "version": "1.0.0",
+                        "description": "Auto-generated by Code2Cloud",
+                        "main": entrypoint,
+                        "scripts": {
+                            "start": f"node {entrypoint}"
+                        },
+                        "dependencies": pkg_deps
+                    }
+                    generated_code[pkg_key] = json.dumps(pkg_data, indent=2) + "\n"
         
     @staticmethod
     async def update_code(generation_id: str, new_code: Dict[str, str], generation_repo: GenerationRepository) -> Dict[str, Any]:

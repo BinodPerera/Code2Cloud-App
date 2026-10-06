@@ -19,7 +19,9 @@ from app.core.config import settings
 import httpx
 import json
 import asyncio
-from typing import Optional, Dict, Any
+import re
+from urllib.parse import urlparse
+from typing import Optional, Dict, Any, List
 
 router = APIRouter()
 
@@ -359,7 +361,12 @@ async def commit_generation_code(
         
     commit_message = request.commit_message.strip() if request.commit_message else ""
     if not commit_message:
-        commit_message = "ci: add generated deployment configurations via Code2Cloud"
+        if gen.get("service_id") == "docker":
+            commit_message = "ci: Dockerfile created via Code2Cloud"
+        elif gen.get("service_id") == "terraform":
+            commit_message = "ci: add Terraform IaC deployment configurations via Code2Cloud"
+        else:
+            commit_message = "ci: add generated deployment configurations via Code2Cloud"
 
     merge_to_default = request.merge_to_default if request.merge_to_default is not None else True
         
@@ -531,10 +538,15 @@ async def commit_generation_code(
         if merge_to_default and branch != default_branch:
             try:
                 merge_default_url = f"https://api.github.com/repos/{owner}/{repo}/merges"
+                merge_msg = (
+                    f"Merge Dockerfile updates from '{branch}' into '{default_branch}' via Code2Cloud [skip ci]"
+                    if gen.get("service_id") == "docker"
+                    else f"Merge deployment updates from '{branch}' into '{default_branch}' via Code2Cloud [skip ci]"
+                )
                 merge_default_payload = {
                     "base": default_branch,
                     "head": branch,
-                    "commit_message": f"Merge deployment updates from '{branch}' into '{default_branch}' via Code2Cloud [skip ci]"
+                    "commit_message": merge_msg
                 }
                 m_res = await client.post(merge_default_url, headers=headers, json=merge_default_payload)
                 if m_res.status_code in (201, 204):
@@ -635,11 +647,14 @@ async def get_github_workflow_runs(
     owner: str,
     repo: str,
     branch: Optional[str] = None,
+    generation_id: Optional[str] = None,
     current_user: UserBase = Depends(get_current_user),
-    user_repo: UserRepository = Depends(get_user_repository)
+    user_repo: UserRepository = Depends(get_user_repository),
+    generation_repo: GenerationRepository = Depends(get_generation_repository)
 ):
     """
     Fetch the latest GitHub Actions workflow run for this repository and branch.
+    Extracts live running endpoints, public IPs, and database hosts upon successful deployment completion.
     """
     user_data = await user_repo.get_by_login(current_user.login)
     if not user_data or not user_data.get("github_access_token"):
@@ -668,20 +683,251 @@ async def get_github_workflow_runs(
         runs = data.get("workflow_runs", [])
         
         if not runs:
-            return {"status": "no_runs", "latest_run": None}
+            return {
+                "status": "no_runs",
+                "latest_run": None,
+                "latest_deploy_run": None,
+                "latest_destroy_run": None,
+                "is_destroyed": False
+            }
             
-        latest = runs[0]
+        def is_destroy_run(r: Dict[str, Any]) -> bool:
+            name = (r.get("name") or "").lower()
+            path = (r.get("path") or "").lower()
+            return any(k in name for k in ["destroy", "teardown"]) or "destroy.yml" in path
+
+        deploy_runs = [r for r in runs if not is_destroy_run(r)]
+        destroy_runs = [r for r in runs if is_destroy_run(r)]
+
+        latest_deploy = deploy_runs[0] if deploy_runs else None
+        latest_destroy = destroy_runs[0] if destroy_runs else None
+
+        endpoints: List[Dict[str, Any]] = []
+        server_url: Optional[str] = None
+        server_ip: Optional[str] = None
+        is_destroyed = False
+
+        # Check if infrastructure was destroyed
+        if latest_destroy:
+            dest_status = latest_destroy.get("status")
+            dest_concl = latest_destroy.get("conclusion")
+            dest_created = latest_destroy.get("created_at") or ""
+            deploy_created = (latest_deploy.get("created_at") or "") if latest_deploy else ""
+            if dest_status == "completed" and dest_concl == "success" and dest_created >= deploy_created:
+                is_destroyed = True
+                if generation_id:
+                    try:
+                        await generation_repo.update_endpoints(
+                            generation_id=generation_id,
+                            endpoints=[],
+                            server_url=None,
+                            server_ip=None
+                        )
+                        await generation_repo.collection.update_one(
+                            {"generation_id": generation_id},
+                            {"$set": {"destroyed": True}}
+                        )
+                    except Exception as e:
+                        print(f"[Code2Cloud] Error updating destroyed state for {generation_id}: {str(e)}")
+
+        gen_doc = None
+        if generation_id and not is_destroyed:
+            try:
+                gen_doc = await generation_repo.get_by_id(generation_id)
+                if gen_doc:
+                    endpoints = gen_doc.get("endpoints") or []
+                    server_url = gen_doc.get("server_url")
+                    server_ip = gen_doc.get("server_ip")
+            except Exception as e:
+                print(f"[Code2Cloud] Error retrieving generation doc {generation_id}: {str(e)}")
+
+        def is_clean_val(v: Optional[str]) -> bool:
+            if not v:
+                return True
+            return not any(c in v for c in ["$", "[0m", "\\x1b", 'echo', '"', "'"])
+
+        has_valid_endpoints = (
+            bool(endpoints or server_ip) and
+            is_clean_val(server_ip) and
+            all(is_clean_val(e.get("ip")) and is_clean_val(e.get("url")) for e in endpoints)
+        )
+
+        # If deploy run completed successfully and endpoints are not yet stored or were stored with corrupted values, extract them
+        if latest_deploy and not is_destroyed:
+            deploy_run_id = latest_deploy.get("id")
+            deploy_status = latest_deploy.get("status")
+            deploy_conclusion = latest_deploy.get("conclusion")
+
+            if deploy_status == "completed" and deploy_conclusion == "success" and not has_valid_endpoints:
+                try:
+                    jobs_url = f"https://api.github.com/repos/{owner}/{repo}/actions/runs/{deploy_run_id}/jobs"
+                    jobs_res = await client.get(jobs_url, headers=headers)
+                    if jobs_res.status_code == 200:
+                        jobs_data = jobs_res.json()
+                        jobs = jobs_data.get("jobs", [])
+                        
+                        endpoints_by_name: Dict[str, Dict[str, Any]] = {}
+                        db_endpoint: Optional[str] = None
+                        
+                        for job in jobs:
+                            job_id = job.get("id")
+                            if not job_id:
+                                continue
+
+                            # Fetch job logs and strip ANSI color escapes
+                            log_url = f"https://api.github.com/repos/{owner}/{repo}/actions/jobs/{job_id}/logs"
+                            log_res = await client.get(log_url, headers=headers, follow_redirects=True)
+                            if log_res.status_code == 200:
+                                clean_log = re.sub(r'\x1b\[[0-9;]*[a-zA-Z]', '', log_res.text)
+
+                                # 1. Extract Terraform outputs (ground truth from terraform apply)
+                                tf_matches = re.findall(r'([a-zA-Z0-9_\-]+)_(public_ip|service_url)\s*=\s*"([^"]+)"', clean_log)
+                                for comp_name, kind, val in tf_matches:
+                                    val = val.strip()
+                                    if val and val != "null" and "known after apply" not in val and not val.startswith("$"):
+                                        if kind == "public_ip":
+                                            endpoints_by_name.setdefault(comp_name, {})["name"] = comp_name
+                                            endpoints_by_name[comp_name]["ip"] = val
+                                            endpoints_by_name[comp_name]["url"] = f"http://{val}"
+                                        elif kind == "service_url":
+                                            endpoints_by_name.setdefault(comp_name, {})["name"] = comp_name
+                                            endpoints_by_name[comp_name]["url"] = val
+
+                                # Extract database endpoints
+                                db_matches = re.findall(r'(rds_endpoint|cloud_sql_public_ip)\s*=\s*"([^"]+)"', clean_log)
+                                for kind, val in db_matches:
+                                    val = val.strip()
+                                    if val and val != "null" and "known after apply" not in val and not val.startswith("$"):
+                                        db_endpoint = val
+
+                                # 2. Also check executed ##[notice] lines if any were published
+                                for line in clean_log.splitlines():
+                                    if "##[notice]" in line:
+                                        notice_val = line.split("##[notice]", 1)[1].strip()
+                                        if notice_val and not notice_val.startswith("$") and "echo" not in notice_val:
+                                            if re.match(r'^(?:https?://)?(?:\d{1,3}\.){3}\d{1,3}(?::\d+)?$', notice_val):
+                                                ip_candidate = notice_val.replace("http://", "").replace("https://", "").split(":")[0]
+                                                # Assign to first component if missing
+                                                for c_name in endpoints_by_name:
+                                                    if not endpoints_by_name[c_name].get("ip"):
+                                                        endpoints_by_name[c_name]["ip"] = ip_candidate
+                                                        endpoints_by_name[c_name]["url"] = f"http://{ip_candidate}"
+                                                        break
+
+                            # 3. Check check-run annotations if accessible
+                            ann_url = f"https://api.github.com/repos/{owner}/{repo}/check-runs/{job_id}/annotations"
+                            ann_res = await client.get(ann_url, headers=headers)
+                            if ann_res.status_code == 200:
+                                annotations = ann_res.json()
+                                if isinstance(annotations, list) and annotations:
+                                    for ann in annotations:
+                                        title = (ann.get("title") or "").strip()
+                                        msg = (ann.get("message") or "").strip()
+                                        if title and msg and not msg.startswith("$") and "echo" not in msg:
+                                            clean_msg = re.sub(r'\x1b\[[0-9;]*[a-zA-Z]', '', msg).strip(' "\'')
+                                            if "Database Endpoint" in title:
+                                                db_endpoint = clean_msg
+                                            elif " Endpoint" in title:
+                                                comp_name = title.replace(" Endpoint", "").strip()
+                                                endpoints_by_name.setdefault(comp_name, {})["name"] = comp_name
+                                                endpoints_by_name[comp_name]["url"] = clean_msg
+                                            elif " IP" in title:
+                                                comp_name = title.replace(" IP", "").strip()
+                                                endpoints_by_name.setdefault(comp_name, {})["name"] = comp_name
+                                                endpoints_by_name[comp_name]["ip"] = clean_msg
+
+                        # Enrich with component metadata
+                        spec_components = (gen_doc.get("spec") or {}).get("components", []) if gen_doc else []
+                        comp_map = {c.get("name", "").lower(): c for c in spec_components if isinstance(c, dict)}
+
+                        endpoints = []
+                        for comp_name, ep_data in endpoints_by_name.items():
+                            c_spec = comp_map.get(comp_name.lower()) or {}
+                            c_type = c_spec.get("type") or (
+                                "frontend" if any(w in comp_name.lower() for w in ["front", "web", "ui", "client"]) else (
+                                "backend" if any(w in comp_name.lower() for w in ["back", "api", "server"]) else "service"
+                                )
+                            )
+                            c_port = c_spec.get("port")
+                            
+                            url_val = ep_data.get("url")
+                            ip_val = ep_data.get("ip")
+                            if url_val and not ip_val:
+                                try:
+                                    parsed = urlparse(url_val)
+                                    ip_val = parsed.hostname
+                                except Exception:
+                                    pass
+                            if ip_val and not url_val:
+                                url_val = f"http://{ip_val}"
+                                
+                            endpoints.append({
+                                "name": comp_name,
+                                "url": url_val,
+                                "ip": ip_val,
+                                "port": c_port,
+                                "type": c_type
+                            })
+
+                        if db_endpoint:
+                            db_host = db_endpoint.split(":")[0] if ":" in db_endpoint else db_endpoint
+                            db_port = db_endpoint.split(":")[1] if ":" in db_endpoint else None
+                            endpoints.append({
+                                "name": "Database",
+                                "endpoint": db_endpoint,
+                                "ip": db_host,
+                                "port": db_port,
+                                "url": None,
+                                "type": "database"
+                            })
+
+                        if endpoints:
+                            primary_ep = next((e for e in endpoints if e.get("type") == "frontend"), None)
+                            if not primary_ep:
+                                primary_ep = next((e for e in endpoints if e.get("type") != "database"), None)
+                            if primary_ep:
+                                server_url = primary_ep.get("url")
+                                server_ip = primary_ep.get("ip")
+
+                            if generation_id:
+                                await generation_repo.update_endpoints(
+                                    generation_id=generation_id,
+                                    endpoints=endpoints,
+                                    server_url=server_url,
+                                    server_ip=server_ip
+                                )
+                except Exception as e:
+                    print(f"[Code2Cloud] Error resolving live deployment endpoints: {str(e)}")
+
+        formatted_deploy_run = {
+            "id": latest_deploy.get("id"),
+            "name": latest_deploy.get("name"),
+            "status": latest_deploy.get("status"),
+            "conclusion": latest_deploy.get("conclusion"),
+            "html_url": latest_deploy.get("html_url"),
+            "created_at": latest_deploy.get("created_at"),
+            "updated_at": latest_deploy.get("updated_at"),
+            "endpoints": endpoints,
+            "server_url": server_url,
+            "server_ip": server_ip
+        } if latest_deploy else None
+
+        formatted_destroy_run = {
+            "id": latest_destroy.get("id"),
+            "name": latest_destroy.get("name"),
+            "status": latest_destroy.get("status"),
+            "conclusion": latest_destroy.get("conclusion"),
+            "html_url": latest_destroy.get("html_url"),
+            "created_at": latest_destroy.get("created_at"),
+            "updated_at": latest_destroy.get("updated_at")
+        } if latest_destroy else None
+
         return {
             "status": "success",
-            "latest_run": {
-                "id": latest.get("id"),
-                "name": latest.get("name"),
-                "status": latest.get("status"),
-                "conclusion": latest.get("conclusion"),
-                "html_url": latest.get("html_url"),
-                "created_at": latest.get("created_at"),
-                "updated_at": latest.get("updated_at")
-            }
+            "latest_run": formatted_deploy_run,
+            "latest_deploy_run": formatted_deploy_run,
+            "latest_destroy_run": formatted_destroy_run,
+            "is_destroyed": is_destroyed
         }
 
 
