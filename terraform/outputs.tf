@@ -17,7 +17,7 @@ output "backend_ecr_repository_url" {
 
 output "backend_public_ip" {
   description = "Public IP address of the backend virtual machine"
-  value       = aws_instance.backend.public_ip
+  value       = aws_eip.backend_eip.public_ip
 }
 
 output "backend_instance_id" {
@@ -34,7 +34,7 @@ output "frontend_ecr_repository_url" {
 
 output "frontend_public_ip" {
   description = "Public IP address of the frontend virtual machine"
-  value       = aws_instance.frontend.public_ip
+  value       = aws_eip.frontend_eip.public_ip
 }
 
 output "frontend_instance_id" {
