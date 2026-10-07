@@ -371,7 +371,7 @@ except Exception as e:
     print(f"Error parsing app_env_vars: {e}")
 PYEOF
 rm -f /tmp/app_env_vars.json
-chmod 600 /opt/app/{{ comp.name }}.env
+chmod 644 /opt/app/{{ comp.name }}.env
 
 # Setup Caddy Reverse Proxy with Automated SSL (via sslip.io)
 PUBLIC_IP=""
