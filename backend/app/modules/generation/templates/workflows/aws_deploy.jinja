@@ -162,7 +162,8 @@ jobs:
                   "docker pull $ACCOUNT_ID.dkr.ecr.$REGION.amazonaws.com/{{ repo_name | lower }}-{{ comp.name }}:latest",
                   "docker stop {{ comp.name }} || true",
                   "docker rm {{ comp.name }} || true",
-                  "docker run -d --name {{ comp.name }} --restart always --env-file /opt/app/{{ comp.name }}.env -p 80:{{ comp.port | default(3000) }} $ACCOUNT_ID.dkr.ecr.$REGION.amazonaws.com/{{ repo_name | lower }}-{{ comp.name }}:latest"
+                  "docker run -d --name {{ comp.name }} --restart always --env-file /opt/app/{{ comp.name }}.env -p 127.0.0.1:{{ comp.port | default(3000) }}:{{ comp.port | default(3000) }} $ACCOUNT_ID.dkr.ecr.$REGION.amazonaws.com/{{ repo_name | lower }}-{{ comp.name }}:latest",
+                  "if ! docker ps --format '\{\{.Names\}\}' | grep -q '^caddy$'; then TOKEN=$(curl -s -X PUT 'http://169.254.169.254/latest/api/token' -H 'X-aws-ec2-metadata-token-ttl-seconds: 60' 2>/dev/null || true); PUB_IP=$(curl -s -H \"X-aws-ec2-metadata-token: $TOKEN\" http://169.254.169.254/latest/meta-data/public-ipv4 2>/dev/null || curl -s https://checkip.amazonaws.com 2>/dev/null || true); if [ -n \"$PUB_IP\" ]; then DOMAIN=\"$(echo $PUB_IP | tr '.' '-').sslip.io\"; mkdir -p /opt/caddy/data /opt/caddy/config; echo \"$DOMAIN { reverse_proxy 127.0.0.1:{{ comp.port | default(3000) }} }\" > /opt/caddy/Caddyfile; docker pull caddy:alpine && docker run -d --name caddy --restart always --net=host -v /opt/caddy/Caddyfile:/etc/caddy/Caddyfile -v /opt/caddy/data:/data -v /opt/caddy/config:/config caddy:alpine || true; fi; fi"
                 ]' \
                 --query "Command.CommandId" --output text --region {{ aws_region | default('us-east-1') }})
               echo "Command sent: $COMMAND_ID. Waiting for execution..."
@@ -194,10 +195,12 @@ jobs:
           {% if comp.aws_compute_choice == 'ec2' or (compute_choice == 'ec2' and not comp.aws_compute_choice) %}
           IP_{{ comp.name | replace('-', '_') | upper }}=$(terraform output -raw {{ comp.name }}_public_ip 2>/dev/null || echo "")
           if [ -n "$IP_{{ comp.name | replace('-', '_') | upper }}" ] && [ "$IP_{{ comp.name | replace('-', '_') | upper }}" != "null" ]; then
-            URL="http://$IP_{{ comp.name | replace('-', '_') | upper }}"
+            RAW_IP="$IP_{{ comp.name | replace('-', '_') | upper }}"
+            DASHED_IP=$(echo "$RAW_IP" | tr '.' '-')
+            URL="https://${DASHED_IP}.sslip.io"
             echo "::notice title={{ comp.name }} Endpoint::$URL"
-            echo "::notice title={{ comp.name }} IP::$IP_{{ comp.name | replace('-', '_') | upper }}"
-            echo "- **{{ comp.name }}** (\`{{ comp.type }}\`): [$URL]($URL) (IP: \`$IP_{{ comp.name | replace('-', '_') | upper }}\`)" >> $GITHUB_STEP_SUMMARY
+            echo "::notice title={{ comp.name }} IP::$RAW_IP"
+            echo "- **{{ comp.name }}** (\`{{ comp.type }}\`): [$URL]($URL) (🔒 SSL Secured, IP: \`$RAW_IP\`)" >> $GITHUB_STEP_SUMMARY
           fi
           {% endif %}
           {% endfor %}
