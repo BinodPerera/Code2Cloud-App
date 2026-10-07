@@ -710,28 +710,34 @@ async def get_github_workflow_runs(
         server_ip: Optional[str] = None
         is_destroyed = False
 
-        # Check if infrastructure was destroyed
+        # Check if infrastructure was destroyed or if teardown is actively running.
+        # A destroy run is only relevant if it was initiated during or after the current deployment.
+        is_destroy_relevant = False
         if latest_destroy:
             dest_status = latest_destroy.get("status")
             dest_concl = latest_destroy.get("conclusion")
             dest_created = latest_destroy.get("created_at") or ""
             deploy_created = (latest_deploy.get("created_at") or "") if latest_deploy else ""
-            if dest_status == "completed" and dest_concl == "success" and dest_created >= deploy_created:
-                is_destroyed = True
-                if generation_id:
-                    try:
-                        await generation_repo.update_endpoints(
-                            generation_id=generation_id,
-                            endpoints=[],
-                            server_url=None,
-                            server_ip=None
-                        )
-                        await generation_repo.collection.update_one(
-                            {"generation_id": generation_id},
-                            {"$set": {"destroyed": True}}
-                        )
-                    except Exception as e:
-                        print(f"[Code2Cloud] Error updating destroyed state for {generation_id}: {str(e)}")
+            
+            # Relevant only if currently queued/running, or created AFTER the latest deployment
+            if dest_status in ("queued", "in_progress") or (dest_created and deploy_created and dest_created >= deploy_created) or not deploy_created:
+                is_destroy_relevant = True
+                if dest_status == "completed" and dest_concl == "success":
+                    is_destroyed = True
+                    if generation_id:
+                        try:
+                            await generation_repo.update_endpoints(
+                                generation_id=generation_id,
+                                endpoints=[],
+                                server_url=None,
+                                server_ip=None
+                            )
+                            await generation_repo.collection.update_one(
+                                {"generation_id": generation_id},
+                                {"$set": {"destroyed": True}}
+                            )
+                        except Exception as e:
+                            print(f"[Code2Cloud] Error updating destroyed state for {generation_id}: {str(e)}")
 
         gen_doc = None
         if generation_id and not is_destroyed:
@@ -923,7 +929,7 @@ async def get_github_workflow_runs(
             "html_url": latest_destroy.get("html_url"),
             "created_at": latest_destroy.get("created_at"),
             "updated_at": latest_destroy.get("updated_at")
-        } if latest_destroy else None
+        } if (latest_destroy and is_destroy_relevant) else None
 
         return {
             "status": "success",

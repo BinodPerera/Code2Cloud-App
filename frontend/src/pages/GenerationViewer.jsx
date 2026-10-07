@@ -380,8 +380,8 @@ function GenerationViewer() {
           setLatestRun(deployRun);
           setLatestDestroyRun(destroyRun);
 
-          const destroyed = data.is_destroyed || (destroyRun?.status === 'completed' && destroyRun?.conclusion === 'success');
-          setIsTornDown(Boolean(destroyed));
+          const destroyed = Boolean(data.is_destroyed);
+          setIsTornDown(destroyed);
 
           if (destroyed) {
             setLiveEndpoints([]);
@@ -1756,7 +1756,7 @@ function GenerationViewer() {
             )}
 
             {/* Dedicated Teardown Cloud Resources Loading & Status Card */}
-            {(destroying || latestDestroyRun || destroySuccess) && (
+            {(destroying || (latestDestroyRun && (isTornDown || latestDestroyRun?.status !== 'completed')) || destroySuccess) && (
               <div style={{
                 background: 'linear-gradient(135deg, rgba(239, 68, 68, 0.08) 0%, rgba(20, 15, 25, 0.8) 100%)',
                 border: `1.5px solid ${latestDestroyRun?.status === 'completed' && latestDestroyRun?.conclusion === 'success' ? 'rgba(239, 68, 68, 0.35)' : 'rgba(239, 68, 68, 0.6)'}`,
