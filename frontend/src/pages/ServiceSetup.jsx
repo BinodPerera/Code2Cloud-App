@@ -107,13 +107,27 @@ function ServiceSetup() {
       buttonText: 'Proceed to Docker Generation',
       color: '#34d399'
     },
-    terraform: {
+    terraform_script: {
       title: 'Terraform Script Setup',
-      description: 'Select a repository to generate production-ready Infrastructure as Code scripts.',
+      description: 'Select a repository to generate standalone, production-ready Infrastructure as Code scripts.',
       buttonText: 'Proceed to Terraform Generation',
       color: '#10B981'
+    },
+    cloud_deploy: {
+      title: 'Cloud Deployment Setup',
+      description: 'Select a repository and cloud provider to configure automated infrastructure provisioning and CI/CD deployment pipelines.',
+      buttonText: 'Proceed to Cloud Deployment',
+      color: '#06b6d4'
+    },
+    terraform: {
+      title: 'Cloud Deployment Setup',
+      description: 'Select a repository and cloud provider to configure automated infrastructure provisioning and CI/CD deployment pipelines.',
+      buttonText: 'Proceed to Cloud Deployment',
+      color: '#06b6d4'
     }
   };
+
+  const isIaCOrCloudService = serviceId === 'terraform' || serviceId === 'cloud_deploy' || serviceId === 'terraform_script';
 
   const currentConfig = serviceConfigs[serviceId] || {
     title: 'Service Setup',
@@ -1392,7 +1406,7 @@ function ServiceSetup() {
               )}
 
               {/* Monorepo Per-Component Sizing & Resource Selection */}
-              {serviceId === 'terraform' && selectedCloud && techStack?.components && techStack.components.length > 1 && (
+              {isIaCOrCloudService && selectedCloud && techStack?.components && techStack.components.length > 1 && (
                 <div style={{ borderTop: '2px solid var(--c2c-border)', paddingTop: '1.5rem', display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
                     <label style={{ color: '#fff', fontSize: '1.1rem', fontWeight: '600' }}>Monorepo Component Sizing & Resource Selection</label>
@@ -1725,7 +1739,7 @@ function ServiceSetup() {
               )}
 
               {/* Single Component AWS Compute & Network Configurations */}
-              {selectedCloud === 'AWS' && serviceId === 'terraform' && (!techStack?.components || techStack.components.length <= 1) && (
+              {selectedCloud === 'AWS' && isIaCOrCloudService && (!techStack?.components || techStack.components.length <= 1) && (
                 <div style={{ borderTop: '2px solid var(--c2c-border)', paddingTop: '1.5rem', display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
                     <label style={{ color: '#fff', fontSize: '1.1rem', fontWeight: '600' }}>AWS Compute Choice</label>
@@ -1811,7 +1825,7 @@ function ServiceSetup() {
               )}
 
               {/* Single Component GCP Compute & Network Configurations */}
-              {selectedCloud === 'GCP' && serviceId === 'terraform' && (!techStack?.components || techStack.components.length <= 1) && (
+              {selectedCloud === 'GCP' && isIaCOrCloudService && (!techStack?.components || techStack.components.length <= 1) && (
                 <div style={{ borderTop: '2px solid var(--c2c-border)', paddingTop: '1.5rem', display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
                     <label style={{ color: '#fff', fontSize: '1.1rem', fontWeight: '600' }}>Google Cloud Compute Choice</label>
@@ -2104,7 +2118,7 @@ function ServiceSetup() {
               )}
 
               {/* Advanced Infrastructure Settings Accordion */}
-              {selectedCloud && serviceId === 'terraform' && (
+              {selectedCloud && isIaCOrCloudService && (
                 <div style={{
                   borderTop: '2px solid var(--c2c-border)',
                   paddingTop: '1.25rem',
@@ -2437,7 +2451,7 @@ function ServiceSetup() {
               )}
 
               {/* Application Environment Variables Section */}
-              {selectedCloud && serviceId === 'terraform' && techStack && (
+              {selectedCloud && isIaCOrCloudService && techStack && (
                 <div style={{
                   background: 'rgba(255, 255, 255, 0.02)',
                   border: isEnvOpen ? `1.5px solid ${currentConfig.color}80` : '1.5px solid var(--c2c-border)',

@@ -201,8 +201,9 @@ class CodeGenerator:
             # Ensure required manifest files exist for all components (fallback requirements.txt / package.json)
             CodeGenerator._generate_fallback_manifests(components_list, generated_code, repo)
 
-        # Terraform Configurations
-        elif service_id == "terraform":
+        # Terraform Configurations (Cloud Deployment or Standalone Terraform Script)
+        elif service_id in ("terraform", "cloud_deploy", "terraform_script", "terraform_only"):
+            is_script_only = service_id in ("terraform_script", "terraform_only")
             tf_components = []
             for comp in components_list:
                 raw_name = comp.get("name", "app")
@@ -350,34 +351,35 @@ class CodeGenerator:
                         environment=environment
                     )
 
-                    # Generate AWS GHA workflows (Deploy, Destroy, and CD)
-                    deploy_tmpl = env.get_template("workflows/aws_deploy.jinja")
-                    generated_code[".github/workflows/deploy.yml"] = deploy_tmpl.render(
-                        branch="code2cloud-setup",
-                        repo_name=repo,
-                        registry_type=registry_type,
-                        components=tf_components,
-                        compute_choice=aws_compute_choice,
-                        aws_region=selected_region,
-                        environment=environment
-                    )
+                    if not is_script_only:
+                        # Generate AWS GHA workflows (Deploy, Destroy, and CD)
+                        deploy_tmpl = env.get_template("workflows/aws_deploy.jinja")
+                        generated_code[".github/workflows/deploy.yml"] = deploy_tmpl.render(
+                            branch="code2cloud-setup",
+                            repo_name=repo,
+                            registry_type=registry_type,
+                            components=tf_components,
+                            compute_choice=aws_compute_choice,
+                            aws_region=selected_region,
+                            environment=environment
+                        )
 
-                    cd_tmpl = env.get_template("workflows/aws_cd.jinja")
-                    generated_code[".github/workflows/cd.yml"] = cd_tmpl.render(
-                        repo_name=repo,
-                        registry_type=registry_type,
-                        components=tf_components,
-                        compute_choice=aws_compute_choice,
-                        aws_region=selected_region,
-                        environment=environment
-                    )
+                        cd_tmpl = env.get_template("workflows/aws_cd.jinja")
+                        generated_code[".github/workflows/cd.yml"] = cd_tmpl.render(
+                            repo_name=repo,
+                            registry_type=registry_type,
+                            components=tf_components,
+                            compute_choice=aws_compute_choice,
+                            aws_region=selected_region,
+                            environment=environment
+                        )
 
-                    destroy_tmpl = env.get_template("workflows/aws_destroy.jinja")
-                    generated_code[".github/workflows/destroy.yml"] = destroy_tmpl.render(
-                        repo_name=repo,
-                        aws_region=selected_region,
-                        components=tf_components
-                    )
+                        destroy_tmpl = env.get_template("workflows/aws_destroy.jinja")
+                        generated_code[".github/workflows/destroy.yml"] = destroy_tmpl.render(
+                            repo_name=repo,
+                            aws_region=selected_region,
+                            components=tf_components
+                        )
                 except Exception as e:
                     generated_code["terraform/main.tf"] = f"# Error generating AWS Terraform/GHA: {str(e)}"
             elif cloud_clean == "gcp":
@@ -442,33 +444,34 @@ class CodeGenerator:
                             db_instance_class=db_instance_class
                         )
 
-                    # Generate GCP GHA workflows (Deploy, Destroy, and CD)
-                    deploy_tmpl = env.get_template("workflows/gcp_deploy.jinja")
-                    generated_code[".github/workflows/deploy.yml"] = deploy_tmpl.render(
-                        branch="code2cloud-setup",
-                        repo_name=repo,
-                        registry_type=registry_type,
-                        components=tf_components,
-                        compute_choice=gcp_compute_choice,
-                        gcp_region=selected_region,
-                        environment=environment
-                    )
+                    if not is_script_only:
+                        # Generate GCP GHA workflows (Deploy, Destroy, and CD)
+                        deploy_tmpl = env.get_template("workflows/gcp_deploy.jinja")
+                        generated_code[".github/workflows/deploy.yml"] = deploy_tmpl.render(
+                            branch="code2cloud-setup",
+                            repo_name=repo,
+                            registry_type=registry_type,
+                            components=tf_components,
+                            compute_choice=gcp_compute_choice,
+                            gcp_region=selected_region,
+                            environment=environment
+                        )
 
-                    cd_tmpl = env.get_template("workflows/gcp_cd.jinja")
-                    generated_code[".github/workflows/cd.yml"] = cd_tmpl.render(
-                        repo_name=repo,
-                        registry_type=registry_type,
-                        components=tf_components,
-                        compute_choice=gcp_compute_choice,
-                        gcp_region=selected_region,
-                        environment=environment
-                    )
+                        cd_tmpl = env.get_template("workflows/gcp_cd.jinja")
+                        generated_code[".github/workflows/cd.yml"] = cd_tmpl.render(
+                            repo_name=repo,
+                            registry_type=registry_type,
+                            components=tf_components,
+                            compute_choice=gcp_compute_choice,
+                            gcp_region=selected_region,
+                            environment=environment
+                        )
 
-                    destroy_tmpl = env.get_template("workflows/gcp_destroy.jinja")
-                    generated_code[".github/workflows/destroy.yml"] = destroy_tmpl.render(
-                        repo_name=repo,
-                        gcp_region=selected_region
-                    )
+                        destroy_tmpl = env.get_template("workflows/gcp_destroy.jinja")
+                        generated_code[".github/workflows/destroy.yml"] = destroy_tmpl.render(
+                            repo_name=repo,
+                            gcp_region=selected_region
+                        )
                     
                     # Generate GCP Terraform Outputs
                     gcp_outputs_tmpl = env.get_template("terraform/gcp/outputs.jinja")
@@ -505,6 +508,9 @@ class CodeGenerator:
                 )
             except Exception as e:
                 generated_code["terraform/README.md"] = f"# Error generating Terraform README: {str(e)}"
+
+            if is_script_only and "terraform/README.md" in generated_code:
+                generated_code["README.md"] = generated_code["terraform/README.md"]
 
             # Ensure required manifest files exist for all components (fallback requirements.txt / package.json)
             CodeGenerator._generate_fallback_manifests(components_list, generated_code, repo)

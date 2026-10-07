@@ -363,8 +363,10 @@ async def commit_generation_code(
     if not commit_message:
         if gen.get("service_id") == "docker":
             commit_message = "ci: Dockerfile created via Code2Cloud"
-        elif gen.get("service_id") == "terraform":
-            commit_message = "ci: add Terraform IaC deployment configurations via Code2Cloud"
+        elif gen.get("service_id") in ("terraform_script", "terraform_only"):
+            commit_message = "ci: add Terraform IaC scripts via Code2Cloud"
+        elif gen.get("service_id") in ("terraform", "cloud_deploy"):
+            commit_message = "ci: add cloud deployment configurations via Code2Cloud"
         else:
             commit_message = "ci: add generated deployment configurations via Code2Cloud"
 
@@ -538,11 +540,12 @@ async def commit_generation_code(
         if merge_to_default and branch != default_branch:
             try:
                 merge_default_url = f"https://api.github.com/repos/{owner}/{repo}/merges"
-                merge_msg = (
-                    f"Merge Dockerfile updates from '{branch}' into '{default_branch}' via Code2Cloud [skip ci]"
-                    if gen.get("service_id") == "docker"
-                    else f"Merge deployment updates from '{branch}' into '{default_branch}' via Code2Cloud [skip ci]"
-                )
+                if gen.get("service_id") == "docker":
+                    merge_msg = f"Merge Dockerfile updates from '{branch}' into '{default_branch}' via Code2Cloud [skip ci]"
+                elif gen.get("service_id") in ("terraform_script", "terraform_only"):
+                    merge_msg = f"Merge Terraform scripts from '{branch}' into '{default_branch}' via Code2Cloud [skip ci]"
+                else:
+                    merge_msg = f"Merge deployment updates from '{branch}' into '{default_branch}' via Code2Cloud [skip ci]"
                 merge_default_payload = {
                     "base": default_branch,
                     "head": branch,

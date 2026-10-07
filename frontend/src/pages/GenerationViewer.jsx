@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { FileCode, Folder, Download, Save, ArrowLeft, Check, AlertCircle, RefreshCw, Layers, GitCommit, GitBranch, GitMerge, Database, ShieldCheck, Play, Lock, ExternalLink, CloudLightning, Key, Shield, Globe, Zap, Trash2, Plus, Unlock, Eye, EyeOff, KeyRound, FileText, Copy, Server, CheckCircle2 } from 'lucide-react';
+import { FileCode, Folder, Download, Save, ArrowLeft, Check, AlertCircle, RefreshCw, Layers, GitCommit, GitBranch, GitMerge, Database, ShieldCheck, Play, Lock, ExternalLink, CloudLightning, Key, Shield, Globe, Zap, Trash2, Plus, Unlock, Eye, EyeOff, KeyRound, FileText, Copy, Server, CheckCircle2, Terminal, Code2, Cloud } from 'lucide-react';
 import { apiClient } from '../utils/api';
 
 function GenerationViewer() {
@@ -100,6 +100,9 @@ function GenerationViewer() {
   const isDeployRunning = Boolean(
     latestDeployRun && (latestDeployRun.status === 'queued' || latestDeployRun.status === 'in_progress')
   );
+
+  const isCloudDeploy = serviceId === 'terraform' || serviceId === 'cloud_deploy';
+  const isTerraformScriptOnly = serviceId === 'terraform_script' || serviceId === 'terraform_only';
 
   // Direct SCM commit states
   const [commitModalOpen, setCommitModalOpen] = useState(false);
@@ -517,8 +520,10 @@ function GenerationViewer() {
         setServiceId(currentServiceId);
         if (currentServiceId === 'docker') {
           setCommitMessage('ci: Dockerfile created via Code2Cloud');
-        } else if (currentServiceId === 'terraform') {
-          setCommitMessage('ci: add Terraform IaC deployment configurations via Code2Cloud');
+        } else if (currentServiceId === 'terraform_script' || currentServiceId === 'terraform_only') {
+          setCommitMessage('ci: add Terraform IaC scripts via Code2Cloud');
+        } else if (currentServiceId === 'cloud_deploy' || currentServiceId === 'terraform') {
+          setCommitMessage('ci: add cloud deployment configurations via Code2Cloud');
         } else {
           setCommitMessage('ci: add generated deployment configurations via Code2Cloud');
         }
@@ -959,8 +964,10 @@ function GenerationViewer() {
                 if (!commitMessage || commitMessage === 'ci: add generated deployment configurations via Code2Cloud') {
                   if (serviceId === 'docker') {
                     setCommitMessage('ci: Dockerfile created via Code2Cloud');
-                  } else if (serviceId === 'terraform') {
-                    setCommitMessage('ci: add Terraform IaC deployment configurations via Code2Cloud');
+                  } else if (serviceId === 'terraform_script' || serviceId === 'terraform_only') {
+                    setCommitMessage('ci: add Terraform IaC scripts via Code2Cloud');
+                  } else if (serviceId === 'cloud_deploy' || serviceId === 'terraform') {
+                    setCommitMessage('ci: add cloud deployment configurations via Code2Cloud');
                   }
                 }
                 setCommitModalOpen(true);
@@ -1001,7 +1008,7 @@ function GenerationViewer() {
               ) : (
                 <GitCommit size={15} />
               )}
-              {isDeployRunning ? 'Deployment Running...' : (committing ? 'Committing...' : 'Commit to GitHub')}
+              {isDeployRunning ? 'Deployment Running...' : (committing ? 'Committing...' : (serviceId === 'docker' ? 'Commit to GitHub' : (isTerraformScriptOnly ? 'Commit Terraform' : 'Commit & Deploy')))}
             </button>
           </div>
         </div>
@@ -1201,7 +1208,7 @@ function GenerationViewer() {
         </div>
 
         {/* Right Sidebar Deployment & Secrets Panel */}
-        {serviceId === 'terraform' && (cloud.toLowerCase() === 'aws' || cloud.toLowerCase() === 'gcp') && (
+        {isCloudDeploy && (cloud.toLowerCase() === 'aws' || cloud.toLowerCase() === 'gcp') && (
           <div style={{
             width: '340px',
             flexShrink: 0,
@@ -1976,6 +1983,106 @@ function GenerationViewer() {
 
           </div>
         )}
+
+        {/* Right Sidebar Terraform Standalone Script Panel */}
+        {isTerraformScriptOnly && (
+          <div style={{
+            width: '340px',
+            flexShrink: 0,
+            borderLeft: '2px solid var(--c2c-border)',
+            padding: '1.5rem',
+            display: 'flex',
+            flexDirection: 'column',
+            gap: '1.5rem',
+            background: 'var(--c2c-nav-bg)',
+            overflowY: 'auto'
+          }}>
+            <div>
+              <h3 style={{ margin: 0, fontSize: '1.1rem', fontWeight: '600', color: '#fff', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                <Terminal size={17} style={{ color: 'var(--c2c-green)' }} />
+                Terraform IaC Guide
+              </h3>
+              <p style={{ margin: '0.2rem 0 0 0', color: '#a2a2b5', fontSize: '0.75rem', lineHeight: '1.3' }}>
+                Standalone Infrastructure as Code scripts generated for {cloud.toUpperCase()}.
+              </p>
+            </div>
+
+            <hr style={{ border: 'none', borderTop: '2px solid var(--c2c-border)', margin: 0 }} />
+
+            {/* Infrastructure Specs Summary */}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', background: 'rgba(255,255,255,0.02)', padding: '0.85rem', borderRadius: '12px', border: '1px solid var(--c2c-border)' }}>
+              <span style={{ fontSize: '0.7rem', fontWeight: '700', color: '#a2a2b5', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Infrastructure Specs</span>
+              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.8rem' }}>
+                <span style={{ color: '#a2a2b5' }}>Provider</span>
+                <span style={{ color: '#fff', fontWeight: '600' }}>{cloud.toUpperCase()}</span>
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.8rem' }}>
+                <span style={{ color: '#a2a2b5' }}>Region</span>
+                <span style={{ color: '#fff', fontWeight: '600' }}>{genRegion || (cloud.toLowerCase() === 'aws' ? 'us-east-1' : 'us-central1')}</span>
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.8rem' }}>
+                <span style={{ color: '#a2a2b5' }}>Environment</span>
+                <span style={{ color: '#fff', fontWeight: '600' }}>{genEnv || 'production'}</span>
+              </div>
+              {genDbEnabled && (
+                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.8rem' }}>
+                  <span style={{ color: '#a2a2b5' }}>Database</span>
+                  <span style={{ color: 'var(--c2c-green)', fontWeight: '600' }}>{genDbEngine.toUpperCase()}</span>
+                </div>
+              )}
+            </div>
+
+            {/* Quick Start Guide */}
+            <div style={{
+              background: 'linear-gradient(135deg, rgba(16, 185, 129, 0.08) 0%, rgba(13, 27, 42, 0.5) 100%)',
+              border: '1.5px solid rgba(16, 185, 129, 0.35)',
+              borderRadius: '16px',
+              padding: '1.1rem',
+              display: 'flex',
+              flexDirection: 'column',
+              gap: '0.75rem'
+            }}>
+              <span style={{ fontSize: '0.85rem', fontWeight: '700', color: '#10B981', display: 'flex', alignItems: 'center', gap: '0.45rem' }}>
+                <Terminal size={15} /> Local Execution Steps
+              </span>
+              <p style={{ margin: 0, fontSize: '0.75rem', color: '#a2a2b5', lineHeight: '1.4' }}>
+                Run these standard Terraform CLI commands inside your repository to review and deploy:
+              </p>
+              <div style={{
+                background: 'rgba(0, 0, 0, 0.45)',
+                borderRadius: '10px',
+                padding: '0.85rem',
+                fontSize: '0.75rem',
+                fontFamily: 'monospace',
+                color: '#e2e2e9',
+                lineHeight: '1.65',
+                border: '1px solid rgba(255,255,255,0.06)'
+              }}>
+                <div style={{ color: '#6e7191' }}># 1. Switch to terraform dir</div>
+                <div style={{ color: '#10B981' }}>cd terraform</div>
+                <div style={{ color: '#6e7191', marginTop: '0.45rem' }}># 2. Initialize provider modules</div>
+                <div style={{ color: '#10B981' }}>terraform init</div>
+                <div style={{ color: '#6e7191', marginTop: '0.45rem' }}># 3. Preview planned resources</div>
+                <div style={{ color: '#10B981' }}>terraform plan</div>
+                <div style={{ color: '#6e7191', marginTop: '0.45rem' }}># 4. Provision infrastructure</div>
+                <div style={{ color: '#10B981' }}>terraform apply</div>
+              </div>
+            </div>
+
+            {/* Standalone Action Hint */}
+            <div style={{
+              background: 'rgba(255, 255, 255, 0.02)',
+              border: '1px dashed var(--c2c-border)',
+              borderRadius: '14px',
+              padding: '0.85rem',
+              fontSize: '0.75rem',
+              color: '#a2a2b5',
+              lineHeight: '1.5'
+            }}>
+              💡 No automated GitHub Actions workflows are generated for this service. You can download the files as a ZIP or commit them directly to GitHub without triggering automated cloud deployments.
+            </div>
+          </div>
+        )}
       </div>
       
       {/* Safety-First Teardown Destroy Modal */}
@@ -2269,12 +2376,14 @@ function GenerationViewer() {
               <div>
                 <h3 style={{ margin: 0, fontSize: '1.35rem', fontWeight: '700', color: '#fff', display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
                   <GitBranch style={{ color: 'var(--c2c-green)' }} />
-                  {serviceId === 'docker' ? 'Commit Docker Configurations to GitHub' : 'Commit & Deploy to GitHub'}
+                  {serviceId === 'docker' ? 'Commit Docker Configurations to GitHub' : (isTerraformScriptOnly ? 'Commit Terraform Scripts to GitHub' : 'Commit & Deploy to GitHub')}
                 </h3>
                 <p style={{ margin: '0.35rem 0 0 0', color: '#a2a2b5', fontSize: '0.85rem' }}>
                   {serviceId === 'docker' 
                     ? 'Commit generated Dockerfile and container configurations directly to your repository.' 
-                    : 'Overlay configurations and automatically provision GitHub Actions secrets.'}
+                    : (isTerraformScriptOnly
+                        ? 'Commit generated Terraform Infrastructure as Code scripts directly to your repository.'
+                        : 'Overlay configurations and automatically provision GitHub Actions secrets.')}
                 </p>
               </div>
               <button
@@ -2355,7 +2464,7 @@ function GenerationViewer() {
                     <GitMerge size={18} style={{ color: '#60a5fa', flexShrink: 0 }} />
                     <span style={{ color: '#e2e2e9', fontSize: '0.82rem' }}>
                       Synchronized with default branch <code style={{ color: '#60a5fa', fontWeight: '600' }}>{commitResult.default_branch}</code>
-                      {commitResult.merged_to_default ? (serviceId === 'docker' ? ' (Dockerfile merged into default branch)' : ' (deployment configurations merged into default branch)') : ''}.
+                      {commitResult.merged_to_default ? (serviceId === 'docker' ? ' (Dockerfile merged into default branch)' : (isTerraformScriptOnly ? ' (Terraform scripts merged into default branch)' : ' (deployment configurations merged into default branch)')) : ''}.
                     </span>
                   </div>
                 )}
@@ -2449,7 +2558,7 @@ function GenerationViewer() {
                       type="text"
                       value={commitMessage}
                       onChange={(e) => setCommitMessage(e.target.value)}
-                      placeholder={serviceId === 'docker' ? 'e.g. ci: Dockerfile created via Code2Cloud' : 'e.g. ci: add cloud setup'}
+                      placeholder={serviceId === 'docker' ? 'e.g. ci: Dockerfile created via Code2Cloud' : (isTerraformScriptOnly ? 'e.g. ci: add Terraform scripts' : 'e.g. ci: add cloud setup')}
                       required
                       style={{
                         background: 'var(--c2c-surface)',
@@ -2506,7 +2615,8 @@ function GenerationViewer() {
                   />
                 </div>
 
-                {/* Cloud Secrets Setup Section */}
+                {/* Cloud Secrets Setup Section - only for automated Cloud Deployment */}
+                {isCloudDeploy && (
                 <div style={{
                   background: 'rgba(0, 0, 0, 0.25)',
                   border: pushSecretsToGitHub ? '1.5px solid rgba(16, 185, 129, 0.35)' : '1.5px solid var(--c2c-border)',
@@ -2748,6 +2858,7 @@ function GenerationViewer() {
                     </div>
                   )}
                 </div>
+                )}
 
                 {/* Modal Actions */}
                 <div style={{ display: 'flex', gap: '1rem', marginTop: '0.25rem' }}>
