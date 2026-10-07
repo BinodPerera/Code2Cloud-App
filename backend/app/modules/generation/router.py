@@ -797,7 +797,8 @@ async def get_github_workflow_runs(
                                         if kind == "public_ip":
                                             endpoints_by_name.setdefault(comp_name, {})["name"] = comp_name
                                             endpoints_by_name[comp_name]["ip"] = val
-                                            endpoints_by_name[comp_name]["url"] = f"http://{val}"
+                                            dashed_val = val.replace(".", "-")
+                                            endpoints_by_name[comp_name]["url"] = f"https://{dashed_val}.sslip.io"
                                         elif kind == "service_url":
                                             endpoints_by_name.setdefault(comp_name, {})["name"] = comp_name
                                             endpoints_by_name[comp_name]["url"] = val
@@ -816,11 +817,12 @@ async def get_github_workflow_runs(
                                         if notice_val and not notice_val.startswith("$") and "echo" not in notice_val:
                                             if re.match(r'^(?:https?://)?(?:\d{1,3}\.){3}\d{1,3}(?::\d+)?$', notice_val):
                                                 ip_candidate = notice_val.replace("http://", "").replace("https://", "").split(":")[0]
+                                                dashed_cand = ip_candidate.replace(".", "-")
                                                 # Assign to first component if missing
                                                 for c_name in endpoints_by_name:
                                                     if not endpoints_by_name[c_name].get("ip"):
                                                         endpoints_by_name[c_name]["ip"] = ip_candidate
-                                                        endpoints_by_name[c_name]["url"] = f"http://{ip_candidate}"
+                                                        endpoints_by_name[c_name]["url"] = f"https://{dashed_cand}.sslip.io"
                                                         break
 
                             # 3. Check check-run annotations if accessible

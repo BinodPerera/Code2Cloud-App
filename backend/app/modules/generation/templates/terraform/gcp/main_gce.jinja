@@ -18,7 +18,7 @@ resource "google_compute_firewall" "allow_http" {
 
   allow {
     protocol = "tcp"
-    ports    = ["22", "80", {% for comp in components %}"{{ comp.port | default(3000) }}"{% if not loop.last %}, {% endif %}{% endfor %}]
+    ports    = ["22", "80", "443", {% for comp in components %}"{{ comp.port | default(3000) }}"{% if not loop.last %}, {% endif %}{% endfor %}]
   }
 
   source_ranges = ["0.0.0.0/0"]
@@ -200,8 +200,52 @@ PYEOF
 rm -f /tmp/app_env_vars.json
 chmod 600 /opt/app/{{ comp.name }}.env
 
-# Run the container using --env-file
-docker run -d -p 80:{{ comp.port | default(3000) }} \
+# Setup Caddy Reverse Proxy with Automated SSL (via sslip.io)
+PUBLIC_IP=""
+for i in $(seq 1 12); do
+  PUBLIC_IP=$(curl -s -H "Metadata-Flavor: Google" "http://metadata.google.internal/computeMetadata/v1/instance/network-interfaces/0/access-configs/0/external-ip" 2>/dev/null || curl -s https://ifconfig.me 2>/dev/null || true)
+  if [ -n "$PUBLIC_IP" ] && [[ "$PUBLIC_IP" =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+    break
+  fi
+  sleep 3
+done
+
+mkdir -p /opt/caddy/data /opt/caddy/config
+
+if [ -n "$PUBLIC_IP" ]; then
+  DASHED_IP=$(echo "$PUBLIC_IP" | tr '.' '-')
+  DOMAIN="$${DASHED_IP}.sslip.io"
+  cat <<CADDYEOF > /opt/caddy/Caddyfile
+$DOMAIN {
+    reverse_proxy 127.0.0.1:{{ comp.port | default(3000) }}
+}
+CADDYEOF
+else
+  cat <<CADDYEOF > /opt/caddy/Caddyfile
+:80 {
+    reverse_proxy 127.0.0.1:{{ comp.port | default(3000) }}
+}
+CADDYEOF
+fi
+
+# Run Caddy reverse proxy container with host networking for automatic SSL
+docker pull caddy:alpine || true
+docker stop caddy || true
+docker rm caddy || true
+docker run -d \
+  --name caddy \
+  --restart always \
+  --net=host \
+  -v /opt/caddy/Caddyfile:/etc/caddy/Caddyfile \
+  -v /opt/caddy/data:/data \
+  -v /opt/caddy/config:/config \
+  caddy:alpine || true
+
+# Run the application container binding to localhost
+docker stop {{ comp.name }} || true
+docker rm {{ comp.name }} || true
+docker run -d \
+  -p 127.0.0.1:{{ comp.port | default(3000) }}:{{ comp.port | default(3000) }} \
   --name {{ comp.name }} \
   --restart always \
   --env-file /opt/app/{{ comp.name }}.env \

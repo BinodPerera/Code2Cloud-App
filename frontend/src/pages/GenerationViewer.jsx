@@ -84,7 +84,7 @@ function GenerationViewer() {
     return clean;
   };
 
-  const rawServerUrl = serverUrl || liveEndpoints.find(e => e.type === 'frontend')?.url || liveEndpoints.find(e => e.type !== 'database')?.url || (serverIp ? `http://${serverIp}` : '');
+  const rawServerUrl = serverUrl || liveEndpoints.find(e => e.type === 'frontend')?.url || liveEndpoints.find(e => e.type !== 'database')?.url || (serverIp ? `https://${serverIp.replace(/\./g, '-')}.sslip.io` : '');
   const rawServerIp = serverIp || liveEndpoints.find(e => e.type === 'frontend')?.ip || liveEndpoints.find(e => e.type !== 'database')?.ip || '';
 
   const computedServerUrl = sanitizeIp(rawServerUrl);
@@ -1610,7 +1610,8 @@ function GenerationViewer() {
                         const epUrl = sanitizeIp(ep.url);
                         const epIp = sanitizeIp(ep.ip);
                         const epEndpoint = sanitizeIp(ep.endpoint);
-                        const epCopyVal = epEndpoint || epUrl || epIp || '';
+                        const isHttps = Boolean(epUrl && epUrl.startsWith('https://'));
+                        const epCopyVal = epEndpoint || epUrl || (epIp ? `https://${epIp.replace(/\./g, '-')}.sslip.io` : '');
                         const epKey = `ep-${idx}-${ep.name}`;
                         const isCopied = copiedKey === epKey;
 
@@ -1660,6 +1661,22 @@ function GenerationViewer() {
                                   }}>
                                     {ep.type || 'service'}
                                   </span>
+                                  {isHttps && (
+                                    <span style={{
+                                      fontSize: '0.6rem',
+                                      fontWeight: '700',
+                                      display: 'inline-flex',
+                                      alignItems: 'center',
+                                      gap: '0.2rem',
+                                      padding: '0.12rem 0.35rem',
+                                      borderRadius: '4px',
+                                      background: 'rgba(16, 185, 129, 0.2)',
+                                      color: '#34d399',
+                                      letterSpacing: '0.02em'
+                                    }} title="SSL/TLS Encrypted">
+                                      <Lock size={9} /> SSL
+                                    </span>
+                                  )}
                                 </div>
                               </div>
 
@@ -1707,26 +1724,29 @@ function GenerationViewer() {
                               justifyContent: 'space-between',
                               gap: '0.5rem'
                             }}>
-                              <a
-                                href={epUrl || (epIp ? `http://${epIp}` : '#')}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                title="Open endpoint in browser"
-                                style={{
-                                  fontSize: '0.78rem',
-                                  color: '#34d399',
-                                  fontFamily: 'monospace',
-                                  fontWeight: '600',
-                                  textDecoration: 'none',
-                                  wordBreak: 'break-all',
-                                  lineHeight: '1.3',
-                                  minWidth: 0
-                                }}
-                                onMouseOver={(e) => { e.currentTarget.style.textDecoration = 'underline'; }}
-                                onMouseOut={(e) => { e.currentTarget.style.textDecoration = 'none'; }}
-                              >
-                                {epUrl || epEndpoint || (epIp ? `http://${epIp}` : 'Ready')}
-                              </a>
+                              <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem', minWidth: 0, overflow: 'hidden' }}>
+                                {isHttps && <Lock size={12} color="#34d399" style={{ flexShrink: 0 }} />}
+                                <a
+                                  href={epUrl || (epIp ? `https://${epIp.replace(/\./g, '-')}.sslip.io` : '#')}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  title="Open endpoint in browser"
+                                  style={{
+                                    fontSize: '0.78rem',
+                                    color: '#34d399',
+                                    fontFamily: 'monospace',
+                                    fontWeight: '600',
+                                    textDecoration: 'none',
+                                    wordBreak: 'break-all',
+                                    lineHeight: '1.3',
+                                    minWidth: 0
+                                  }}
+                                  onMouseOver={(e) => { e.currentTarget.style.textDecoration = 'underline'; }}
+                                  onMouseOut={(e) => { e.currentTarget.style.textDecoration = 'none'; }}
+                                >
+                                  {epUrl || epEndpoint || (epIp ? `https://${epIp.replace(/\./g, '-')}.sslip.io` : 'Ready')}
+                                </a>
+                              </div>
 
                               {epCopyVal && (
                                 <button

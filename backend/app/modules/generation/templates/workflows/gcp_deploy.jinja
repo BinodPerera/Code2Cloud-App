@@ -127,10 +127,12 @@ jobs:
           {% if comp.gcp_compute_choice == 'gce' or (compute_choice == 'gce' and not comp.gcp_compute_choice) %}
           IP_{{ comp.name | replace('-', '_') | upper }}=$(terraform output -raw {{ comp.name }}_public_ip 2>/dev/null || echo "")
           if [ -n "$IP_{{ comp.name | replace('-', '_') | upper }}" ] && [ "$IP_{{ comp.name | replace('-', '_') | upper }}" != "null" ]; then
-            URL="http://$IP_{{ comp.name | replace('-', '_') | upper }}"
+            RAW_IP="$IP_{{ comp.name | replace('-', '_') | upper }}"
+            DASHED_IP=$(echo "$RAW_IP" | tr '.' '-')
+            URL="https://${DASHED_IP}.sslip.io"
             echo "::notice title={{ comp.name }} Endpoint::$URL"
-            echo "::notice title={{ comp.name }} IP::$IP_{{ comp.name | replace('-', '_') | upper }}"
-            echo "- **{{ comp.name }}** (\`{{ comp.type }}\`): [$URL]($URL) (IP: \`$IP_{{ comp.name | replace('-', '_') | upper }}\`)" >> $GITHUB_STEP_SUMMARY
+            echo "::notice title={{ comp.name }} IP::$RAW_IP"
+            echo "- **{{ comp.name }}** (\`{{ comp.type }}\`): [$URL]($URL) (🔒 SSL Secured, IP: \`$RAW_IP\`)" >> $GITHUB_STEP_SUMMARY
           fi
           {% else %}
           URL_{{ comp.name | replace('-', '_') | upper }}=$(terraform output -raw {{ comp.name }}_service_url 2>/dev/null || echo "")
