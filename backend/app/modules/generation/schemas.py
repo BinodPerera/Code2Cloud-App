@@ -18,7 +18,7 @@ class GenerateRequest(BaseModel):
     swapSizeGb: Optional[int] = 2
     awsComputeChoice: Optional[str] = 'ec2'
     awsInstanceType: Optional[str] = 't3.micro'
-    awsUseEip: Optional[bool] = False
+    awsUseEip: Optional[bool] = True
     gcpComputeChoice: Optional[str] = 'cloudrun'
     gcpMachineType: Optional[str] = 'e2-micro'
     gcpUseStaticIp: Optional[bool] = False

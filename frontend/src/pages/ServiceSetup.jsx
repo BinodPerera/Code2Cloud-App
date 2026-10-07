@@ -56,7 +56,7 @@ function ServiceSetup() {
   // AWS target compute config states
   const [awsComputeChoice, setAwsComputeChoice] = useState('ec2');
   const [awsInstanceType, setAwsInstanceType] = useState(isDemoMode ? 't3.medium' : 't3.micro');
-  const [awsUseEip, setAwsUseEip] = useState(false);
+  const [awsUseEip, setAwsUseEip] = useState(true);
   
   // GCP target compute config states
   const [gcpComputeChoice, setGcpComputeChoice] = useState('cloudrun');
@@ -217,7 +217,7 @@ function ServiceSetup() {
         initialConfigs[compName] = componentConfigs[compName] || {
           awsComputeChoice: awsComputeChoice,
           awsInstanceType: awsComputeChoice === 'fargate' ? '0.25 vCPU / 512 MB' : 't3.micro',
-          awsUseEip: awsUseEip,
+          awsUseEip: true,
           gcpComputeChoice: gcpComputeChoice,
           gcpMachineType: gcpComputeChoice === 'cloudrun' ? '1 vCPU / 512 MB' : 'e2-micro',
           gcpUseStaticIp: gcpUseStaticIp
@@ -1423,7 +1423,7 @@ function ServiceSetup() {
                         enabled: true,
                         awsComputeChoice: awsComputeChoice,
                         awsInstanceType: awsComputeChoice === 'fargate' ? '0.25 vCPU / 512 MB' : 't3.micro',
-                        awsUseEip: awsUseEip,
+                        awsUseEip: true,
                         gcpComputeChoice: gcpComputeChoice,
                         gcpMachineType: gcpComputeChoice === 'cloudrun' ? '1 vCPU / 512 MB' : 'e2-micro',
                         gcpUseStaticIp: gcpUseStaticIp,
@@ -1595,7 +1595,7 @@ function ServiceSetup() {
                                         <input
                                           type="checkbox"
                                           id={`awsUseEip-${compName}`}
-                                          checked={compCfg.awsUseEip || false}
+                                          checked={compCfg.awsUseEip !== undefined ? compCfg.awsUseEip : true}
                                           onChange={(e) => updateCompCfg('awsUseEip', e.target.checked)}
                                           style={{ width: '16px', height: '16px', cursor: 'pointer', accentColor: currentConfig.color }}
                                         />

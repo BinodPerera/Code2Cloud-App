@@ -36,7 +36,7 @@ function GenerationViewer() {
   // AWS target compute config states
   const [awsComputeChoice, setAwsComputeChoice] = useState('ec2');
   const [awsInstanceType, setAwsInstanceType] = useState('t3.micro');
-  const [awsUseEip, setAwsUseEip] = useState(false);
+  const [awsUseEip, setAwsUseEip] = useState(true);
   
   // GCP target compute config states
   const [gcpComputeChoice, setGcpComputeChoice] = useState('cloudrun');
@@ -537,7 +537,7 @@ function GenerationViewer() {
         setGenDbEngine(data.db_engine || 'postgres');
         setAwsComputeChoice(data.aws_compute_choice || 'ec2');
         setAwsInstanceType(data.aws_instance_type || 't3.micro');
-        setAwsUseEip(data.aws_use_eip || false);
+        setAwsUseEip(data.aws_use_eip !== undefined ? data.aws_use_eip : true);
         setGcpComputeChoice(data.gcp_compute_choice || 'cloudrun');
         setGcpMachineType(data.gcp_machine_type || 'e2-micro');
         setGcpUseStaticIp(data.gcp_use_static_ip || false);

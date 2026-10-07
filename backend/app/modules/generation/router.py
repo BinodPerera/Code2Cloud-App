@@ -123,7 +123,7 @@ async def generate_deployment_code(
         swap_size_gb=request.swapSizeGb or 2,
         aws_compute_choice=request.awsComputeChoice,
         aws_instance_type=request.awsInstanceType,
-        aws_use_eip=request.awsUseEip,
+        aws_use_eip=request.awsUseEip if request.awsUseEip is not None else True,
         gcp_compute_choice=request.gcpComputeChoice,
         gcp_machine_type=request.gcpMachineType,
         gcp_use_static_ip=request.gcpUseStaticIp,

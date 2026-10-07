@@ -35,7 +35,7 @@ class CodeGenerator:
         swap_size_gb: int = 2,
         aws_compute_choice: str = "ec2",
         aws_instance_type: str = "t3.micro",
-        aws_use_eip: bool = False,
+        aws_use_eip: bool = True,
         gcp_compute_choice: str = "cloudrun",
         gcp_machine_type: str = "e2-micro",
         gcp_use_static_ip: bool = False,
