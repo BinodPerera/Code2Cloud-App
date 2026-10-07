@@ -45,7 +45,9 @@ function Repos() {
     switch (serviceId) {
       case 'finops': return 'Cost Analysis';
       case 'docker': return 'Docker Generation';
-      case 'terraform': return 'Terraform Generation';
+      case 'cloud_deploy':
+      case 'terraform': return 'Cloud Deployment';
+      case 'terraform_script': return 'Terraform Script Generation';
       default: return '';
     }
   };

@@ -123,7 +123,7 @@ async def generate_deployment_code(
         swap_size_gb=request.swapSizeGb or 2,
         aws_compute_choice=request.awsComputeChoice,
         aws_instance_type=request.awsInstanceType,
-        aws_use_eip=request.awsUseEip,
+        aws_use_eip=request.awsUseEip if request.awsUseEip is not None else True,
         gcp_compute_choice=request.gcpComputeChoice,
         gcp_machine_type=request.gcpMachineType,
         gcp_use_static_ip=request.gcpUseStaticIp,
@@ -363,8 +363,10 @@ async def commit_generation_code(
     if not commit_message:
         if gen.get("service_id") == "docker":
             commit_message = "ci: Dockerfile created via Code2Cloud"
-        elif gen.get("service_id") == "terraform":
-            commit_message = "ci: add Terraform IaC deployment configurations via Code2Cloud"
+        elif gen.get("service_id") in ("terraform_script", "terraform_only"):
+            commit_message = "ci: add Terraform IaC scripts via Code2Cloud"
+        elif gen.get("service_id") in ("terraform", "cloud_deploy"):
+            commit_message = "ci: add cloud deployment configurations via Code2Cloud"
         else:
             commit_message = "ci: add generated deployment configurations via Code2Cloud"
 
@@ -538,11 +540,12 @@ async def commit_generation_code(
         if merge_to_default and branch != default_branch:
             try:
                 merge_default_url = f"https://api.github.com/repos/{owner}/{repo}/merges"
-                merge_msg = (
-                    f"Merge Dockerfile updates from '{branch}' into '{default_branch}' via Code2Cloud [skip ci]"
-                    if gen.get("service_id") == "docker"
-                    else f"Merge deployment updates from '{branch}' into '{default_branch}' via Code2Cloud [skip ci]"
-                )
+                if gen.get("service_id") == "docker":
+                    merge_msg = f"Merge Dockerfile updates from '{branch}' into '{default_branch}' via Code2Cloud [skip ci]"
+                elif gen.get("service_id") in ("terraform_script", "terraform_only"):
+                    merge_msg = f"Merge Terraform scripts from '{branch}' into '{default_branch}' via Code2Cloud [skip ci]"
+                else:
+                    merge_msg = f"Merge deployment updates from '{branch}' into '{default_branch}' via Code2Cloud [skip ci]"
                 merge_default_payload = {
                     "base": default_branch,
                     "head": branch,
@@ -707,28 +710,34 @@ async def get_github_workflow_runs(
         server_ip: Optional[str] = None
         is_destroyed = False
 
-        # Check if infrastructure was destroyed
+        # Check if infrastructure was destroyed or if teardown is actively running.
+        # A destroy run is only relevant if it was initiated during or after the current deployment.
+        is_destroy_relevant = False
         if latest_destroy:
             dest_status = latest_destroy.get("status")
             dest_concl = latest_destroy.get("conclusion")
             dest_created = latest_destroy.get("created_at") or ""
             deploy_created = (latest_deploy.get("created_at") or "") if latest_deploy else ""
-            if dest_status == "completed" and dest_concl == "success" and dest_created >= deploy_created:
-                is_destroyed = True
-                if generation_id:
-                    try:
-                        await generation_repo.update_endpoints(
-                            generation_id=generation_id,
-                            endpoints=[],
-                            server_url=None,
-                            server_ip=None
-                        )
-                        await generation_repo.collection.update_one(
-                            {"generation_id": generation_id},
-                            {"$set": {"destroyed": True}}
-                        )
-                    except Exception as e:
-                        print(f"[Code2Cloud] Error updating destroyed state for {generation_id}: {str(e)}")
+            
+            # Relevant only if currently queued/running, or created AFTER the latest deployment
+            if dest_status in ("queued", "in_progress") or (dest_created and deploy_created and dest_created >= deploy_created) or not deploy_created:
+                is_destroy_relevant = True
+                if dest_status == "completed" and dest_concl == "success":
+                    is_destroyed = True
+                    if generation_id:
+                        try:
+                            await generation_repo.update_endpoints(
+                                generation_id=generation_id,
+                                endpoints=[],
+                                server_url=None,
+                                server_ip=None
+                            )
+                            await generation_repo.collection.update_one(
+                                {"generation_id": generation_id},
+                                {"$set": {"destroyed": True}}
+                            )
+                        except Exception as e:
+                            print(f"[Code2Cloud] Error updating destroyed state for {generation_id}: {str(e)}")
 
         gen_doc = None
         if generation_id and not is_destroyed:
@@ -920,7 +929,7 @@ async def get_github_workflow_runs(
             "html_url": latest_destroy.get("html_url"),
             "created_at": latest_destroy.get("created_at"),
             "updated_at": latest_destroy.get("updated_at")
-        } if latest_destroy else None
+        } if (latest_destroy and is_destroy_relevant) else None
 
         return {
             "status": "success",

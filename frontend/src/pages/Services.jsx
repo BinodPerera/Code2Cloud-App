@@ -1,6 +1,6 @@
 import React from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Calculator, Code2, Cpu } from 'lucide-react';
+import { Calculator, Code2, Cloud, FileCode2 } from 'lucide-react';
 
 function Services() {
   const navigate = useNavigate();
@@ -25,13 +25,22 @@ function Services() {
       borderHover: 'rgba(52, 211, 153, 0.4)'
     },
     {
-      id: 'terraform',
+      id: 'terraform_script',
       title: 'Terraform Script Generation',
-      description: 'Generate production-ready Infrastructure as Code (IaC) to securely deploy your application.',
-      icon: Cpu,
+      description: 'Generate production-ready Infrastructure as Code (IaC) Terraform scripts without automated deployment workflows.',
+      icon: FileCode2,
       color: '#10B981',
       bgHover: 'rgba(16, 185, 129, 0.08)',
       borderHover: 'rgba(16, 185, 129, 0.4)'
+    },
+    {
+      id: 'cloud_deploy',
+      title: 'Cloud Deployment',
+      description: 'Deploy your application directly to the cloud with automated Terraform provisioning, CI/CD pipelines, and secrets management.',
+      icon: Cloud,
+      color: '#06b6d4',
+      bgHover: 'rgba(6, 182, 212, 0.08)',
+      borderHover: 'rgba(6, 182, 212, 0.4)'
     }
   ];
 
@@ -50,7 +59,7 @@ function Services() {
         </p>
       </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: '2rem', alignItems: 'stretch' }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '1.75rem', alignItems: 'stretch' }}>
         {services.map((service) => (
           <div
             key={service.id}
@@ -62,12 +71,12 @@ function Services() {
               background: 'var(--c2c-surface)',
               border: '2px solid var(--c2c-border)',
               borderRadius: '24px',
-              padding: '2.5rem 2rem',
+              padding: '2.25rem 1.85rem',
               cursor: 'pointer',
               transition: 'all 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275)'
             }}
             onMouseOver={(e) => {
-              e.currentTarget.style.transform = 'translateY(-10px)';
+              e.currentTarget.style.transform = 'translateY(-8px)';
               e.currentTarget.style.background = service.bgHover;
               e.currentTarget.style.borderColor = service.borderHover;
               e.currentTarget.style.boxShadow = `0 20px 40px -10px ${service.bgHover}`;
@@ -81,34 +90,34 @@ function Services() {
           >
             <div style={{
               width: '64px', height: '64px', borderRadius: '20px',
-              background: 'var(--c2c-green)',
-              border: '2px solid transparent',
+              background: `${service.color}18`,
+              border: `2px solid ${service.color}`,
               display: 'flex', alignItems: 'center', justifyContent: 'center',
-              marginBottom: '2rem', flexShrink: 0, color: '#ffffff',
-              boxShadow: 'none'
+              marginBottom: '1.75rem', flexShrink: 0, color: service.color,
+              boxShadow: `0 8px 24px -6px ${service.color}35`
             }}>
-              <service.icon size={32} />
+              <service.icon size={30} />
             </div>
 
-            <h3 style={{ fontSize: '1.5rem', fontWeight: '600', margin: '0 0 1rem 0', color: 'var(--c2c-text-primary)' }}>
+            <h3 style={{ fontSize: '1.4rem', fontWeight: '600', margin: '0 0 0.85rem 0', color: 'var(--c2c-text-primary)' }}>
               {service.title}
             </h3>
 
-            <p style={{ color: 'var(--c2c-text-secondary)', fontSize: '1.05rem', lineHeight: '1.7', margin: 0, flexGrow: 1 }}>
+            <p style={{ color: 'var(--c2c-text-secondary)', fontSize: '0.98rem', lineHeight: '1.65', margin: 0, flexGrow: 1 }}>
               {service.description}
             </p>
 
             <div style={{
-              marginTop: '2rem',
+              marginTop: '1.75rem',
               display: 'inline-flex',
               alignItems: 'center',
               justifyContent: 'center',
               gap: '0.5rem',
-              background: 'var(--c2c-green)',
-              color: '#0f141d',
-              padding: '0.65rem 2rem',
+              background: service.color,
+              color: '#0a0d14',
+              padding: '0.6rem 1.5rem',
               borderRadius: '999px',
-              fontSize: '0.95rem',
+              fontSize: '0.9rem',
               fontWeight: '700',
               transition: 'all 0.2s ease',
               width: 'fit-content'

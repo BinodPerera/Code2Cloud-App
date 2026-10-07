@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { FileCode, Folder, Download, Save, ArrowLeft, Check, AlertCircle, RefreshCw, Layers, GitCommit, GitBranch, GitMerge, Database, ShieldCheck, Play, Lock, ExternalLink, CloudLightning, Key, Shield, Globe, Zap, Trash2, Plus, Unlock, Eye, EyeOff, KeyRound, FileText, Copy, Server, CheckCircle2 } from 'lucide-react';
+import { FileCode, Folder, Download, Save, ArrowLeft, Check, AlertCircle, RefreshCw, Layers, GitCommit, GitBranch, GitMerge, Database, ShieldCheck, Play, Lock, ExternalLink, CloudLightning, Key, Shield, Globe, Zap, Trash2, Plus, Unlock, Eye, EyeOff, KeyRound, FileText, Copy, Server, CheckCircle2, Terminal, Code2, Cloud } from 'lucide-react';
 import { apiClient } from '../utils/api';
 
 function GenerationViewer() {
@@ -36,7 +36,7 @@ function GenerationViewer() {
   // AWS target compute config states
   const [awsComputeChoice, setAwsComputeChoice] = useState('ec2');
   const [awsInstanceType, setAwsInstanceType] = useState('t3.micro');
-  const [awsUseEip, setAwsUseEip] = useState(false);
+  const [awsUseEip, setAwsUseEip] = useState(true);
   
   // GCP target compute config states
   const [gcpComputeChoice, setGcpComputeChoice] = useState('cloudrun');
@@ -90,9 +90,19 @@ function GenerationViewer() {
   const computedServerUrl = sanitizeIp(rawServerUrl);
   const computedServerIp = sanitizeIp(rawServerIp);
 
+  const isServerLive = !isTornDown && Boolean(
+    (latestDeployRun?.status === 'completed' && latestDeployRun?.conclusion === 'success') ||
+    (liveEndpoints && liveEndpoints.length > 0) ||
+    computedServerIp ||
+    computedServerUrl
+  );
+
   const isDeployRunning = Boolean(
     latestDeployRun && (latestDeployRun.status === 'queued' || latestDeployRun.status === 'in_progress')
   );
+
+  const isCloudDeploy = serviceId === 'terraform' || serviceId === 'cloud_deploy';
+  const isTerraformScriptOnly = serviceId === 'terraform_script' || serviceId === 'terraform_only';
 
   // Direct SCM commit states
   const [commitModalOpen, setCommitModalOpen] = useState(false);
@@ -370,8 +380,8 @@ function GenerationViewer() {
           setLatestRun(deployRun);
           setLatestDestroyRun(destroyRun);
 
-          const destroyed = data.is_destroyed || (destroyRun?.status === 'completed' && destroyRun?.conclusion === 'success');
-          setIsTornDown(Boolean(destroyed));
+          const destroyed = Boolean(data.is_destroyed);
+          setIsTornDown(destroyed);
 
           if (destroyed) {
             setLiveEndpoints([]);
@@ -510,8 +520,10 @@ function GenerationViewer() {
         setServiceId(currentServiceId);
         if (currentServiceId === 'docker') {
           setCommitMessage('ci: Dockerfile created via Code2Cloud');
-        } else if (currentServiceId === 'terraform') {
-          setCommitMessage('ci: add Terraform IaC deployment configurations via Code2Cloud');
+        } else if (currentServiceId === 'terraform_script' || currentServiceId === 'terraform_only') {
+          setCommitMessage('ci: add Terraform IaC scripts via Code2Cloud');
+        } else if (currentServiceId === 'cloud_deploy' || currentServiceId === 'terraform') {
+          setCommitMessage('ci: add cloud deployment configurations via Code2Cloud');
         } else {
           setCommitMessage('ci: add generated deployment configurations via Code2Cloud');
         }
@@ -525,7 +537,7 @@ function GenerationViewer() {
         setGenDbEngine(data.db_engine || 'postgres');
         setAwsComputeChoice(data.aws_compute_choice || 'ec2');
         setAwsInstanceType(data.aws_instance_type || 't3.micro');
-        setAwsUseEip(data.aws_use_eip || false);
+        setAwsUseEip(data.aws_use_eip !== undefined ? data.aws_use_eip : true);
         setGcpComputeChoice(data.gcp_compute_choice || 'cloudrun');
         setGcpMachineType(data.gcp_machine_type || 'e2-micro');
         setGcpUseStaticIp(data.gcp_use_static_ip || false);
@@ -732,196 +744,274 @@ function GenerationViewer() {
   }
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', height: 'calc(100vh - 140px)', gap: '1.5rem' }}>
+    <div style={{ display: 'flex', flexDirection: 'column', height: 'calc(100vh - 120px)', gap: '1rem' }}>
       
-      {/* Header */}
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
-          <button
-            onClick={() => navigate('/services')}
-            style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', background: 'rgba(255,255,255,0.03)', border: '2px solid var(--c2c-border)', color: '#a2a2b5', padding: '0.5rem 1rem', borderRadius: '10px', cursor: 'pointer', transition: 'all 0.2s' }}
-          >
-            <ArrowLeft size={16} />
-            Back
-          </button>
-          <div>
-            <h2 style={{ fontSize: '1.5rem', fontWeight: '600', color: '#fff', margin: 0 }}>
-              {projectName} 
-            </h2>
-            <p style={{ color: '#a2a2b5', fontSize: '0.85rem', margin: 0 }}>Generation ID: {generationId}</p>
+      {/* Top Structured Header */}
+      <div style={{
+        display: 'flex',
+        flexDirection: 'column',
+        gap: '0.65rem',
+        paddingBottom: '0.2rem'
+      }}>
+        {/* Row 1: Breadcrumb & Context Meta */}
+        <div style={{
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          fontSize: '0.8rem',
+          color: '#a2a2b5'
+        }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
+            <button
+              onClick={() => navigate('/services')}
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '0.4rem',
+                background: 'rgba(255, 255, 255, 0.04)',
+                border: '1px solid var(--c2c-border)',
+                color: '#a2a2b5',
+                padding: '0.35rem 0.75rem',
+                borderRadius: '8px',
+                cursor: 'pointer',
+                fontSize: '0.78rem',
+                fontWeight: '500',
+                transition: 'all 0.2s'
+              }}
+              onMouseOver={(e) => {
+                e.currentTarget.style.color = '#fff';
+                e.currentTarget.style.borderColor = 'rgba(255, 255, 255, 0.2)';
+              }}
+              onMouseOut={(e) => {
+                e.currentTarget.style.color = '#a2a2b5';
+                e.currentTarget.style.borderColor = 'var(--c2c-border)';
+              }}
+            >
+              <ArrowLeft size={13} />
+              Back to Services
+            </button>
+
+            <span style={{ color: 'rgba(255, 255, 255, 0.15)' }}>/</span>
+
+            <span style={{ fontSize: '0.78rem', color: '#6e7191', fontFamily: 'monospace' }}>
+              ID: <span style={{ color: '#a2a2b5' }}>{generationId}</span>
+            </span>
+
+            <span style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: '0.35rem',
+              fontSize: '0.7rem',
+              fontWeight: '700',
+              padding: '0.15rem 0.55rem',
+              borderRadius: '999px',
+              background: 'rgba(16, 185, 129, 0.1)',
+              color: '#10B981',
+              border: '1px solid rgba(16, 185, 129, 0.25)',
+              letterSpacing: '0.02em'
+            }}>
+              <span style={{ width: '5px', height: '5px', borderRadius: '50%', background: '#10B981' }}></span>
+              Hot/Cold Synced
+            </span>
+          </div>
+
+          {/* Secondary Utility Actions (Download & Env) */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+            <button
+              onClick={() => setEnvModalOpen(true)}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '0.4rem',
+                background: 'rgba(255, 255, 255, 0.03)',
+                border: '1px solid var(--c2c-border)',
+                color: '#c2c2d6',
+                padding: '0.35rem 0.75rem',
+                borderRadius: '8px',
+                fontWeight: '500',
+                fontSize: '0.78rem',
+                cursor: 'pointer',
+                transition: 'all 0.2s ease'
+              }}
+              onMouseOver={(e) => {
+                e.currentTarget.style.borderColor = 'var(--c2c-green)';
+                e.currentTarget.style.color = '#fff';
+              }}
+              onMouseOut={(e) => {
+                e.currentTarget.style.borderColor = 'var(--c2c-border)';
+                e.currentTarget.style.color = '#c2c2d6';
+              }}
+            >
+              <KeyRound size={13} style={{ color: 'var(--c2c-green)' }} />
+              Env Variables
+            </button>
+
+            {url && (
+              <button
+                onClick={handleDownload}
+                disabled={downloading}
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '0.4rem',
+                  background: 'rgba(255, 255, 255, 0.03)',
+                  border: '1px solid var(--c2c-border)',
+                  color: '#c2c2d6',
+                  padding: '0.35rem 0.75rem',
+                  borderRadius: '8px',
+                  fontWeight: '500',
+                  fontSize: '0.78rem',
+                  cursor: downloading ? 'not-allowed' : 'pointer',
+                  transition: 'all 0.2s ease'
+                }}
+                onMouseOver={(e) => {
+                  e.currentTarget.style.borderColor = 'rgba(255, 255, 255, 0.25)';
+                  e.currentTarget.style.color = '#fff';
+                }}
+                onMouseOut={(e) => {
+                  e.currentTarget.style.borderColor = 'var(--c2c-border)';
+                  e.currentTarget.style.color = '#c2c2d6';
+                }}
+              >
+                {downloading ? (
+                  <RefreshCw size={13} className="loading-spinner" />
+                ) : (
+                  <Download size={13} />
+                )}
+                Download ZIP
+              </button>
+            )}
           </div>
         </div>
 
-        {/* Action Buttons */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', flexShrink: 0 }}>
-          <span style={{ 
-            display: 'inline-flex',
-            alignItems: 'center',
-            fontSize: '0.8rem', 
-            background: 'rgba(16,185,129,0.1)', 
-            color: '#10B981', 
-            padding: '0 1rem', 
-            borderRadius: '12px', 
-            border: '2px solid rgba(16,185,129,0.3)',
-            fontWeight: '600',
-            height: '38px',
-            boxSizing: 'border-box',
-            flexShrink: 0,
-            whiteSpace: 'nowrap'
-          }}>
-            Hot/Cold Synced
-          </span>
-
-          <button
-            onClick={handleSave}
-            disabled={saving}
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: '0.5rem',
-              background: saveSuccess ? 'rgba(16, 185, 129, 0.15)' : 'rgba(255, 255, 255, 0.05)',
-              border: saveSuccess ? '2px solid #10B981' : '2px solid var(--c2c-border)',
-              color: saveSuccess ? '#10B981' : '#fff',
-              padding: '0 1.2rem',
-              borderRadius: '12px',
-              fontWeight: '600',
-              cursor: 'pointer',
-              height: '38px',
-              boxSizing: 'border-box',
-              flexShrink: 0,
-              whiteSpace: 'nowrap',
-              transition: 'all 0.3s ease'
-            }}
-          >
-            {saving ? (
-              <RefreshCw size={16} className="loading-spinner" />
-            ) : saveSuccess ? (
-              <Check size={16} />
-            ) : (
-              <Save size={16} />
-            )}
-            {saving ? 'Saving...' : saveSuccess ? 'Changes Saved!' : 'Save Hot Tier'}
-          </button>
-
-          <button
-            onClick={() => {
-              if (isDeployRunning || committing) return;
-              if (!commitMessage || commitMessage === 'ci: add generated deployment configurations via Code2Cloud') {
-                if (serviceId === 'docker') {
-                  setCommitMessage('ci: Dockerfile created via Code2Cloud');
-                } else if (serviceId === 'terraform') {
-                  setCommitMessage('ci: add Terraform IaC deployment configurations via Code2Cloud');
-                }
-              }
-              setCommitModalOpen(true);
-            }}
-            disabled={isDeployRunning || committing}
-            title={isDeployRunning ? 'Deployment pipeline is currently running. Please wait for completion before committing new changes.' : ''}
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: '0.5rem',
-              background: isDeployRunning ? 'rgba(255, 255, 255, 0.03)' : 'var(--c2c-selected-bg)',
-              border: isDeployRunning ? '2px solid rgba(255, 255, 255, 0.1)' : '2px solid var(--c2c-green)',
-              color: isDeployRunning ? '#6e7191' : 'var(--c2c-green)',
-              padding: '0 1.2rem',
-              borderRadius: '12px',
-              fontWeight: '600',
-              cursor: isDeployRunning || committing ? 'not-allowed' : 'pointer',
-              height: '38px',
-              boxSizing: 'border-box',
-              flexShrink: 0,
-              whiteSpace: 'nowrap',
-              opacity: isDeployRunning ? 0.6 : 1,
-              transition: 'all 0.3s ease'
-            }}
-            onMouseOver={(e) => {
-              if (isDeployRunning) return;
-              e.currentTarget.style.background = 'rgba(16, 185, 129, 0.2)';
-              e.currentTarget.style.borderColor = 'var(--c2c-green)';
-            }}
-            onMouseOut={(e) => {
-              if (isDeployRunning) return;
-              e.currentTarget.style.background = 'var(--c2c-selected-bg)';
-              e.currentTarget.style.borderColor = 'var(--c2c-green)';
-            }}
-          >
-            {isDeployRunning ? (
-              <RefreshCw size={16} style={{ animation: 'spin 1.5s linear infinite' }} />
-            ) : (
-              <GitCommit size={16} />
-            )}
-            {isDeployRunning ? 'Deployment Running...' : (committing ? 'Committing...' : 'Commit to GitHub')}
-          </button>
-
-          <button
-            onClick={() => setEnvModalOpen(true)}
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: '0.5rem',
-              background: 'rgba(255, 255, 255, 0.05)',
-              border: '2px solid var(--c2c-border)',
+        {/* Row 2: Main Project Heading & Primary Action Buttons */}
+        <div style={{
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          gap: '1.5rem'
+        }}>
+          {/* Left: Prominent Project Title */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', minWidth: 0 }}>
+            <h1 style={{
+              fontSize: '1.6rem',
+              fontWeight: '700',
               color: '#fff',
-              padding: '0 1.2rem',
-              borderRadius: '12px',
-              fontWeight: '600',
-              cursor: 'pointer',
-              height: '38px',
-              boxSizing: 'border-box',
-              flexShrink: 0,
+              margin: 0,
+              letterSpacing: '-0.02em',
               whiteSpace: 'nowrap',
-              transition: 'all 0.3s ease'
-            }}
-            onMouseOver={(e) => {
-              e.currentTarget.style.borderColor = 'var(--c2c-green)';
-              e.currentTarget.style.color = 'var(--c2c-green)';
-            }}
-            onMouseOut={(e) => {
-              e.currentTarget.style.borderColor = 'var(--c2c-border)';
-              e.currentTarget.style.color = '#fff';
-            }}
-          >
-            <KeyRound size={16} />
-            Environment Variables
-          </button>
+              overflow: 'hidden',
+              textOverflow: 'ellipsis'
+            }}>
+              {projectName}
+            </h1>
+            <span style={{
+              fontSize: '0.7rem',
+              fontWeight: '700',
+              textTransform: 'uppercase',
+              padding: '0.2rem 0.55rem',
+              borderRadius: '6px',
+              background: 'rgba(255, 255, 255, 0.06)',
+              color: '#a2a2b5',
+              letterSpacing: '0.04em',
+              flexShrink: 0
+            }}>
+              {cloud?.toUpperCase() || 'CLOUD'}
+            </span>
+          </div>
 
-          {url && (
+          {/* Right: Primary Action Buttons */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', flexShrink: 0 }}>
             <button
-              onClick={handleDownload}
-              disabled={downloading}
+              onClick={handleSave}
+              disabled={saving}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '0.45rem',
+                background: saveSuccess ? 'rgba(16, 185, 129, 0.15)' : 'rgba(255, 255, 255, 0.05)',
+                border: saveSuccess ? '1.5px solid #10B981' : '1.5px solid var(--c2c-border)',
+                color: saveSuccess ? '#10B981' : '#fff',
+                padding: '0.5rem 1rem',
+                borderRadius: '10px',
+                fontWeight: '600',
+                fontSize: '0.82rem',
+                cursor: 'pointer',
+                boxSizing: 'border-box',
+                whiteSpace: 'nowrap',
+                transition: 'all 0.2s ease'
+              }}
+              onMouseOver={(e) => {
+                if (!saveSuccess) e.currentTarget.style.borderColor = 'rgba(255, 255, 255, 0.25)';
+              }}
+              onMouseOut={(e) => {
+                if (!saveSuccess) e.currentTarget.style.borderColor = 'var(--c2c-border)';
+              }}
+            >
+              {saving ? (
+                <RefreshCw size={15} className="loading-spinner" />
+              ) : saveSuccess ? (
+                <Check size={15} />
+              ) : (
+                <Save size={15} />
+              )}
+              {saving ? 'Saving...' : saveSuccess ? 'Changes Saved!' : 'Save Hot Tier'}
+            </button>
+
+            <button
+              onClick={() => {
+                if (isDeployRunning || committing) return;
+                if (!commitMessage || commitMessage === 'ci: add generated deployment configurations via Code2Cloud') {
+                  if (serviceId === 'docker') {
+                    setCommitMessage('ci: Dockerfile created via Code2Cloud');
+                  } else if (serviceId === 'terraform_script' || serviceId === 'terraform_only') {
+                    setCommitMessage('ci: add Terraform IaC scripts via Code2Cloud');
+                  } else if (serviceId === 'cloud_deploy' || serviceId === 'terraform') {
+                    setCommitMessage('ci: add cloud deployment configurations via Code2Cloud');
+                  }
+                }
+                setCommitModalOpen(true);
+              }}
+              disabled={isDeployRunning || committing}
+              title={isDeployRunning ? 'Deployment pipeline is currently running. Please wait for completion before committing new changes.' : ''}
               style={{
                 display: 'flex',
                 alignItems: 'center',
                 gap: '0.5rem',
-                background: 'linear-gradient(135deg, var(--c2c-green), var(--c2c-green-hover))',
-                border: '2px solid transparent',
-                color: '#05050a',
-                padding: '0 1.2rem',
-                borderRadius: '12px',
+                background: isDeployRunning ? 'rgba(255, 255, 255, 0.03)' : 'linear-gradient(135deg, rgba(16, 185, 129, 0.18) 0%, rgba(16, 185, 129, 0.08) 100%)',
+                border: isDeployRunning ? '1.5px solid rgba(255, 255, 255, 0.1)' : '1.5px solid var(--c2c-green)',
+                color: isDeployRunning ? '#6e7191' : 'var(--c2c-green)',
+                padding: '0.5rem 1.15rem',
+                borderRadius: '10px',
                 fontWeight: '700',
-                cursor: downloading ? 'not-allowed' : 'pointer',
-                height: '38px',
+                fontSize: '0.85rem',
+                cursor: isDeployRunning || committing ? 'not-allowed' : 'pointer',
                 boxSizing: 'border-box',
-                flexShrink: 0,
                 whiteSpace: 'nowrap',
-                boxShadow: '0 4px 15px rgba(16, 185, 129, 0.25)',
-                transition: 'transform 0.2s',
-                opacity: downloading ? 0.7 : 1
+                opacity: isDeployRunning ? 0.6 : 1,
+                boxShadow: isDeployRunning ? 'none' : '0 2px 10px rgba(16, 185, 129, 0.15)',
+                transition: 'all 0.2s ease'
               }}
-              onMouseOver={(e) => !downloading && (e.currentTarget.style.transform = 'translateY(-2px)')}
-              onMouseOut={(e) => !downloading && (e.currentTarget.style.transform = 'translateY(0)')}
+              onMouseOver={(e) => {
+                if (isDeployRunning) return;
+                e.currentTarget.style.background = 'rgba(16, 185, 129, 0.25)';
+                e.currentTarget.style.transform = 'translateY(-1px)';
+              }}
+              onMouseOut={(e) => {
+                if (isDeployRunning) return;
+                e.currentTarget.style.background = 'linear-gradient(135deg, rgba(16, 185, 129, 0.18) 0%, rgba(16, 185, 129, 0.08) 100%)';
+                e.currentTarget.style.transform = 'translateY(0)';
+              }}
             >
-              {downloading ? (
-                <RefreshCw size={16} className="loading-spinner" />
+              {isDeployRunning ? (
+                <RefreshCw size={15} style={{ animation: 'spin 1.5s linear infinite' }} />
               ) : (
-                <Download size={16} />
+                <GitCommit size={15} />
               )}
-              {downloading ? 'Downloading...' : 'Download ZIP (.zip)'}
+              {isDeployRunning ? 'Deployment Running...' : (committing ? 'Committing...' : (serviceId === 'docker' ? 'Commit to GitHub' : (isTerraformScriptOnly ? 'Commit Terraform' : 'Commit & Deploy')))}
             </button>
-          )}
+          </div>
         </div>
-
       </div>
 
       {/* Editor Body Workspace */}
@@ -1118,9 +1208,9 @@ function GenerationViewer() {
         </div>
 
         {/* Right Sidebar Deployment & Secrets Panel */}
-        {serviceId === 'terraform' && (cloud.toLowerCase() === 'aws' || cloud.toLowerCase() === 'gcp') && (
+        {isCloudDeploy && (cloud.toLowerCase() === 'aws' || cloud.toLowerCase() === 'gcp') && (
           <div style={{
-            width: '340px',
+            width: '360px',
             flexShrink: 0,
             borderLeft: '2px solid var(--c2c-border)',
             padding: '1.5rem',
@@ -1362,7 +1452,7 @@ function GenerationViewer() {
             </div>
 
             {/* Live Cloud Application Endpoints */}
-            {!isTornDown && ((latestDeployRun?.status === 'completed' && latestDeployRun?.conclusion === 'success') || (liveEndpoints && liveEndpoints.length > 0) || computedServerIp || computedServerUrl) && (
+            {isServerLive && (
               <div style={{
                 background: 'linear-gradient(135deg, rgba(16, 185, 129, 0.08) 0%, rgba(13, 27, 42, 0.6) 100%)',
                 border: '1.5px solid rgba(16, 185, 129, 0.35)',
@@ -1514,7 +1604,7 @@ function GenerationViewer() {
                       )}
                     </div>
 
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.65rem' }}>
                       {liveEndpoints.map((ep, idx) => {
                         const isDb = ep.type === 'database';
                         const epUrl = sanitizeIp(ep.url);
@@ -1528,64 +1618,61 @@ function GenerationViewer() {
                           <div
                             key={epKey}
                             style={{
-                              background: 'rgba(255, 255, 255, 0.02)',
-                              border: '1px solid rgba(255, 255, 255, 0.06)',
-                              borderRadius: '10px',
-                              padding: '0.65rem 0.85rem',
+                              background: 'rgba(255, 255, 255, 0.03)',
+                              border: '1px solid rgba(255, 255, 255, 0.08)',
+                              borderRadius: '12px',
+                              padding: '0.75rem 0.85rem',
                               display: 'flex',
-                              alignItems: 'center',
-                              justifyContent: 'space-between',
-                              gap: '0.5rem'
+                              flexDirection: 'column',
+                              gap: '0.55rem',
+                              transition: 'all 0.2s ease'
                             }}
                           >
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', overflow: 'hidden' }}>
-                              <div style={{
-                                width: '28px',
-                                height: '28px',
-                                borderRadius: '8px',
-                                display: 'flex',
-                                alignItems: 'center',
-                                justifyContent: 'center',
-                                background: isDb ? 'rgba(245, 158, 11, 0.15)' : 'rgba(59, 130, 246, 0.15)',
-                                color: isDb ? '#F59E0B' : '#60A5FA',
-                                flexShrink: 0
-                              }}>
-                                {isDb ? <Database size={14} /> : <Server size={14} />}
-                              </div>
-                              <div style={{ display: 'flex', flexDirection: 'column', minWidth: 0 }}>
-                                <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
-                                  <span style={{ fontSize: '0.8rem', fontWeight: '600', color: '#fff', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                                    {ep.name}
+                            {/* Top Row: Service Icon, Name & Type Badge, and Open Button */}
+                            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '0.5rem' }}>
+                              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', minWidth: 0 }}>
+                                <div style={{
+                                  width: '26px',
+                                  height: '26px',
+                                  borderRadius: '7px',
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                  justifyContent: 'center',
+                                  background: isDb ? 'rgba(245, 158, 11, 0.15)' : 'rgba(59, 130, 246, 0.15)',
+                                  color: isDb ? '#F59E0B' : '#60A5FA',
+                                  flexShrink: 0
+                                }}>
+                                  {isDb ? <Database size={14} /> : <Server size={14} />}
+                                </div>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', minWidth: 0 }}>
+                                  <span style={{ fontSize: '0.82rem', fontWeight: '700', color: '#fff', textTransform: 'capitalize' }}>
+                                    {ep.name || (isDb ? 'Database' : 'Service')}
                                   </span>
                                   <span style={{
                                     fontSize: '0.62rem',
                                     fontWeight: '700',
                                     textTransform: 'uppercase',
-                                    padding: '0.1rem 0.35rem',
+                                    padding: '0.12rem 0.4rem',
                                     borderRadius: '4px',
-                                    background: isDb ? 'rgba(245, 158, 11, 0.15)' : 'rgba(16, 185, 129, 0.15)',
-                                    color: isDb ? '#F59E0B' : '#10B981'
+                                    background: isDb ? 'rgba(245, 158, 11, 0.18)' : 'rgba(16, 185, 129, 0.18)',
+                                    color: isDb ? '#F59E0B' : '#10B981',
+                                    letterSpacing: '0.03em'
                                   }}>
                                     {ep.type || 'service'}
                                   </span>
                                 </div>
-                                <span style={{ fontSize: '0.72rem', color: '#a2a2b5', fontFamily: 'monospace', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                                  {epUrl || epEndpoint || epIp || 'Ready'}
-                                </span>
                               </div>
-                            </div>
 
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', flexShrink: 0 }}>
                               {epUrl && (
                                 <a
                                   href={epUrl}
                                   target="_blank"
                                   rel="noopener noreferrer"
-                                  title="Open Service"
+                                  title="Open Service in Browser"
                                   style={{
-                                    padding: '0.35rem 0.55rem',
+                                    padding: '0.25rem 0.6rem',
                                     background: 'rgba(16, 185, 129, 0.15)',
-                                    border: '1px solid rgba(16, 185, 129, 0.3)',
+                                    border: '1px solid rgba(16, 185, 129, 0.35)',
                                     borderRadius: '6px',
                                     color: '#10B981',
                                     fontSize: '0.72rem',
@@ -1593,32 +1680,77 @@ function GenerationViewer() {
                                     display: 'flex',
                                     alignItems: 'center',
                                     gap: '0.25rem',
-                                    textDecoration: 'none'
+                                    textDecoration: 'none',
+                                    flexShrink: 0,
+                                    transition: 'all 0.15s'
+                                  }}
+                                  onMouseOver={(e) => {
+                                    e.currentTarget.style.background = 'rgba(16, 185, 129, 0.25)';
+                                  }}
+                                  onMouseOut={(e) => {
+                                    e.currentTarget.style.background = 'rgba(16, 185, 129, 0.15)';
                                   }}
                                 >
-                                  Open <ExternalLink size={11} />
+                                  Open <ExternalLink size={10} />
                                 </a>
                               )}
+                            </div>
+
+                            {/* Bottom Row: Full Visible Endpoint URL with 1-Click Copy */}
+                            <div style={{
+                              background: 'rgba(0, 0, 0, 0.45)',
+                              border: '1px solid rgba(255, 255, 255, 0.08)',
+                              borderRadius: '8px',
+                              padding: '0.4rem 0.65rem',
+                              display: 'flex',
+                              alignItems: 'center',
+                              justifyContent: 'space-between',
+                              gap: '0.5rem'
+                            }}>
+                              <a
+                                href={epUrl || (epIp ? `http://${epIp}` : '#')}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                title="Open endpoint in browser"
+                                style={{
+                                  fontSize: '0.78rem',
+                                  color: '#34d399',
+                                  fontFamily: 'monospace',
+                                  fontWeight: '600',
+                                  textDecoration: 'none',
+                                  wordBreak: 'break-all',
+                                  lineHeight: '1.3',
+                                  minWidth: 0
+                                }}
+                                onMouseOver={(e) => { e.currentTarget.style.textDecoration = 'underline'; }}
+                                onMouseOut={(e) => { e.currentTarget.style.textDecoration = 'none'; }}
+                              >
+                                {epUrl || epEndpoint || (epIp ? `http://${epIp}` : 'Ready')}
+                              </a>
+
                               {epCopyVal && (
                                 <button
                                   type="button"
                                   onClick={() => handleCopyText(epCopyVal, epKey)}
-                                  title="Copy Connection Info"
+                                  title="Copy URL or IP"
                                   style={{
-                                    padding: '0.35rem 0.55rem',
-                                    background: isCopied ? 'rgba(16, 185, 129, 0.2)' : 'rgba(255, 255, 255, 0.05)',
-                                    border: `1px solid ${isCopied ? '#10B981' : 'rgba(255, 255, 255, 0.1)'}`,
-                                    borderRadius: '6px',
-                                    color: isCopied ? '#10B981' : '#fff',
-                                    fontSize: '0.72rem',
+                                    padding: '0.2rem 0.45rem',
+                                    background: isCopied ? 'rgba(16, 185, 129, 0.25)' : 'rgba(255, 255, 255, 0.06)',
+                                    border: `1px solid ${isCopied ? '#10B981' : 'rgba(255, 255, 255, 0.12)'}`,
+                                    borderRadius: '5px',
+                                    color: isCopied ? '#10B981' : '#a2a2b5',
+                                    fontSize: '0.68rem',
+                                    fontWeight: '600',
                                     display: 'flex',
                                     alignItems: 'center',
                                     gap: '0.25rem',
-                                    cursor: 'pointer'
+                                    cursor: 'pointer',
+                                    flexShrink: 0,
+                                    transition: 'all 0.15s ease'
                                   }}
                                 >
                                   {isCopied ? <Check size={11} /> : <Copy size={11} />}
-                                  {isCopied ? 'Copied' : (isDb ? 'Copy' : 'IP')}
+                                  {isCopied ? 'Copied' : (isDb ? 'Copy' : 'Copy IP')}
                                 </button>
                               )}
                             </div>
@@ -1666,7 +1798,7 @@ function GenerationViewer() {
             )}
 
             {/* Dedicated Teardown Cloud Resources Loading & Status Card */}
-            {(destroying || latestDestroyRun || destroySuccess) && (
+            {(destroying || (latestDestroyRun && (isTornDown || latestDestroyRun?.status !== 'completed')) || destroySuccess) && (
               <div style={{
                 background: 'linear-gradient(135deg, rgba(239, 68, 68, 0.08) 0%, rgba(20, 15, 25, 0.8) 100%)',
                 border: `1.5px solid ${latestDestroyRun?.status === 'completed' && latestDestroyRun?.conclusion === 'success' ? 'rgba(239, 68, 68, 0.35)' : 'rgba(239, 68, 68, 0.6)'}`,
@@ -1834,61 +1966,163 @@ function GenerationViewer() {
               </div>
             )}
 
-            {/* Danger Zone: Cloud Teardown Action */}
-            <div style={{
-              background: 'linear-gradient(135deg, rgba(255, 107, 107, 0.04) 0%, rgba(255, 107, 107, 0.01) 100%)',
-              border: '1.5px solid rgba(255, 107, 107, 0.25)',
-              borderRadius: '20px',
-              padding: '1.25rem',
-              display: 'flex',
-              flexDirection: 'column',
-              gap: '0.8rem'
-            }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', color: '#ff6b6b' }}>
-                <Trash2 size={16} />
-                <span style={{ fontSize: '0.88rem', fontWeight: '700' }}>Teardown Cloud Resources</span>
+            {/* Danger Zone: Cloud Teardown Action - only shown when cloud resources are live or teardown is in progress */}
+            {(isServerLive || destroying || latestDestroyRun?.status === 'in_progress' || latestDestroyRun?.status === 'queued') && (
+              <div style={{
+                background: 'linear-gradient(135deg, rgba(255, 107, 107, 0.04) 0%, rgba(255, 107, 107, 0.01) 100%)',
+                border: '1.5px solid rgba(255, 107, 107, 0.25)',
+                borderRadius: '20px',
+                padding: '1.25rem',
+                display: 'flex',
+                flexDirection: 'column',
+                gap: '0.8rem'
+              }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', color: '#ff6b6b' }}>
+                  <Trash2 size={16} />
+                  <span style={{ fontSize: '0.88rem', fontWeight: '700' }}>Teardown Cloud Resources</span>
+                </div>
+                <p style={{ margin: 0, fontSize: '0.78rem', color: '#a2a2b5', lineHeight: '1.4' }}>
+                  Run <code style={{ color: '#ff8585', background: 'rgba(255,107,107,0.1)', padding: '0.1rem 0.3rem', borderRadius: '4px' }}>terraform destroy</code> via GitHub Actions to delete all provisioned cloud resources and eliminate billing.
+                </p>
+                <button
+                  onClick={() => {
+                    setDestroyModalOpen(true);
+                    setDestroyConfirmInput('');
+                    setDestroyError('');
+                    setDestroySuccess(false);
+                  }}
+                  disabled={destroying || latestDestroyRun?.status === 'in_progress' || latestDestroyRun?.status === 'queued'}
+                  style={{
+                    background: (destroying || latestDestroyRun?.status === 'in_progress') ? 'rgba(255, 255, 255, 0.05)' : 'rgba(255, 107, 107, 0.1)',
+                    border: `1px solid ${(destroying || latestDestroyRun?.status === 'in_progress') ? 'rgba(255, 255, 255, 0.1)' : 'rgba(255, 107, 107, 0.4)'}`,
+                    color: (destroying || latestDestroyRun?.status === 'in_progress') ? '#a2a2b5' : '#ff8585',
+                    padding: '0.55rem 0.8rem',
+                    borderRadius: '10px',
+                    fontSize: '0.8rem',
+                    fontWeight: '600',
+                    cursor: (destroying || latestDestroyRun?.status === 'in_progress') ? 'not-allowed' : 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    gap: '0.4rem',
+                    transition: 'all 0.2s'
+                  }}
+                >
+                  {(destroying || latestDestroyRun?.status === 'in_progress') ? (
+                    <>
+                      <RefreshCw size={14} style={{ animation: 'spin 1.5s linear infinite' }} />
+                      Teardown In Progress...
+                    </>
+                  ) : (
+                    <>
+                      <Trash2 size={14} />
+                      {isTornDown ? 'Re-trigger Teardown' : 'Destroy Infrastructure'}
+                    </>
+                  )}
+                </button>
               </div>
-              <p style={{ margin: 0, fontSize: '0.78rem', color: '#a2a2b5', lineHeight: '1.4' }}>
-                Run <code style={{ color: '#ff8585', background: 'rgba(255,107,107,0.1)', padding: '0.1rem 0.3rem', borderRadius: '4px' }}>terraform destroy</code> via GitHub Actions to delete all provisioned cloud resources and eliminate billing.
+            )}
+
+          </div>
+        )}
+
+        {/* Right Sidebar Terraform Standalone Script Panel */}
+        {isTerraformScriptOnly && (
+          <div style={{
+            width: '360px',
+            flexShrink: 0,
+            borderLeft: '2px solid var(--c2c-border)',
+            padding: '1.5rem',
+            display: 'flex',
+            flexDirection: 'column',
+            gap: '1.5rem',
+            background: 'var(--c2c-nav-bg)',
+            overflowY: 'auto'
+          }}>
+            <div>
+              <h3 style={{ margin: 0, fontSize: '1.1rem', fontWeight: '600', color: '#fff', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                <Terminal size={17} style={{ color: 'var(--c2c-green)' }} />
+                Terraform IaC Guide
+              </h3>
+              <p style={{ margin: '0.2rem 0 0 0', color: '#a2a2b5', fontSize: '0.75rem', lineHeight: '1.3' }}>
+                Standalone Infrastructure as Code scripts generated for {cloud.toUpperCase()}.
               </p>
-              <button
-                onClick={() => {
-                  setDestroyModalOpen(true);
-                  setDestroyConfirmInput('');
-                  setDestroyError('');
-                  setDestroySuccess(false);
-                }}
-                disabled={destroying || latestDestroyRun?.status === 'in_progress' || latestDestroyRun?.status === 'queued'}
-                style={{
-                  background: (destroying || latestDestroyRun?.status === 'in_progress') ? 'rgba(255, 255, 255, 0.05)' : 'rgba(255, 107, 107, 0.1)',
-                  border: `1px solid ${(destroying || latestDestroyRun?.status === 'in_progress') ? 'rgba(255, 255, 255, 0.1)' : 'rgba(255, 107, 107, 0.4)'}`,
-                  color: (destroying || latestDestroyRun?.status === 'in_progress') ? '#a2a2b5' : '#ff8585',
-                  padding: '0.55rem 0.8rem',
-                  borderRadius: '10px',
-                  fontSize: '0.8rem',
-                  fontWeight: '600',
-                  cursor: (destroying || latestDestroyRun?.status === 'in_progress') ? 'not-allowed' : 'pointer',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  gap: '0.4rem',
-                  transition: 'all 0.2s'
-                }}
-              >
-                {(destroying || latestDestroyRun?.status === 'in_progress') ? (
-                  <>
-                    <RefreshCw size={14} style={{ animation: 'spin 1.5s linear infinite' }} />
-                    Teardown In Progress...
-                  </>
-                ) : (
-                  <>
-                    <Trash2 size={14} />
-                    {isTornDown ? 'Re-trigger Teardown' : 'Destroy Infrastructure'}
-                  </>
-                )}
-              </button>
             </div>
 
+            <hr style={{ border: 'none', borderTop: '2px solid var(--c2c-border)', margin: 0 }} />
+
+            {/* Infrastructure Specs Summary */}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', background: 'rgba(255,255,255,0.02)', padding: '0.85rem', borderRadius: '12px', border: '1px solid var(--c2c-border)' }}>
+              <span style={{ fontSize: '0.7rem', fontWeight: '700', color: '#a2a2b5', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Infrastructure Specs</span>
+              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.8rem' }}>
+                <span style={{ color: '#a2a2b5' }}>Provider</span>
+                <span style={{ color: '#fff', fontWeight: '600' }}>{cloud.toUpperCase()}</span>
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.8rem' }}>
+                <span style={{ color: '#a2a2b5' }}>Region</span>
+                <span style={{ color: '#fff', fontWeight: '600' }}>{genRegion || (cloud.toLowerCase() === 'aws' ? 'us-east-1' : 'us-central1')}</span>
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.8rem' }}>
+                <span style={{ color: '#a2a2b5' }}>Environment</span>
+                <span style={{ color: '#fff', fontWeight: '600' }}>{genEnv || 'production'}</span>
+              </div>
+              {genDbEnabled && (
+                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.8rem' }}>
+                  <span style={{ color: '#a2a2b5' }}>Database</span>
+                  <span style={{ color: 'var(--c2c-green)', fontWeight: '600' }}>{genDbEngine.toUpperCase()}</span>
+                </div>
+              )}
+            </div>
+
+            {/* Quick Start Guide */}
+            <div style={{
+              background: 'linear-gradient(135deg, rgba(16, 185, 129, 0.08) 0%, rgba(13, 27, 42, 0.5) 100%)',
+              border: '1.5px solid rgba(16, 185, 129, 0.35)',
+              borderRadius: '16px',
+              padding: '1.1rem',
+              display: 'flex',
+              flexDirection: 'column',
+              gap: '0.75rem'
+            }}>
+              <span style={{ fontSize: '0.85rem', fontWeight: '700', color: '#10B981', display: 'flex', alignItems: 'center', gap: '0.45rem' }}>
+                <Terminal size={15} /> Local Execution Steps
+              </span>
+              <p style={{ margin: 0, fontSize: '0.75rem', color: '#a2a2b5', lineHeight: '1.4' }}>
+                Run these standard Terraform CLI commands inside your repository to review and deploy:
+              </p>
+              <div style={{
+                background: 'rgba(0, 0, 0, 0.45)',
+                borderRadius: '10px',
+                padding: '0.85rem',
+                fontSize: '0.75rem',
+                fontFamily: 'monospace',
+                color: '#e2e2e9',
+                lineHeight: '1.65',
+                border: '1px solid rgba(255,255,255,0.06)'
+              }}>
+                <div style={{ color: '#6e7191' }}># 1. Switch to terraform dir</div>
+                <div style={{ color: '#10B981' }}>cd terraform</div>
+                <div style={{ color: '#6e7191', marginTop: '0.45rem' }}># 2. Initialize provider modules</div>
+                <div style={{ color: '#10B981' }}>terraform init</div>
+                <div style={{ color: '#6e7191', marginTop: '0.45rem' }}># 3. Preview planned resources</div>
+                <div style={{ color: '#10B981' }}>terraform plan</div>
+                <div style={{ color: '#6e7191', marginTop: '0.45rem' }}># 4. Provision infrastructure</div>
+                <div style={{ color: '#10B981' }}>terraform apply</div>
+              </div>
+            </div>
+
+            {/* Standalone Action Hint */}
+            <div style={{
+              background: 'rgba(255, 255, 255, 0.02)',
+              border: '1px dashed var(--c2c-border)',
+              borderRadius: '14px',
+              padding: '0.85rem',
+              fontSize: '0.75rem',
+              color: '#a2a2b5',
+              lineHeight: '1.5'
+            }}>
+              💡 No automated GitHub Actions workflows are generated for this service. You can download the files as a ZIP or commit them directly to GitHub without triggering automated cloud deployments.
+            </div>
           </div>
         )}
       </div>
@@ -2184,12 +2418,14 @@ function GenerationViewer() {
               <div>
                 <h3 style={{ margin: 0, fontSize: '1.35rem', fontWeight: '700', color: '#fff', display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
                   <GitBranch style={{ color: 'var(--c2c-green)' }} />
-                  {serviceId === 'docker' ? 'Commit Docker Configurations to GitHub' : 'Commit & Deploy to GitHub'}
+                  {serviceId === 'docker' ? 'Commit Docker Configurations to GitHub' : (isTerraformScriptOnly ? 'Commit Terraform Scripts to GitHub' : 'Commit & Deploy to GitHub')}
                 </h3>
                 <p style={{ margin: '0.35rem 0 0 0', color: '#a2a2b5', fontSize: '0.85rem' }}>
                   {serviceId === 'docker' 
                     ? 'Commit generated Dockerfile and container configurations directly to your repository.' 
-                    : 'Overlay configurations and automatically provision GitHub Actions secrets.'}
+                    : (isTerraformScriptOnly
+                        ? 'Commit generated Terraform Infrastructure as Code scripts directly to your repository.'
+                        : 'Overlay configurations and automatically provision GitHub Actions secrets.')}
                 </p>
               </div>
               <button
@@ -2270,7 +2506,7 @@ function GenerationViewer() {
                     <GitMerge size={18} style={{ color: '#60a5fa', flexShrink: 0 }} />
                     <span style={{ color: '#e2e2e9', fontSize: '0.82rem' }}>
                       Synchronized with default branch <code style={{ color: '#60a5fa', fontWeight: '600' }}>{commitResult.default_branch}</code>
-                      {commitResult.merged_to_default ? (serviceId === 'docker' ? ' (Dockerfile merged into default branch)' : ' (deployment configurations merged into default branch)') : ''}.
+                      {commitResult.merged_to_default ? (serviceId === 'docker' ? ' (Dockerfile merged into default branch)' : (isTerraformScriptOnly ? ' (Terraform scripts merged into default branch)' : ' (deployment configurations merged into default branch)')) : ''}.
                     </span>
                   </div>
                 )}
@@ -2364,7 +2600,7 @@ function GenerationViewer() {
                       type="text"
                       value={commitMessage}
                       onChange={(e) => setCommitMessage(e.target.value)}
-                      placeholder={serviceId === 'docker' ? 'e.g. ci: Dockerfile created via Code2Cloud' : 'e.g. ci: add cloud setup'}
+                      placeholder={serviceId === 'docker' ? 'e.g. ci: Dockerfile created via Code2Cloud' : (isTerraformScriptOnly ? 'e.g. ci: add Terraform scripts' : 'e.g. ci: add cloud setup')}
                       required
                       style={{
                         background: 'var(--c2c-surface)',
@@ -2421,7 +2657,8 @@ function GenerationViewer() {
                   />
                 </div>
 
-                {/* Cloud Secrets Setup Section */}
+                {/* Cloud Secrets Setup Section - only for automated Cloud Deployment */}
+                {isCloudDeploy && (
                 <div style={{
                   background: 'rgba(0, 0, 0, 0.25)',
                   border: pushSecretsToGitHub ? '1.5px solid rgba(16, 185, 129, 0.35)' : '1.5px solid var(--c2c-border)',
@@ -2663,6 +2900,7 @@ function GenerationViewer() {
                     </div>
                   )}
                 </div>
+                )}
 
                 {/* Modal Actions */}
                 <div style={{ display: 'flex', gap: '1rem', marginTop: '0.25rem' }}>
