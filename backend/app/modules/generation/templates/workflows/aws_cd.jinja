@@ -1,0 +1,126 @@
+name: Continuous Deployment to AWS (Code2Cloud)
+
+on:
+  push:
+    branches:
+      - main
+      - master
+      - Code2Cloud-Deploy
+  workflow_dispatch:
+
+concurrency:
+  group: cd-{% raw %}${{ github.ref }}{% endraw %}
+  cancel-in-progress: true
+
+jobs:
+  deploy-app:
+    name: Build & Update Application
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      # Setup AWS credentials
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: {% raw %}${{ secrets.AWS_ACCESS_KEY_ID }}{% endraw %}
+          aws-secret-access-key: {% raw %}${{ secrets.AWS_SECRET_ACCESS_KEY }}{% endraw %}
+          aws-session-token: {% raw %}${{ secrets.AWS_SESSION_TOKEN }}{% endraw %}
+          aws-region: {{ aws_region | default('us-east-1') }}
+
+      {% if registry_type == 'dockerhub' %}
+      # Log in to Docker Hub
+      - name: Log in to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: {% raw %}${{ secrets.DOCKER_USERNAME }}{% endraw %}
+          password: {% raw %}${{ secrets.DOCKER_PASSWORD }}{% endraw %}
+
+      {% for comp in components %}
+      - name: Build and push {{ comp.name }} to Docker Hub
+        env:
+          DOCKER_USERNAME: {% raw %}${{ secrets.DOCKER_USERNAME }}{% endraw %}
+          IMAGE_NAME: {{ repo_name | lower }}-{{ comp.name }}
+          IMAGE_TAG: {% raw %}${{ github.sha }}{% endraw %}
+        run: |
+          docker build -t $DOCKER_USERNAME/$IMAGE_NAME:$IMAGE_TAG -t $DOCKER_USERNAME/$IMAGE_NAME:latest {{ comp.path }}
+          docker push $DOCKER_USERNAME/$IMAGE_NAME:$IMAGE_TAG
+          docker push $DOCKER_USERNAME/$IMAGE_NAME:latest
+      {% endfor %}
+      {% else %}
+      # Log in to Amazon ECR (Default)
+      - name: Login to Amazon ECR
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v2
+
+      {% for comp in components %}
+      - name: Build and push {{ comp.name }} to Amazon ECR
+        env:
+          ECR_REGISTRY: {% raw %}${{ steps.login-ecr.outputs.registry }}{% endraw %}
+          ECR_REPOSITORY: {{ repo_name | lower }}-{{ comp.name }}
+          IMAGE_TAG: {% raw %}${{ github.sha }}{% endraw %}
+        run: |
+          docker build -t $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG -t $ECR_REGISTRY/$ECR_REPOSITORY:latest {{ comp.path }}
+          docker push $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
+          docker push $ECR_REGISTRY/$ECR_REPOSITORY:latest
+      {% endfor %}
+      {% endif %}
+
+      # In-Place Server Deployment (Zero Terraform, Zero Downtime)
+      {% for comp in components %}
+      {% if comp.aws_compute_choice == 'ec2' or (compute_choice == 'ec2' and not comp.aws_compute_choice) %}
+      - name: Refresh {{ comp.name }} Container on EC2 (In-Place via AWS SSM)
+        env:
+          APP_ENV_VARS_JSON: {% raw %}${{ secrets.APP_ENV_VARS_JSON }}{% endraw %}
+        run: |
+          INSTANCE_ID=$(aws ec2 describe-instances \
+            --filters "Name=tag:Name,Values={{ repo_name }}-{{ comp.name }}" "Name=instance-state-name,Values=running" \
+            --query "Reservations[].Instances[].InstanceId" \
+            --output text --region {{ aws_region | default('us-east-1') }})
+          
+          if [ -n "$INSTANCE_ID" ] && [ "$INSTANCE_ID" != "None" ]; then
+            echo "Found running instance for {{ comp.name }}: $INSTANCE_ID"
+            
+            ENV_B64=$(printf "%s" "$APP_ENV_VARS_JSON" | base64 | tr -d '\n')
+            PY_SCRIPT_B64="aW1wb3J0IGpzb24sIG9zLCBzeXMKY29tcCA9IHN5cy5hcmd2WzFdIGlmIGxlbihzeXMuYXJndikgPiAxIGVsc2UgJ2FwcCcKZW52X2ZpbGUgPSBmJy9vcHQvYXBwL3tjb21wfS5lbnYnCmpzb25fZmlsZSA9ICcvdG1wL2FwcF9lbnZfdmFycy5qc29uJwppZiBvcy5wYXRoLmV4aXN0cyhqc29uX2ZpbGUpOgogICAgdHJ5OgogICAgICAgIHdpdGggb3Blbihqc29uX2ZpbGUsICdyJykgYXMgZjoKICAgICAgICAgICAgZGF0YSA9IGpzb24ubG9hZChmKQogICAgICAgIG5ld192YXJzID0gZGF0YS5nZXQoY29tcCwgZGF0YSBpZiBub3QgYW55KGlzaW5zdGFuY2UodiwgZGljdCkgZm9yIHYgaW4gZGF0YS52YWx1ZXMoKSkgZWxzZSB7fSkKICAgICAgICBpZiBpc2luc3RhbmNlKG5ld192YXJzLCBkaWN0KSBhbmQgbmV3X3ZhcnM6CiAgICAgICAgICAgIGV4aXN0aW5nX2xpbmVzID0gW10KICAgICAgICAgICAgZXhpc3Rpbmdfa2V5cyA9IHNldCgpCiAgICAgICAgICAgIGlmIG9zLnBhdGguZXhpc3RzKGVudl9maWxlKToKICAgICAgICAgICAgICAgIHdpdGggb3BlbihlbnZfZmlsZSwgJ3InKSBhcyBmOgogICAgICAgICAgICAgICAgICAgIGZvciBsaW5lIGluIGY6CiAgICAgICAgICAgICAgICAgICAgICAgIHN0cmlwcGVkID0gbGluZS5zdHJpcCgpCiAgICAgICAgICAgICAgICAgICAgICAgIGlmIHN0cmlwcGVkIGFuZCBub3Qgc3RyaXBwZWQuc3RhcnRzd2l0aCgnIycpIGFuZCAnPScgaW4gc3RyaXBwZWQ6CiAgICAgICAgICAgICAgICAgICAgICAgICAgICBrID0gc3RyaXBwZWQuc3BsaXQoJz0nLCAxKVswXS5zdHJpcCgpCiAgICAgICAgICAgICAgICAgICAgICAgICAgICBpZiBrIGluIG5ld192YXJzOgogICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgIHZhbCA9ICcnIGlmIG5ld192YXJzW2tdIGlzIE5vbmUgZWxzZSBzdHIobmV3X3ZhcnNba10pCiAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgZXhpc3RpbmdfbGluZXMuYXBwZW5kKGYie2t9PXt2YWx9IiArIGNocigxMCkpCiAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgZXhpc3Rpbmdfa2V5cy5hZGQoaykKICAgICAgICAgICAgICAgICAgICAgICAgICAgIGVsc2U6CiAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgZXhpc3RpbmdfbGluZXMuYXBwZW5kKGxpbmUpCiAgICAgICAgICAgICAgICAgICAgICAgIGVsc2U6CiAgICAgICAgICAgICAgICAgICAgICAgICAgICBleGlzdGluZ19saW5lcy5hcHBlbmQobGluZSkKICAgICAgICAgICAgZm9yIGssIHYgaW4gbmV3X3ZhcnMuaXRlbXMoKToKICAgICAgICAgICAgICAgIGlmIGsgbm90IGluIGV4aXN0aW5nX2tleXM6CiAgICAgICAgICAgICAgICAgICAgdmFsID0gJycgaWYgdiBpcyBOb25lIGVsc2Ugc3RyKHYpCiAgICAgICAgICAgICAgICAgICAgZXhpc3RpbmdfbGluZXMuYXBwZW5kKGYie2t9PXt2YWx9IiArIGNocigxMCkpCiAgICAgICAgICAgIG9zLm1ha2VkaXJzKG9zLnBhdGguZGlybmFtZShlbnZfZmlsZSksIGV4aXN0X29rPVRydWUpCiAgICAgICAgICAgIHdpdGggb3BlbihlbnZfZmlsZSwgJ3cnKSBhcyBmOgogICAgICAgICAgICAgICAgZi53cml0ZWxpbmVzKGV4aXN0aW5nX2xpbmVzKQogICAgICAgICAgICBvcy5jaG1vZChlbnZfZmlsZSwgMG82MDApCiAgICAgICAgICAgIHByaW50KGYnU3VjY2Vzc2Z1bGx5IHN5bmNlZCB7bGVuKG5ld192YXJzKX0gdmFyaWFibGVzIHRvIHtlbnZfZmlsZX0nKQogICAgZXhjZXB0IEV4Y2VwdGlvbiBhcyBlOgogICAgICAgIHByaW50KGYnRXJyb3Igc3luY2luZyBlbnYgdmFyczoge2V9JykKICAgICAgICByYWlzZQogICAgZmluYWxseToKICAgICAgICBpZiBvcy5wYXRoLmV4aXN0cyhqc29uX2ZpbGUpOgogICAgICAgICAgICBvcy5yZW1vdmUoanNvbl9maWxlKQo="
+
+            COMMAND_ID=$(aws ssm send-command \
+              --instance-ids "$INSTANCE_ID" \
+              --document-name "AWS-RunShellScript" \
+              --comment "Code2Cloud CD: In-Place Refresh {{ comp.name }} with updated env vars" \
+              --parameters "commands=[
+                \"ACCOUNT_ID=\$(aws sts get-caller-identity --query Account --output text)\",
+                \"REGION={{ aws_region | default('us-east-1') }}\",
+                \"if [ -n '$ENV_B64' ]; then echo '$ENV_B64' | base64 -d > /tmp/app_env_vars.json && echo '$PY_SCRIPT_B64' | base64 -d > /tmp/sync_env.py && python3 /tmp/sync_env.py {{ comp.name }}; rm -f /tmp/sync_env.py /tmp/app_env_vars.json; fi\",
+                {% if registry_type == 'dockerhub' %}
+                \"docker login --username {% raw %}${{ secrets.DOCKER_USERNAME }}{% endraw %} --password {% raw %}${{ secrets.DOCKER_PASSWORD }}{% endraw %}\",
+                \"docker pull {% raw %}${{ secrets.DOCKER_USERNAME }}{% endraw %}/{{ repo_name | lower }}-{{ comp.name }}:latest\",
+                \"docker stop {{ comp.name }} || true\",
+                \"docker rm {{ comp.name }} || true\",
+                \"docker run -d --name {{ comp.name }} --restart always --env-file /opt/app/{{ comp.name }}.env -p 80:{{ comp.port | default(3000) }} {% raw %}${{ secrets.DOCKER_USERNAME }}{% endraw %}/{{ repo_name | lower }}-{{ comp.name }}:latest\"
+                {% else %}
+                \"aws ecr get-login-password --region \$REGION | docker login --username AWS --password-stdin \$ACCOUNT_ID.dkr.ecr.\$REGION.amazonaws.com\",
+                \"docker pull \$ACCOUNT_ID.dkr.ecr.\$REGION.amazonaws.com/{{ repo_name | lower }}-{{ comp.name }}:latest\",
+                \"docker stop {{ comp.name }} || true\",
+                \"docker rm {{ comp.name }} || true\",
+                \"docker run -d --name {{ comp.name }} --restart always --env-file /opt/app/{{ comp.name }}.env -p 80:{{ comp.port | default(3000) }} \$ACCOUNT_ID.dkr.ecr.\$REGION.amazonaws.com/{{ repo_name | lower }}-{{ comp.name }}:latest\"
+                {% endif %}
+              ]" \
+              --query "Command.CommandId" --output text --region {{ aws_region | default('us-east-1') }})
+            echo "SSM Command dispatched: $COMMAND_ID. Waiting for execution..."
+            aws ssm wait command-executed --command-id "$COMMAND_ID" --instance-id "$INSTANCE_ID" --region {{ aws_region | default('us-east-1') }} || echo "Command dispatched successfully."
+          else
+            echo "No running EC2 instance found with tag Name={{ repo_name }}-{{ comp.name }}."
+          fi
+      {% else %}
+      - name: Trigger Rolling Update on ECS Service {{ comp.name }}
+        run: |
+          aws ecs update-service \
+            --cluster {{ repo_name | lower }}-cluster \
+            --service {{ repo_name | lower }}-{{ comp.name }} \
+            --force-new-deployment \
+            --region {{ aws_region | default('us-east-1') }} || true
+      {% endif %}
+      {% endfor %}

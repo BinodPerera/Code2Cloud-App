@@ -15,9 +15,15 @@ app = FastAPI(
 )
 
 # Configure CORS
+origins = {settings.FRONTEND_URL.rstrip('/')}
+if settings.FRONTEND_URL.startswith("http://"):
+    _host = settings.FRONTEND_URL.replace("http://", "").rstrip('/')
+    if ":" not in _host:
+        origins.add(f"http://{_host}:80")
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[settings.FRONTEND_URL],
+    allow_origins=list(origins),
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

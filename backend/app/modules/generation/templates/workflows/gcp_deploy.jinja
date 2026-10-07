@@ -12,6 +12,10 @@ on:
         default: false
         type: boolean
 
+concurrency:
+  group: deploy-{{ branch }}
+  cancel-in-progress: true
+
 jobs:
   deploy:
     name: Build & Deploy to GCP
@@ -112,3 +116,35 @@ jobs:
         env:
           TF_VAR_app_env_vars: {% raw %}${{ secrets.APP_ENV_VARS_JSON }}{% endraw %}
         run: terraform apply -auto-approve -no-color
+
+      # Capture and publish live deployment endpoints for Code2Cloud
+      - name: Publish Live Deployment Endpoints
+        working-directory: ./terraform
+        run: |
+          echo "### 🚀 Live Cloud Deployment Endpoints" >> $GITHUB_STEP_SUMMARY
+          
+          {% for comp in components %}
+          {% if comp.gcp_compute_choice == 'gce' or (compute_choice == 'gce' and not comp.gcp_compute_choice) %}
+          IP_{{ comp.name | replace('-', '_') | upper }}=$(terraform output -raw {{ comp.name }}_public_ip 2>/dev/null || echo "")
+          if [ -n "$IP_{{ comp.name | replace('-', '_') | upper }}" ] && [ "$IP_{{ comp.name | replace('-', '_') | upper }}" != "null" ]; then
+            URL="http://$IP_{{ comp.name | replace('-', '_') | upper }}"
+            echo "::notice title={{ comp.name }} Endpoint::$URL"
+            echo "::notice title={{ comp.name }} IP::$IP_{{ comp.name | replace('-', '_') | upper }}"
+            echo "- **{{ comp.name }}** (\`{{ comp.type }}\`): [$URL]($URL) (IP: \`$IP_{{ comp.name | replace('-', '_') | upper }}\`)" >> $GITHUB_STEP_SUMMARY
+          fi
+          {% else %}
+          URL_{{ comp.name | replace('-', '_') | upper }}=$(terraform output -raw {{ comp.name }}_service_url 2>/dev/null || echo "")
+          if [ -n "$URL_{{ comp.name | replace('-', '_') | upper }}" ] && [ "$URL_{{ comp.name | replace('-', '_') | upper }}" != "null" ]; then
+            echo "::notice title={{ comp.name }} Endpoint::$URL_{{ comp.name | replace('-', '_') | upper }}"
+            echo "- **{{ comp.name }}** (\`{{ comp.type }}\`): [$URL_{{ comp.name | replace('-', '_') | upper }}]($URL_{{ comp.name | replace('-', '_') | upper }})" >> $GITHUB_STEP_SUMMARY
+          fi
+          {% endif %}
+          {% endfor %}
+
+          {% if db_enabled %}
+          SQL_IP=$(terraform output -raw cloud_sql_public_ip 2>/dev/null || echo "")
+          if [ -n "$SQL_IP" ] && [ "$SQL_IP" != "null" ]; then
+            echo "::notice title=Database Endpoint::$SQL_IP"
+            echo "- **Cloud SQL Database**: \`$SQL_IP\`" >> $GITHUB_STEP_SUMMARY
+          fi
+          {% endif %}

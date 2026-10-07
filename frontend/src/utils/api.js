@@ -21,6 +21,16 @@ export const decodeToken = (token) => {
 };
 
 /**
+ * Get API Base URL dynamically from runtime config or build-time env
+ */
+export const getApiBaseUrl = () => {
+  if (typeof window !== 'undefined' && window.__RUNTIME_CONFIG__?.VITE_API_BASE_URL) {
+    return window.__RUNTIME_CONFIG__.VITE_API_BASE_URL;
+  }
+  return import.meta.env.VITE_API_BASE_URL || '';
+};
+
+/**
  * API Client wrapper to handle global errors and auth headers
  */
 class ApiClient {
@@ -55,14 +65,14 @@ class ApiClient {
       headers,
     };
 
-    const baseUrl = import.meta.env.VITE_API_BASE_URL || '';
+    const baseUrl = getApiBaseUrl();
     const url = endpoint.startsWith('http') ? endpoint : `${baseUrl}${endpoint}`;
 
     try {
       const response = await fetch(url, config);
 
-      if (response.status === 401) {
-        console.warn('Unauthorized request detected (401). Logging out...');
+      if (response.status === 401 || response.status === 403) {
+        console.warn(`Unauthorized/Forbidden request detected (${response.status}). Logging out...`);
         if (this.logoutHandler) {
           this.logoutHandler();
         }

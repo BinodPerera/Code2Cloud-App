@@ -204,7 +204,9 @@ class TechStackAnalyzer:
                                         "path": path,
                                         "type": cmp_type,
                                         "libraries": list(set(component_libraries)),
-                                        "port": spring_port
+                                        "port": spring_port,
+                                        "has_manifest": True,
+                                        "manifest_file": path.split("/")[-1]
                                     })
                         except Exception:
                             continue
@@ -314,7 +316,10 @@ class TechStackAnalyzer:
                     "path": component_path,
                     "type": cmp_type,
                     "libraries": [],
-                    "port": port
+                    "port": port,
+                    "has_manifest": False,
+                    "manifest_file": None,
+                    "alt_manifest": filename
                 })
         
         if found_alt_components:
@@ -348,7 +353,7 @@ class TechStackAnalyzer:
         # 3. Detect framework and library based on entrypoints
         # For Python:
         if primary_ext == "py":
-            python_entrypoints = ["main.py", "app.py", "manage.py", "wsgi.py"]
+            python_entrypoints = ["main.py", "app.py", "manage.py", "wsgi.py", "server.py"]
             entrypoint_item = None
             for item in tree_items:
                 path = item.get("path", "")
@@ -358,6 +363,16 @@ class TechStackAnalyzer:
                 if filename in python_entrypoints:
                     entrypoint_item = item
                     break
+            
+            # If standard entrypoint not found, find the first python file in repo (excluding tests)
+            if not entrypoint_item:
+                for item in tree_items:
+                    path = item.get("path", "")
+                    if any(p in path.split("/") for p in ["node_modules", "venv", ".venv", ".git", "test", "tests"]):
+                        continue
+                    if path.endswith(".py"):
+                        entrypoint_item = item
+                        break
             
             libraries = []
             port = 8000
@@ -386,18 +401,22 @@ class TechStackAnalyzer:
             
             comp_path = "." if not entrypoint_item or "/" not in entrypoint_item.get("path") else entrypoint_item.get("path").rsplit("/", 1)[0]
             comp_name = "Root" if comp_path == "." else comp_path
+            entrypoint_filename = entrypoint_item.get("path").split("/")[-1] if entrypoint_item else "main.py"
             
             return [{
                 "name": comp_name,
                 "path": comp_path,
                 "type": "Python",
                 "libraries": libraries,
-                "port": port
+                "port": port,
+                "has_manifest": False,
+                "manifest_file": None,
+                "entrypoint": entrypoint_filename
             }]
             
         # For NodeJS:
         elif primary_ext in ["js", "ts"]:
-            node_entrypoints = ["index.js", "server.js", "main.js", "index.ts", "server.ts"]
+            node_entrypoints = ["index.js", "server.js", "main.js", "index.ts", "server.ts", "app.js", "app.ts"]
             entrypoint_item = None
             for item in tree_items:
                 path = item.get("path", "")
@@ -407,6 +426,16 @@ class TechStackAnalyzer:
                 if filename in node_entrypoints:
                     entrypoint_item = item
                     break
+            
+            # If standard entrypoint not found, find the first javascript/typescript file in repo
+            if not entrypoint_item:
+                for item in tree_items:
+                    path = item.get("path", "")
+                    if any(p in path.split("/") for p in ["node_modules", "venv", ".venv", ".git", "test", "tests"]):
+                        continue
+                    if path.endswith(".js") or path.endswith(".ts"):
+                        entrypoint_item = item
+                        break
             
             libraries = []
             port = 3000
@@ -433,13 +462,17 @@ class TechStackAnalyzer:
             
             comp_path = "." if not entrypoint_item or "/" not in entrypoint_item.get("path") else entrypoint_item.get("path").rsplit("/", 1)[0]
             comp_name = "Root" if comp_path == "." else comp_path
+            entrypoint_filename = entrypoint_item.get("path").split("/")[-1] if entrypoint_item else "index.js"
                     
             return [{
                 "name": comp_name,
                 "path": comp_path,
                 "type": "NodeJS / Javascript",
                 "libraries": libraries,
-                "port": port
+                "port": port,
+                "has_manifest": False,
+                "manifest_file": None,
+                "entrypoint": entrypoint_filename
             }]
 
         # For Java:

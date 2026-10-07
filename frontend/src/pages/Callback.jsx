@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
+import { getApiBaseUrl } from '../utils/api';
 
 function Callback() {
   const [searchParams] = useSearchParams();
@@ -34,8 +35,9 @@ function Callback() {
 
   const exchangeCodeForToken = async (code) => {
     setIsProcessingCode(true);
+    const apiBase = getApiBaseUrl();
     try {
-      const response = await fetch(`${import.meta.env.VITE_API_BASE_URL}/auth/github/callback?code=${code}`, {
+      const response = await fetch(`${apiBase}/auth/github/callback?code=${code}`, {
         method: 'GET',
         headers: {
           'Accept': 'application/json'

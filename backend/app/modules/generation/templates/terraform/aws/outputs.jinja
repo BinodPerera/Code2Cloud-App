@@ -19,6 +19,11 @@ output "{{ comp.name }}_public_ip" {
   description = "Public IP address of the {{ comp.name }} virtual machine"
   value       = {% if comp.use_eip or (use_eip and loop.first) %}aws_eip.{{ comp.name }}_eip.public_ip{% else %}aws_instance.{{ comp.name }}.public_ip{% endif %}
 }
+
+output "{{ comp.name }}_instance_id" {
+  description = "EC2 instance ID for {{ comp.name }} virtual machine"
+  value       = aws_instance.{{ comp.name }}.id
+}
 {% endif %}
 {% endfor %}
 

@@ -1,28 +1,31 @@
 # Stage 1: Build
 FROM node:22-alpine AS build
 WORKDIR /app
+
+# Optional build-time argument
+ARG VITE_API_BASE_URL
+ENV VITE_API_BASE_URL=$VITE_API_BASE_URL
+
 COPY package*.json ./
 RUN npm ci
 COPY . .
-# Optional: run build if a frontend asset or typescript build script exists
-RUN npm run build --if-present
-
-# --- Production Stage ---
-FROM node:18-alpine
-WORKDIR /app
-ENV NODE_ENV=production
-COPY package*.json ./
-RUN npm ci --only=production
-COPY --from=builder /app ./
-
 RUN npm run build
 
 # Stage 2: Serve
 FROM nginx:alpine
+WORKDIR /usr/share/nginx/html
+
 # Copy build artifacts to nginx public html
 COPY --from=build /app/dist /usr/share/nginx/html
-# Custom nginx conf for supporting React Router history API rules maps
+
+# Custom nginx conf and template for supporting dynamic reverse proxy
 COPY nginx.conf /etc/nginx/conf.d/default.conf
+COPY nginx.conf.template /etc/nginx/templates/default.conf.template
+
+# Runtime entrypoint to inject container environment variables
+COPY docker-entrypoint.sh /docker-entrypoint.sh
+RUN chmod +x /docker-entrypoint.sh
 
 EXPOSE 80 3000
+ENTRYPOINT ["/docker-entrypoint.sh"]
 CMD ["nginx", "-g", "daemon off;"]
