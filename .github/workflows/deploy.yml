@@ -216,3 +216,33 @@ jobs:
           fi
       
       
+
+      # Capture and publish live deployment endpoints for Code2Cloud
+      - name: Publish Live Deployment Endpoints
+        working-directory: ./terraform
+        run: |
+          echo "### 🚀 Live Cloud Deployment Endpoints" >> $GITHUB_STEP_SUMMARY
+          
+          
+          
+          IP_BACKEND=$(terraform output -raw backend_public_ip 2>/dev/null || echo "")
+          if [ -n "$IP_BACKEND" ] && [ "$IP_BACKEND" != "null" ]; then
+            URL="http://$IP_BACKEND"
+            echo "::notice title=backend Endpoint::$URL"
+            echo "::notice title=backend IP::$IP_BACKEND"
+            echo "- **backend** (\`Python\`): [$URL]($URL) (IP: \`$IP_BACKEND\`)" >> $GITHUB_STEP_SUMMARY
+          fi
+          
+          
+          
+          IP_FRONTEND=$(terraform output -raw frontend_public_ip 2>/dev/null || echo "")
+          if [ -n "$IP_FRONTEND" ] && [ "$IP_FRONTEND" != "null" ]; then
+            URL="http://$IP_FRONTEND"
+            echo "::notice title=frontend Endpoint::$URL"
+            echo "::notice title=frontend IP::$IP_FRONTEND"
+            echo "- **frontend** (\`NodeJS / Javascript\`): [$URL]($URL) (IP: \`$IP_FRONTEND\`)" >> $GITHUB_STEP_SUMMARY
+          fi
+          
+          
+
+          

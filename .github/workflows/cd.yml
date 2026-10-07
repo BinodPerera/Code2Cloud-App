@@ -76,7 +76,7 @@ jobs:
             
             ENV_B64=$(printf "%s" "$APP_ENV_VARS_JSON" | base64 | tr -d '\n')
             PY_SCRIPT_B64="aW1wb3J0IGpzb24sIG9zLCBzeXMKY29tcCA9IHN5cy5hcmd2WzFdIGlmIGxlbihzeXMuYXJndikgPiAxIGVsc2UgJ2FwcCcKZW52X2ZpbGUgPSBmJy9vcHQvYXBwL3tjb21wfS5lbnYnCmpzb25fZmlsZSA9ICcvdG1wL2FwcF9lbnZfdmFycy5qc29uJwppZiBvcy5wYXRoLmV4aXN0cyhqc29uX2ZpbGUpOgogICAgdHJ5OgogICAgICAgIHdpdGggb3Blbihqc29uX2ZpbGUsICdyJykgYXMgZjoKICAgICAgICAgICAgZGF0YSA9IGpzb24ubG9hZChmKQogICAgICAgIG5ld192YXJzID0gZGF0YS5nZXQoY29tcCwgZGF0YSBpZiBub3QgYW55KGlzaW5zdGFuY2UodiwgZGljdCkgZm9yIHYgaW4gZGF0YS52YWx1ZXMoKSkgZWxzZSB7fSkKICAgICAgICBpZiBpc2luc3RhbmNlKG5ld192YXJzLCBkaWN0KSBhbmQgbmV3X3ZhcnM6CiAgICAgICAgICAgIGV4aXN0aW5nX2xpbmVzID0gW10KICAgICAgICAgICAgZXhpc3Rpbmdfa2V5cyA9IHNldCgpCiAgICAgICAgICAgIGlmIG9zLnBhdGguZXhpc3RzKGVudl9maWxlKToKICAgICAgICAgICAgICAgIHdpdGggb3BlbihlbnZfZmlsZSwgJ3InKSBhcyBmOgogICAgICAgICAgICAgICAgICAgIGZvciBsaW5lIGluIGY6CiAgICAgICAgICAgICAgICAgICAgICAgIHN0cmlwcGVkID0gbGluZS5zdHJpcCgpCiAgICAgICAgICAgICAgICAgICAgICAgIGlmIHN0cmlwcGVkIGFuZCBub3Qgc3RyaXBwZWQuc3RhcnRzd2l0aCgnIycpIGFuZCAnPScgaW4gc3RyaXBwZWQ6CiAgICAgICAgICAgICAgICAgICAgICAgICAgICBrID0gc3RyaXBwZWQuc3BsaXQoJz0nLCAxKVswXS5zdHJpcCgpCiAgICAgICAgICAgICAgICAgICAgICAgICAgICBpZiBrIGluIG5ld192YXJzOgogICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgIHZhbCA9ICcnIGlmIG5ld192YXJzW2tdIGlzIE5vbmUgZWxzZSBzdHIobmV3X3ZhcnNba10pCiAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgZXhpc3RpbmdfbGluZXMuYXBwZW5kKGYie2t9PXt2YWx9IiArIGNocigxMCkpCiAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgZXhpc3Rpbmdfa2V5cy5hZGQoaykKICAgICAgICAgICAgICAgICAgICAgICAgICAgIGVsc2U6CiAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgZXhpc3RpbmdfbGluZXMuYXBwZW5kKGxpbmUpCiAgICAgICAgICAgICAgICAgICAgICAgIGVsc2U6CiAgICAgICAgICAgICAgICAgICAgICAgICAgICBleGlzdGluZ19saW5lcy5hcHBlbmQobGluZSkKICAgICAgICAgICAgZm9yIGssIHYgaW4gbmV3X3ZhcnMuaXRlbXMoKToKICAgICAgICAgICAgICAgIGlmIGsgbm90IGluIGV4aXN0aW5nX2tleXM6CiAgICAgICAgICAgICAgICAgICAgdmFsID0gJycgaWYgdiBpcyBOb25lIGVsc2Ugc3RyKHYpCiAgICAgICAgICAgICAgICAgICAgZXhpc3RpbmdfbGluZXMuYXBwZW5kKGYie2t9PXt2YWx9IiArIGNocigxMCkpCiAgICAgICAgICAgIG9zLm1ha2VkaXJzKG9zLnBhdGguZGlybmFtZShlbnZfZmlsZSksIGV4aXN0X29rPVRydWUpCiAgICAgICAgICAgIHdpdGggb3BlbihlbnZfZmlsZSwgJ3cnKSBhcyBmOgogICAgICAgICAgICAgICAgZi53cml0ZWxpbmVzKGV4aXN0aW5nX2xpbmVzKQogICAgICAgICAgICBvcy5jaG1vZChlbnZfZmlsZSwgMG82MDApCiAgICAgICAgICAgIHByaW50KGYnU3VjY2Vzc2Z1bGx5IHN5bmNlZCB7bGVuKG5ld192YXJzKX0gdmFyaWFibGVzIHRvIHtlbnZfZmlsZX0nKQogICAgZXhjZXB0IEV4Y2VwdGlvbiBhcyBlOgogICAgICAgIHByaW50KGYnRXJyb3Igc3luY2luZyBlbnYgdmFyczoge2V9JykKICAgICAgICByYWlzZQogICAgZmluYWxseToKICAgICAgICBpZiBvcy5wYXRoLmV4aXN0cyhqc29uX2ZpbGUpOgogICAgICAgICAgICBvcy5yZW1vdmUoanNvbl9maWxlKQo="
-            
+
             COMMAND_ID=$(aws ssm send-command \
               --instance-ids "$INSTANCE_ID" \
               --document-name "AWS-RunShellScript" \
@@ -85,11 +85,13 @@ jobs:
                 \"ACCOUNT_ID=\$(aws sts get-caller-identity --query Account --output text)\",
                 \"REGION=us-east-1\",
                 \"if [ -n '$ENV_B64' ]; then echo '$ENV_B64' | base64 -d > /tmp/app_env_vars.json && echo '$PY_SCRIPT_B64' | base64 -d > /tmp/sync_env.py && python3 /tmp/sync_env.py backend; rm -f /tmp/sync_env.py /tmp/app_env_vars.json; fi\",
+                
                 \"aws ecr get-login-password --region \$REGION | docker login --username AWS --password-stdin \$ACCOUNT_ID.dkr.ecr.\$REGION.amazonaws.com\",
                 \"docker pull \$ACCOUNT_ID.dkr.ecr.\$REGION.amazonaws.com/code2cloud-app-backend:latest\",
                 \"docker stop backend || true\",
                 \"docker rm backend || true\",
                 \"docker run -d --name backend --restart always --env-file /opt/app/backend.env -p 80:8000 \$ACCOUNT_ID.dkr.ecr.\$REGION.amazonaws.com/code2cloud-app-backend:latest\"
+                
               ]" \
               --query "Command.CommandId" --output text --region us-east-1)
             echo "SSM Command dispatched: $COMMAND_ID. Waiting for execution..."
@@ -114,7 +116,7 @@ jobs:
             
             ENV_B64=$(printf "%s" "$APP_ENV_VARS_JSON" | base64 | tr -d '\n')
             PY_SCRIPT_B64="aW1wb3J0IGpzb24sIG9zLCBzeXMKY29tcCA9IHN5cy5hcmd2WzFdIGlmIGxlbihzeXMuYXJndikgPiAxIGVsc2UgJ2FwcCcKZW52X2ZpbGUgPSBmJy9vcHQvYXBwL3tjb21wfS5lbnYnCmpzb25fZmlsZSA9ICcvdG1wL2FwcF9lbnZfdmFycy5qc29uJwppZiBvcy5wYXRoLmV4aXN0cyhqc29uX2ZpbGUpOgogICAgdHJ5OgogICAgICAgIHdpdGggb3Blbihqc29uX2ZpbGUsICdyJykgYXMgZjoKICAgICAgICAgICAgZGF0YSA9IGpzb24ubG9hZChmKQogICAgICAgIG5ld192YXJzID0gZGF0YS5nZXQoY29tcCwgZGF0YSBpZiBub3QgYW55KGlzaW5zdGFuY2UodiwgZGljdCkgZm9yIHYgaW4gZGF0YS52YWx1ZXMoKSkgZWxzZSB7fSkKICAgICAgICBpZiBpc2luc3RhbmNlKG5ld192YXJzLCBkaWN0KSBhbmQgbmV3X3ZhcnM6CiAgICAgICAgICAgIGV4aXN0aW5nX2xpbmVzID0gW10KICAgICAgICAgICAgZXhpc3Rpbmdfa2V5cyA9IHNldCgpCiAgICAgICAgICAgIGlmIG9zLnBhdGguZXhpc3RzKGVudl9maWxlKToKICAgICAgICAgICAgICAgIHdpdGggb3BlbihlbnZfZmlsZSwgJ3InKSBhcyBmOgogICAgICAgICAgICAgICAgICAgIGZvciBsaW5lIGluIGY6CiAgICAgICAgICAgICAgICAgICAgICAgIHN0cmlwcGVkID0gbGluZS5zdHJpcCgpCiAgICAgICAgICAgICAgICAgICAgICAgIGlmIHN0cmlwcGVkIGFuZCBub3Qgc3RyaXBwZWQuc3RhcnRzd2l0aCgnIycpIGFuZCAnPScgaW4gc3RyaXBwZWQ6CiAgICAgICAgICAgICAgICAgICAgICAgICAgICBrID0gc3RyaXBwZWQuc3BsaXQoJz0nLCAxKVswXS5zdHJpcCgpCiAgICAgICAgICAgICAgICAgICAgICAgICAgICBpZiBrIGluIG5ld192YXJzOgogICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgIHZhbCA9ICcnIGlmIG5ld192YXJzW2tdIGlzIE5vbmUgZWxzZSBzdHIobmV3X3ZhcnNba10pCiAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgZXhpc3RpbmdfbGluZXMuYXBwZW5kKGYie2t9PXt2YWx9IiArIGNocigxMCkpCiAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgZXhpc3Rpbmdfa2V5cy5hZGQoaykKICAgICAgICAgICAgICAgICAgICAgICAgICAgIGVsc2U6CiAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgZXhpc3RpbmdfbGluZXMuYXBwZW5kKGxpbmUpCiAgICAgICAgICAgICAgICAgICAgICAgIGVsc2U6CiAgICAgICAgICAgICAgICAgICAgICAgICAgICBleGlzdGluZ19saW5lcy5hcHBlbmQobGluZSkKICAgICAgICAgICAgZm9yIGssIHYgaW4gbmV3X3ZhcnMuaXRlbXMoKToKICAgICAgICAgICAgICAgIGlmIGsgbm90IGluIGV4aXN0aW5nX2tleXM6CiAgICAgICAgICAgICAgICAgICAgdmFsID0gJycgaWYgdiBpcyBOb25lIGVsc2Ugc3RyKHYpCiAgICAgICAgICAgICAgICAgICAgZXhpc3RpbmdfbGluZXMuYXBwZW5kKGYie2t9PXt2YWx9IiArIGNocigxMCkpCiAgICAgICAgICAgIG9zLm1ha2VkaXJzKG9zLnBhdGguZGlybmFtZShlbnZfZmlsZSksIGV4aXN0X29rPVRydWUpCiAgICAgICAgICAgIHdpdGggb3BlbihlbnZfZmlsZSwgJ3cnKSBhcyBmOgogICAgICAgICAgICAgICAgZi53cml0ZWxpbmVzKGV4aXN0aW5nX2xpbmVzKQogICAgICAgICAgICBvcy5jaG1vZChlbnZfZmlsZSwgMG82MDApCiAgICAgICAgICAgIHByaW50KGYnU3VjY2Vzc2Z1bGx5IHN5bmNlZCB7bGVuKG5ld192YXJzKX0gdmFyaWFibGVzIHRvIHtlbnZfZmlsZX0nKQogICAgZXhjZXB0IEV4Y2VwdGlvbiBhcyBlOgogICAgICAgIHByaW50KGYnRXJyb3Igc3luY2luZyBlbnYgdmFyczoge2V9JykKICAgICAgICByYWlzZQogICAgZmluYWxseToKICAgICAgICBpZiBvcy5wYXRoLmV4aXN0cyhqc29uX2ZpbGUpOgogICAgICAgICAgICBvcy5yZW1vdmUoanNvbl9maWxlKQo="
-            
+
             COMMAND_ID=$(aws ssm send-command \
               --instance-ids "$INSTANCE_ID" \
               --document-name "AWS-RunShellScript" \
@@ -123,11 +125,13 @@ jobs:
                 \"ACCOUNT_ID=\$(aws sts get-caller-identity --query Account --output text)\",
                 \"REGION=us-east-1\",
                 \"if [ -n '$ENV_B64' ]; then echo '$ENV_B64' | base64 -d > /tmp/app_env_vars.json && echo '$PY_SCRIPT_B64' | base64 -d > /tmp/sync_env.py && python3 /tmp/sync_env.py frontend; rm -f /tmp/sync_env.py /tmp/app_env_vars.json; fi\",
+                
                 \"aws ecr get-login-password --region \$REGION | docker login --username AWS --password-stdin \$ACCOUNT_ID.dkr.ecr.\$REGION.amazonaws.com\",
                 \"docker pull \$ACCOUNT_ID.dkr.ecr.\$REGION.amazonaws.com/code2cloud-app-frontend:latest\",
                 \"docker stop frontend || true\",
                 \"docker rm frontend || true\",
                 \"docker run -d --name frontend --restart always --env-file /opt/app/frontend.env -p 80:3000 \$ACCOUNT_ID.dkr.ecr.\$REGION.amazonaws.com/code2cloud-app-frontend:latest\"
+                
               ]" \
               --query "Command.CommandId" --output text --region us-east-1)
             echo "SSM Command dispatched: $COMMAND_ID. Waiting for execution..."
