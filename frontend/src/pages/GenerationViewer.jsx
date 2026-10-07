@@ -135,6 +135,23 @@ function GenerationViewer() {
   const [destroySuccessMsg, setDestroySuccessMsg] = useState('');
   const [mergeToDefault, setMergeToDefault] = useState(true);
 
+  const isTeardownRunning = Boolean(
+    destroying ||
+    (destroySuccess && (!latestDestroyRun || latestDestroyRun.status !== 'completed')) ||
+    (latestDestroyRun && (latestDestroyRun.status === 'queued' || latestDestroyRun.status === 'in_progress'))
+  );
+
+  const isTeardownSuccess = Boolean(
+    isTornDown ||
+    (!isTeardownRunning && latestDestroyRun?.status === 'completed' && latestDestroyRun?.conclusion === 'success')
+  );
+
+  const isTeardownFailed = Boolean(
+    !isTeardownRunning &&
+    latestDestroyRun?.status === 'completed' &&
+    latestDestroyRun?.conclusion !== 'success'
+  );
+
   // Post-Deployment Environment Variables state
   const [envModalOpen, setEnvModalOpen] = useState(false);
   const [postDeployEnvVars, setPostDeployEnvVars] = useState({});
@@ -286,6 +303,7 @@ function GenerationViewer() {
       const resData = await res.json();
       setDestroySuccessMsg(resData.message || 'The destroy.yml workflow was triggered on GitHub Actions.');
       setDestroySuccess(true);
+      setLatestDestroyRun(null);
       setDestroyModalOpen(false);
       setPolling(true);
       setTimeout(() => {
@@ -1818,16 +1836,16 @@ function GenerationViewer() {
             )}
 
             {/* Dedicated Teardown Cloud Resources Loading & Status Card */}
-            {(destroying || (latestDestroyRun && (isTornDown || latestDestroyRun?.status !== 'completed')) || destroySuccess) && (
+            {(isTeardownRunning || isTeardownSuccess || isTeardownFailed) && (
               <div style={{
                 background: 'linear-gradient(135deg, rgba(239, 68, 68, 0.08) 0%, rgba(20, 15, 25, 0.8) 100%)',
-                border: `1.5px solid ${latestDestroyRun?.status === 'completed' && latestDestroyRun?.conclusion === 'success' ? 'rgba(239, 68, 68, 0.35)' : 'rgba(239, 68, 68, 0.6)'}`,
+                border: `1.5px solid ${isTeardownSuccess ? 'rgba(239, 68, 68, 0.35)' : (isTeardownRunning ? 'rgba(245, 158, 11, 0.5)' : 'rgba(239, 68, 68, 0.6)')}`,
                 borderRadius: '20px',
                 padding: '1.25rem',
                 display: 'flex',
                 flexDirection: 'column',
                 gap: '0.9rem',
-                boxShadow: (destroying || latestDestroyRun?.status === 'in_progress') ? '0 0 25px rgba(239, 68, 68, 0.25)' : 'none'
+                boxShadow: isTeardownRunning ? '0 0 25px rgba(245, 158, 11, 0.2)' : 'none'
               }}>
                 {/* Header */}
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
@@ -1838,12 +1856,12 @@ function GenerationViewer() {
                       gap: '0.4rem',
                       padding: '0.25rem 0.6rem',
                       borderRadius: '999px',
-                      background: latestDestroyRun?.status === 'completed'
-                        ? (latestDestroyRun.conclusion === 'success' ? 'rgba(239, 68, 68, 0.15)' : 'rgba(255, 107, 107, 0.2)')
-                        : 'rgba(245, 158, 11, 0.15)',
-                      color: latestDestroyRun?.status === 'completed'
-                        ? (latestDestroyRun.conclusion === 'success' ? '#ef4444' : '#ff6b6b')
-                        : '#f59e0b',
+                      background: isTeardownSuccess
+                        ? 'rgba(239, 68, 68, 0.15)'
+                        : (isTeardownRunning ? 'rgba(245, 158, 11, 0.15)' : 'rgba(255, 107, 107, 0.2)'),
+                      color: isTeardownSuccess
+                        ? '#ef4444'
+                        : (isTeardownRunning ? '#f59e0b' : '#ff6b6b'),
                       fontSize: '0.72rem',
                       fontWeight: '700',
                       letterSpacing: '0.04em'
@@ -1852,15 +1870,15 @@ function GenerationViewer() {
                         width: '6px',
                         height: '6px',
                         borderRadius: '50%',
-                        background: latestDestroyRun?.status === 'completed'
-                          ? (latestDestroyRun.conclusion === 'success' ? '#ef4444' : '#ff6b6b')
-                          : '#f59e0b',
-                        boxShadow: latestDestroyRun?.status !== 'completed' ? '0 0 8px #f59e0b' : 'none',
-                        animation: latestDestroyRun?.status !== 'completed' ? 'pulse 1.2s infinite' : 'none'
+                        background: isTeardownSuccess
+                          ? '#ef4444'
+                          : (isTeardownRunning ? '#f59e0b' : '#ff6b6b'),
+                        boxShadow: isTeardownRunning ? '0 0 8px #f59e0b' : 'none',
+                        animation: isTeardownRunning ? 'pulse 1.2s infinite' : 'none'
                       }}></span>
-                      {destroying || (latestDestroyRun && latestDestroyRun.status !== 'completed')
+                      {isTeardownRunning
                         ? 'TEARDOWN IN PROGRESS'
-                        : (latestDestroyRun?.conclusion === 'success' ? 'INFRASTRUCTURE DESTROYED' : 'TEARDOWN FAILED')}
+                        : (isTeardownSuccess ? 'INFRASTRUCTURE DESTROYED' : 'TEARDOWN FAILED')}
                     </span>
                   </div>
 
@@ -1893,16 +1911,16 @@ function GenerationViewer() {
                     </span>
                   </div>
                   <p style={{ margin: 0, fontSize: '0.78rem', color: '#a2a2b5', lineHeight: '1.4' }}>
-                    {destroying || (latestDestroyRun && latestDestroyRun.status !== 'completed')
+                    {isTeardownRunning
                       ? 'Executing terraform destroy via GitHub Actions. Deleting compute instances, networking, security groups, and databases...'
-                      : (latestDestroyRun?.conclusion === 'success'
+                      : (isTeardownSuccess
                           ? 'All cloud resources have been permanently deleted and billing is terminated.'
                           : 'Teardown workflow encountered an issue. Please review the GitHub Actions logs.')}
                   </p>
                 </div>
 
                 {/* Animated Loading Strip when running */}
-                {(destroying || (latestDestroyRun && latestDestroyRun.status !== 'completed')) && (
+                {isTeardownRunning && (
                   <div style={{
                     width: '100%',
                     height: '4px',
@@ -1955,10 +1973,12 @@ function GenerationViewer() {
                       width: '8px',
                       height: '8px',
                       borderRadius: '50%',
-                      background: latestDestroyRun ? '#ef4444' : '#6e7191'
+                      background: (latestDestroyRun || isTeardownSuccess) ? '#ef4444' : (isTeardownRunning ? '#f59e0b' : '#6e7191'),
+                      boxShadow: (!latestDestroyRun && isTeardownRunning) ? '0 0 6px #f59e0b' : 'none',
+                      animation: (!latestDestroyRun && isTeardownRunning) ? 'pulse 1.2s infinite' : 'none'
                     }}></span>
-                    <span style={{ fontSize: '0.75rem', color: latestDestroyRun ? '#fff' : '#a2a2b5' }}>
-                      Cloud Credentials Authentication ({latestDestroyRun ? 'Authenticated ✅' : 'Pending'})
+                    <span style={{ fontSize: '0.75rem', color: (latestDestroyRun || isTeardownSuccess) ? '#fff' : (isTeardownRunning ? '#f59e0b' : '#a2a2b5') }}>
+                      Cloud Credentials Authentication ({(latestDestroyRun || isTeardownSuccess) ? 'Authenticated ✅' : (isTeardownRunning ? 'Authenticating & Initializing... ⏳' : 'Pending')})
                     </span>
                   </div>
 
@@ -1970,24 +1990,36 @@ function GenerationViewer() {
                       width: '8px',
                       height: '8px',
                       borderRadius: '50%',
-                      background: latestDestroyRun?.status === 'completed'
-                        ? (latestDestroyRun.conclusion === 'success' ? '#ef4444' : '#ff6b6b')
-                        : (latestDestroyRun?.status === 'in_progress' ? '#f59e0b' : '#6e7191')
+                      background: isTeardownSuccess
+                        ? '#ef4444'
+                        : (isTeardownFailed
+                          ? '#ff6b6b'
+                          : ((latestDestroyRun?.status === 'in_progress' || isTeardownRunning) ? '#f59e0b' : '#6e7191')),
+                      boxShadow: (isTeardownRunning && (latestDestroyRun?.status === 'in_progress' || latestDestroyRun)) ? '0 0 6px #f59e0b' : 'none',
+                      animation: (isTeardownRunning && (latestDestroyRun?.status === 'in_progress' || latestDestroyRun)) ? 'pulse 1.2s infinite' : 'none'
                     }}></span>
                     <span style={{
                       fontSize: '0.75rem',
-                      color: latestDestroyRun?.status === 'in_progress' ? '#f59e0b' : (latestDestroyRun?.status === 'completed' ? '#fff' : '#a2a2b5'),
-                      fontWeight: latestDestroyRun?.status === 'in_progress' ? '600' : '400'
+                      color: isTeardownSuccess ? '#fff' : (isTeardownFailed ? '#ff6b6b' : (isTeardownRunning ? '#f59e0b' : '#a2a2b5')),
+                      fontWeight: isTeardownRunning ? '600' : '400'
                     }}>
-                      Terraform Destroy Infrastructure ({latestDestroyRun?.status === 'completed' ? (latestDestroyRun.conclusion === 'success' ? 'Destroy Complete ✅' : 'Failed ❌') : (latestDestroyRun?.status === 'in_progress' ? 'Deleting Resources ⏳' : 'Pending')})
+                      Terraform Destroy Infrastructure ({
+                        isTeardownSuccess
+                          ? 'Destroy Complete ✅'
+                          : (isTeardownFailed
+                            ? 'Failed ❌'
+                            : (latestDestroyRun?.status === 'in_progress'
+                              ? 'Deleting Resources ⏳'
+                              : (isTeardownRunning ? 'Queueing Teardown ⏳' : 'Pending')))
+                      })
                     </span>
                   </div>
                 </div>
               </div>
             )}
 
-            {/* Danger Zone: Cloud Teardown Action - only shown when cloud resources are live or teardown is in progress */}
-            {(isServerLive || destroying || latestDestroyRun?.status === 'in_progress' || latestDestroyRun?.status === 'queued') && (
+            {/* Danger Zone: Cloud Teardown Action - only shown when resources are live or teardown failed, and not currently running */}
+            {!isTeardownRunning && !isTeardownSuccess && (isServerLive || isTeardownFailed) && (
               <div style={{
                 background: 'linear-gradient(135deg, rgba(255, 107, 107, 0.04) 0%, rgba(255, 107, 107, 0.01) 100%)',
                 border: '1.5px solid rgba(255, 107, 107, 0.25)',
@@ -2011,16 +2043,15 @@ function GenerationViewer() {
                     setDestroyError('');
                     setDestroySuccess(false);
                   }}
-                  disabled={destroying || latestDestroyRun?.status === 'in_progress' || latestDestroyRun?.status === 'queued'}
                   style={{
-                    background: (destroying || latestDestroyRun?.status === 'in_progress') ? 'rgba(255, 255, 255, 0.05)' : 'rgba(255, 107, 107, 0.1)',
-                    border: `1px solid ${(destroying || latestDestroyRun?.status === 'in_progress') ? 'rgba(255, 255, 255, 0.1)' : 'rgba(255, 107, 107, 0.4)'}`,
-                    color: (destroying || latestDestroyRun?.status === 'in_progress') ? '#a2a2b5' : '#ff8585',
+                    background: 'rgba(255, 107, 107, 0.1)',
+                    border: '1px solid rgba(255, 107, 107, 0.4)',
+                    color: '#ff8585',
                     padding: '0.55rem 0.8rem',
                     borderRadius: '10px',
                     fontSize: '0.8rem',
                     fontWeight: '600',
-                    cursor: (destroying || latestDestroyRun?.status === 'in_progress') ? 'not-allowed' : 'pointer',
+                    cursor: 'pointer',
                     display: 'flex',
                     alignItems: 'center',
                     justifyContent: 'center',
@@ -2028,17 +2059,8 @@ function GenerationViewer() {
                     transition: 'all 0.2s'
                   }}
                 >
-                  {(destroying || latestDestroyRun?.status === 'in_progress') ? (
-                    <>
-                      <RefreshCw size={14} style={{ animation: 'spin 1.5s linear infinite' }} />
-                      Teardown In Progress...
-                    </>
-                  ) : (
-                    <>
-                      <Trash2 size={14} />
-                      {isTornDown ? 'Re-trigger Teardown' : 'Destroy Infrastructure'}
-                    </>
-                  )}
+                  <Trash2 size={14} />
+                  {isTeardownFailed ? 'Retry Infrastructure Teardown' : 'Destroy Infrastructure'}
                 </button>
               </div>
             )}
