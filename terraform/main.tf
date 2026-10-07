@@ -144,6 +144,13 @@ resource "aws_security_group" "web_sg" {
   }
 
   ingress {
+    from_port   = 443
+    to_port     = 443
+    protocol    = "tcp"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+
+  ingress {
     from_port   = 0
     to_port     = 0
     protocol    = "-1"
@@ -168,7 +175,33 @@ resource "aws_security_group" "web_sg" {
 # --- Elastic IP (Conditional) ---
 
 
+resource "aws_eip" "backend_eip" {
+  domain = "vpc"
+  tags = {
+    Name        = "${var.project_name}-backend-eip"
+    Environment = var.environment
+  }
+}
 
+resource "aws_eip_association" "backend_eip_assoc" {
+  instance_id   = aws_instance.backend.id
+  allocation_id = aws_eip.backend_eip.id
+}
+
+
+
+resource "aws_eip" "frontend_eip" {
+  domain = "vpc"
+  tags = {
+    Name        = "${var.project_name}-frontend-eip"
+    Environment = var.environment
+  }
+}
+
+resource "aws_eip_association" "frontend_eip_assoc" {
+  instance_id   = aws_instance.frontend.id
+  allocation_id = aws_eip.frontend_eip.id
+}
 
 
 
@@ -282,8 +315,58 @@ PYEOF
 rm -f /tmp/app_env_vars.json
 chmod 600 /opt/app/backend.env
 
-# Run the container using --env-file
-docker run -d -p 80:8000 \
+# Setup Caddy Reverse Proxy with Automated SSL (via sslip.io)
+PUBLIC_IP=""
+for i in $(seq 1 12); do
+  TOKEN=$(curl -s -X PUT "http://169.254.169.254/latest/api/token" -H "X-aws-ec2-metadata-token-ttl-seconds: 60" 2>/dev/null || true)
+  if [ -n "$TOKEN" ]; then
+    PUBLIC_IP=$(curl -s -H "X-aws-ec2-metadata-token: $TOKEN" http://169.254.169.254/latest/meta-data/public-ipv4 2>/dev/null || true)
+  fi
+  if [ -z "$PUBLIC_IP" ]; then
+    PUBLIC_IP=$(curl -s https://checkip.amazonaws.com 2>/dev/null || curl -s https://ifconfig.me 2>/dev/null || true)
+  fi
+  if [ -n "$PUBLIC_IP" ] && [[ "$PUBLIC_IP" =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+    break
+  fi
+  sleep 3
+done
+
+mkdir -p /opt/caddy/data /opt/caddy/config
+
+if [ -n "$PUBLIC_IP" ]; then
+  DASHED_IP=$(echo "$PUBLIC_IP" | tr '.' '-')
+  DOMAIN="$${DASHED_IP}.sslip.io"
+  cat <<CADDYEOF > /opt/caddy/Caddyfile
+$DOMAIN {
+    reverse_proxy 127.0.0.1:8000
+}
+CADDYEOF
+else
+  cat <<CADDYEOF > /opt/caddy/Caddyfile
+:80 {
+    reverse_proxy 127.0.0.1:8000
+}
+CADDYEOF
+fi
+
+# Run Caddy reverse proxy container with host networking for automatic SSL
+docker pull caddy:alpine || true
+docker stop caddy || true
+docker rm caddy || true
+docker run -d \
+  --name caddy \
+  --restart always \
+  --net=host \
+  -v /opt/caddy/Caddyfile:/etc/caddy/Caddyfile \
+  -v /opt/caddy/data:/data \
+  -v /opt/caddy/config:/config \
+  caddy:alpine || true
+
+# Run the application container binding to localhost
+docker stop backend || true
+docker rm backend || true
+docker run -d \
+  -p 127.0.0.1:8000:8000 \
   --name backend \
   --restart always \
   --env-file /opt/app/backend.env \
@@ -405,8 +488,58 @@ PYEOF
 rm -f /tmp/app_env_vars.json
 chmod 600 /opt/app/frontend.env
 
-# Run the container using --env-file
-docker run -d -p 80:3000 \
+# Setup Caddy Reverse Proxy with Automated SSL (via sslip.io)
+PUBLIC_IP=""
+for i in $(seq 1 12); do
+  TOKEN=$(curl -s -X PUT "http://169.254.169.254/latest/api/token" -H "X-aws-ec2-metadata-token-ttl-seconds: 60" 2>/dev/null || true)
+  if [ -n "$TOKEN" ]; then
+    PUBLIC_IP=$(curl -s -H "X-aws-ec2-metadata-token: $TOKEN" http://169.254.169.254/latest/meta-data/public-ipv4 2>/dev/null || true)
+  fi
+  if [ -z "$PUBLIC_IP" ]; then
+    PUBLIC_IP=$(curl -s https://checkip.amazonaws.com 2>/dev/null || curl -s https://ifconfig.me 2>/dev/null || true)
+  fi
+  if [ -n "$PUBLIC_IP" ] && [[ "$PUBLIC_IP" =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+    break
+  fi
+  sleep 3
+done
+
+mkdir -p /opt/caddy/data /opt/caddy/config
+
+if [ -n "$PUBLIC_IP" ]; then
+  DASHED_IP=$(echo "$PUBLIC_IP" | tr '.' '-')
+  DOMAIN="$${DASHED_IP}.sslip.io"
+  cat <<CADDYEOF > /opt/caddy/Caddyfile
+$DOMAIN {
+    reverse_proxy 127.0.0.1:3000
+}
+CADDYEOF
+else
+  cat <<CADDYEOF > /opt/caddy/Caddyfile
+:80 {
+    reverse_proxy 127.0.0.1:3000
+}
+CADDYEOF
+fi
+
+# Run Caddy reverse proxy container with host networking for automatic SSL
+docker pull caddy:alpine || true
+docker stop caddy || true
+docker rm caddy || true
+docker run -d \
+  --name caddy \
+  --restart always \
+  --net=host \
+  -v /opt/caddy/Caddyfile:/etc/caddy/Caddyfile \
+  -v /opt/caddy/data:/data \
+  -v /opt/caddy/config:/config \
+  caddy:alpine || true
+
+# Run the application container binding to localhost
+docker stop frontend || true
+docker rm frontend || true
+docker run -d \
+  -p 127.0.0.1:3000:3000 \
   --name frontend \
   --restart always \
   --env-file /opt/app/frontend.env \
