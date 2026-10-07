@@ -1210,7 +1210,7 @@ function GenerationViewer() {
         {/* Right Sidebar Deployment & Secrets Panel */}
         {isCloudDeploy && (cloud.toLowerCase() === 'aws' || cloud.toLowerCase() === 'gcp') && (
           <div style={{
-            width: '340px',
+            width: '360px',
             flexShrink: 0,
             borderLeft: '2px solid var(--c2c-border)',
             padding: '1.5rem',
@@ -1604,7 +1604,7 @@ function GenerationViewer() {
                       )}
                     </div>
 
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.65rem' }}>
                       {liveEndpoints.map((ep, idx) => {
                         const isDb = ep.type === 'database';
                         const epUrl = sanitizeIp(ep.url);
@@ -1618,64 +1618,61 @@ function GenerationViewer() {
                           <div
                             key={epKey}
                             style={{
-                              background: 'rgba(255, 255, 255, 0.02)',
-                              border: '1px solid rgba(255, 255, 255, 0.06)',
-                              borderRadius: '10px',
-                              padding: '0.65rem 0.85rem',
+                              background: 'rgba(255, 255, 255, 0.03)',
+                              border: '1px solid rgba(255, 255, 255, 0.08)',
+                              borderRadius: '12px',
+                              padding: '0.75rem 0.85rem',
                               display: 'flex',
-                              alignItems: 'center',
-                              justifyContent: 'space-between',
-                              gap: '0.5rem'
+                              flexDirection: 'column',
+                              gap: '0.55rem',
+                              transition: 'all 0.2s ease'
                             }}
                           >
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', overflow: 'hidden' }}>
-                              <div style={{
-                                width: '28px',
-                                height: '28px',
-                                borderRadius: '8px',
-                                display: 'flex',
-                                alignItems: 'center',
-                                justifyContent: 'center',
-                                background: isDb ? 'rgba(245, 158, 11, 0.15)' : 'rgba(59, 130, 246, 0.15)',
-                                color: isDb ? '#F59E0B' : '#60A5FA',
-                                flexShrink: 0
-                              }}>
-                                {isDb ? <Database size={14} /> : <Server size={14} />}
-                              </div>
-                              <div style={{ display: 'flex', flexDirection: 'column', minWidth: 0 }}>
-                                <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
-                                  <span style={{ fontSize: '0.8rem', fontWeight: '600', color: '#fff', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                                    {ep.name}
+                            {/* Top Row: Service Icon, Name & Type Badge, and Open Button */}
+                            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '0.5rem' }}>
+                              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', minWidth: 0 }}>
+                                <div style={{
+                                  width: '26px',
+                                  height: '26px',
+                                  borderRadius: '7px',
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                  justifyContent: 'center',
+                                  background: isDb ? 'rgba(245, 158, 11, 0.15)' : 'rgba(59, 130, 246, 0.15)',
+                                  color: isDb ? '#F59E0B' : '#60A5FA',
+                                  flexShrink: 0
+                                }}>
+                                  {isDb ? <Database size={14} /> : <Server size={14} />}
+                                </div>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', minWidth: 0 }}>
+                                  <span style={{ fontSize: '0.82rem', fontWeight: '700', color: '#fff', textTransform: 'capitalize' }}>
+                                    {ep.name || (isDb ? 'Database' : 'Service')}
                                   </span>
                                   <span style={{
                                     fontSize: '0.62rem',
                                     fontWeight: '700',
                                     textTransform: 'uppercase',
-                                    padding: '0.1rem 0.35rem',
+                                    padding: '0.12rem 0.4rem',
                                     borderRadius: '4px',
-                                    background: isDb ? 'rgba(245, 158, 11, 0.15)' : 'rgba(16, 185, 129, 0.15)',
-                                    color: isDb ? '#F59E0B' : '#10B981'
+                                    background: isDb ? 'rgba(245, 158, 11, 0.18)' : 'rgba(16, 185, 129, 0.18)',
+                                    color: isDb ? '#F59E0B' : '#10B981',
+                                    letterSpacing: '0.03em'
                                   }}>
                                     {ep.type || 'service'}
                                   </span>
                                 </div>
-                                <span style={{ fontSize: '0.72rem', color: '#a2a2b5', fontFamily: 'monospace', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                                  {epUrl || epEndpoint || epIp || 'Ready'}
-                                </span>
                               </div>
-                            </div>
 
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', flexShrink: 0 }}>
                               {epUrl && (
                                 <a
                                   href={epUrl}
                                   target="_blank"
                                   rel="noopener noreferrer"
-                                  title="Open Service"
+                                  title="Open Service in Browser"
                                   style={{
-                                    padding: '0.35rem 0.55rem',
+                                    padding: '0.25rem 0.6rem',
                                     background: 'rgba(16, 185, 129, 0.15)',
-                                    border: '1px solid rgba(16, 185, 129, 0.3)',
+                                    border: '1px solid rgba(16, 185, 129, 0.35)',
                                     borderRadius: '6px',
                                     color: '#10B981',
                                     fontSize: '0.72rem',
@@ -1683,32 +1680,77 @@ function GenerationViewer() {
                                     display: 'flex',
                                     alignItems: 'center',
                                     gap: '0.25rem',
-                                    textDecoration: 'none'
+                                    textDecoration: 'none',
+                                    flexShrink: 0,
+                                    transition: 'all 0.15s'
+                                  }}
+                                  onMouseOver={(e) => {
+                                    e.currentTarget.style.background = 'rgba(16, 185, 129, 0.25)';
+                                  }}
+                                  onMouseOut={(e) => {
+                                    e.currentTarget.style.background = 'rgba(16, 185, 129, 0.15)';
                                   }}
                                 >
-                                  Open <ExternalLink size={11} />
+                                  Open <ExternalLink size={10} />
                                 </a>
                               )}
+                            </div>
+
+                            {/* Bottom Row: Full Visible Endpoint URL with 1-Click Copy */}
+                            <div style={{
+                              background: 'rgba(0, 0, 0, 0.45)',
+                              border: '1px solid rgba(255, 255, 255, 0.08)',
+                              borderRadius: '8px',
+                              padding: '0.4rem 0.65rem',
+                              display: 'flex',
+                              alignItems: 'center',
+                              justifyContent: 'space-between',
+                              gap: '0.5rem'
+                            }}>
+                              <a
+                                href={epUrl || (epIp ? `http://${epIp}` : '#')}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                title="Open endpoint in browser"
+                                style={{
+                                  fontSize: '0.78rem',
+                                  color: '#34d399',
+                                  fontFamily: 'monospace',
+                                  fontWeight: '600',
+                                  textDecoration: 'none',
+                                  wordBreak: 'break-all',
+                                  lineHeight: '1.3',
+                                  minWidth: 0
+                                }}
+                                onMouseOver={(e) => { e.currentTarget.style.textDecoration = 'underline'; }}
+                                onMouseOut={(e) => { e.currentTarget.style.textDecoration = 'none'; }}
+                              >
+                                {epUrl || epEndpoint || (epIp ? `http://${epIp}` : 'Ready')}
+                              </a>
+
                               {epCopyVal && (
                                 <button
                                   type="button"
                                   onClick={() => handleCopyText(epCopyVal, epKey)}
-                                  title="Copy Connection Info"
+                                  title="Copy URL or IP"
                                   style={{
-                                    padding: '0.35rem 0.55rem',
-                                    background: isCopied ? 'rgba(16, 185, 129, 0.2)' : 'rgba(255, 255, 255, 0.05)',
-                                    border: `1px solid ${isCopied ? '#10B981' : 'rgba(255, 255, 255, 0.1)'}`,
-                                    borderRadius: '6px',
-                                    color: isCopied ? '#10B981' : '#fff',
-                                    fontSize: '0.72rem',
+                                    padding: '0.2rem 0.45rem',
+                                    background: isCopied ? 'rgba(16, 185, 129, 0.25)' : 'rgba(255, 255, 255, 0.06)',
+                                    border: `1px solid ${isCopied ? '#10B981' : 'rgba(255, 255, 255, 0.12)'}`,
+                                    borderRadius: '5px',
+                                    color: isCopied ? '#10B981' : '#a2a2b5',
+                                    fontSize: '0.68rem',
+                                    fontWeight: '600',
                                     display: 'flex',
                                     alignItems: 'center',
                                     gap: '0.25rem',
-                                    cursor: 'pointer'
+                                    cursor: 'pointer',
+                                    flexShrink: 0,
+                                    transition: 'all 0.15s ease'
                                   }}
                                 >
                                   {isCopied ? <Check size={11} /> : <Copy size={11} />}
-                                  {isCopied ? 'Copied' : (isDb ? 'Copy' : 'IP')}
+                                  {isCopied ? 'Copied' : (isDb ? 'Copy' : 'Copy IP')}
                                 </button>
                               )}
                             </div>
@@ -1987,7 +2029,7 @@ function GenerationViewer() {
         {/* Right Sidebar Terraform Standalone Script Panel */}
         {isTerraformScriptOnly && (
           <div style={{
-            width: '340px',
+            width: '360px',
             flexShrink: 0,
             borderLeft: '2px solid var(--c2c-border)',
             padding: '1.5rem',
