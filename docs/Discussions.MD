@@ -14,3 +14,6 @@ Day 02 (31-07-2026)
 Day 03 (10-08-2026)
 - Mainly talk about the project status
 - Discussion about research paper submission and Interim 2 submission
+
+Day 04 (29-09-2026)
+- Discussion about thesis submission, project status, viva and presentation.
